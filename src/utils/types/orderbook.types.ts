@@ -8,15 +8,10 @@ interface IKeyPair {
     pubkey: string;
 }
 
-interface IBaseOrder {
-    uuid: string;
-    timestamp: number;
-    socket_id: string;
+
+interface IRawSpotOrder {
     keypair: IKeyPair;
     action: EOrderAction;
-}
-
-interface ISpotOrder extends IBaseOrder {
     type: EOrderType.SPOT;
     props: {
         id_desired: number,
@@ -26,7 +21,9 @@ interface ISpotOrder extends IBaseOrder {
     };
 }
 
-interface IFuturesOrder extends IBaseOrder {
+interface IRawFuturesOrder {
+    keypair: IKeyPair;
+    action: EOrderAction;
     type: EOrderType.FUTURES;
     props: {
         contract_id: number,
@@ -34,10 +31,19 @@ interface IFuturesOrder extends IBaseOrder {
     };
 }
 
+interface IBuiltOrde {
+    uuid: string;
+    timestamp: number;
+    socket_id: string;
+}
+
+interface ISpotOrder extends IRawSpotOrder, IBuiltOrde {}
+interface IFuturesOrder extends IRawFuturesOrder, IBuiltOrde {}
+
 export enum EOrderType {
     SPOT = 'SPOT',
     FUTURES = 'FUTURES',
 }
 
 export type TOrder = ISpotOrder | IFuturesOrder;
-
+export type TRawOrder = IRawSpotOrder | IRawFuturesOrder;
