@@ -9,7 +9,7 @@ import { EmitEvents } from "../socket/events";
 
 export interface ITrade {
     amountDesired: number;
-    amountForSsale: number;
+    amountForSale: number;
     buyerAddress: string;
     buyerPubKey: string;
     buyerSocketId: string;
@@ -170,6 +170,7 @@ export class Orderbook {
 
             // remove the order
             this.orders = this.orders.filter(o => o !== orderForRemove);
+            socketService.io.emit(EmitEvents.UPDATE_ORDERS_REQUEST);
             return { data: `Order with uuid ${uuid} was removed!` };
         } catch (error) {
             return { error: error.message };
@@ -274,7 +275,7 @@ const buildTrade = (new_order: TOrder, old_order: TOrder): IResult<{ unfilled: T
 
         const trade: ITrade = {
             amountDesired: amount,
-            amountForSsale: safeNumber(amount * price),
+            amountForSale: safeNumber(amount * price),
             buyerAddress: buyOrder.keypair.address,
             buyerPubKey: buyOrder.keypair.pubkey, 
             buyerSocketId: buyOrder.socket_id,

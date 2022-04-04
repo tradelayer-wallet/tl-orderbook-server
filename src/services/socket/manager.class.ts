@@ -70,6 +70,5 @@ const onClosedOrder = (socket: Socket) => (orderUUID: string) => {
     const res = orderbookManager.removeOrder(orderUUID, socket.id);
     const openedOrders = orderbookManager.getOrdersBySocketId(socket.id);
     socket.emit(EmitEvents.PLACED_ORDERS, openedOrders);
-    socketService.io.emit(EmitEvents.UPDATE_ORDERS_REQUEST);
 };
 
