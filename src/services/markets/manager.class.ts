@@ -34,9 +34,12 @@ export class MarketsManager {
 
     getAvailableFuturesMarkets(): IResult {
         try {
+            const wEthToken = createToken('WETH', 'Wrapped ETH', 4);
+            const wBtcToken = createToken('WBTC', 'Wrapped BTC', 8);
+            const usdToken = createToken('USD', 'United States', -3);
             const ltcContracts: IContract[] = [
-                createContract(5, 'wETH/USD', 4, false),
-                createContract(7, 'BTC/USD', 9, true),
+                createContract(wEthToken, usdToken, 5, 'wETH/USD', 4, false),
+                createContract(wBtcToken, usdToken, 7, 'BTC/USD', 9, true),
             ];
             const btcContracts: IContract[] = [];
             const dogeContracts: IContract[] = [];

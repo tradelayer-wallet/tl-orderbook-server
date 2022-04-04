@@ -1,0 +1,1 @@
+export const safeNumber = (n: number) => parseFloat((n).toFixed(6));

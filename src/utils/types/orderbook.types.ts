@@ -1,8 +1,3 @@
-enum EOrderAction { 
-    BUY = 'BUY',
-    SELL = 'SELL',
-}
-
 interface IKeyPair {
     address: string;
     pubkey: string;
@@ -16,8 +11,8 @@ interface IRawSpotOrder {
     props: {
         id_desired: number,
         id_for_sale: number,
-        amount_desired: number,
-        amount_for_sale: number,
+        amount: number,
+        price: number,
     };
 }
 
@@ -27,6 +22,8 @@ interface IRawFuturesOrder {
     type: EOrderType.FUTURES;
     props: {
         contract_id: number,
+        amount: number,
+        price: number,
         // more ..
     };
 }
@@ -35,6 +32,7 @@ interface IBuiltOrde {
     uuid: string;
     timestamp: number;
     socket_id: string;
+    lock: boolean;
 }
 
 interface ISpotOrder extends IRawSpotOrder, IBuiltOrde {}
@@ -43,6 +41,11 @@ interface IFuturesOrder extends IRawFuturesOrder, IBuiltOrde {}
 export enum EOrderType {
     SPOT = 'SPOT',
     FUTURES = 'FUTURES',
+}
+
+export enum EOrderAction { 
+    BUY = 'BUY',
+    SELL = 'SELL',
 }
 
 export type TOrder = ISpotOrder | IFuturesOrder;

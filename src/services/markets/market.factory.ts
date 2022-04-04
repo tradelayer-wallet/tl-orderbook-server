@@ -9,8 +9,9 @@ export const createMarket = (first_token: IToken, second_token: IToken, disabled
     return { first_token, second_token, disabled, pairString };
 };
 
-export const createContract = (contractId: number, contractName: string, collateral: number, disabled: boolean): IContract => {
-    return { contractId, contractName, collateral, disabled };
+export const createContract = (first_token: IToken, second_token: IToken, contractId: number, contractName: string, collateral: number, disabled: boolean): IContract => {
+    const pairString = `${first_token.shortName}/${second_token.shortName}`;
+    return { first_token, second_token, contractId, contractName, collateral, disabled, pairString };
 };
 
 export const createMarketType = (name: string, markets: IMarket[] | IContract[], icon: string, disabled: boolean): IMarketType => {

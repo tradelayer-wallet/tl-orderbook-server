@@ -9,21 +9,21 @@ export class OrderbookManager {
         console.log(`Orderbook Service Initialized`);
     }
 
-    private newOrderbook(firstOrder: TOrder): IResult {
+    private newOrderbook(firstOrder: TOrder): IResult<{ order?: any, trade?: any }> {
         try {
             const orderbook = new Orderbook(firstOrder);
             this.orderbooks.push(orderbook);
-            return { data: orderbook.orders[0] };
+            return { data: { order: orderbook.orders[0] } };
         } catch (error) {
             return { error: error.message };
         }
     }
 
-    addOrder(order: TOrder): IResult {
+    async addOrder(order: TOrder): Promise<IResult<{ order?: TOrder, trade?: any }>> {
             try {
                 const existingOrderbook = this.orderbooks.find(b => b.checkCompatible(order));
                 const res = existingOrderbook
-                    ? existingOrderbook.addOrder(order)
+                    ? await existingOrderbook.addOrder(order)
                     : this.newOrderbook(order);
                 return res; 
             } catch (error) {
@@ -42,5 +42,15 @@ export class OrderbookManager {
         } catch (error) {
             return { error: error.message };
         }
+    }
+
+    getOrdersBySocketId(id: string) {
+        const orders = [];
+        this.orderbooks.forEach(ob => {
+            ob.orders.forEach(o => {
+                if (o.socket_id === id) orders.push(o);
+            });
+        });
+        return orders;
     }
 }
