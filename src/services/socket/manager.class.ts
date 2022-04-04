@@ -38,6 +38,8 @@ const onConnection = (socket: Socket) => {
 }
 
 const onDisconnect = (socket: Socket) => (reason: string) => {
+    const openedOrders = orderbookManager.getOrdersBySocketId(socket.id);
+    openedOrders.forEach(o => orderbookManager.removeOrder(o.uuid, socket.id));
     console.log(`${socket.id} Disconnected! Reason: ${reason}`);
 };
 
