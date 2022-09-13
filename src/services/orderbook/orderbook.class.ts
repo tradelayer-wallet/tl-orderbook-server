@@ -123,6 +123,7 @@ export class Orderbook {
             if (matchRes.error || !matchRes.data) throw new Error(`${matchRes.error || "Undefined Error"}`);
             if (!matchRes.data.match) {
                 this.orders = [...this.orders, order];
+                this.updatePlacedOrdersForSocketId(order.socket_id);
                 return { data: { order } };
             } else {
                 this.lockOrder(matchRes.data.match);
@@ -142,16 +143,28 @@ export class Orderbook {
                 } else {
                     this.removeOrder(matchRes.data.match.uuid, matchRes.data.match.socket_id);
                 }
+                this.updatePlacedOrdersForSocketId(matchRes.data.match.socket_id);
 
                 if (buildTradeRes.data.unfilled?.uuid === order.uuid) {
                     const res = await this.addOrder(buildTradeRes.data.unfilled);
                     return { data: res.data };
                 }
-                return { data: { trade: newChannelRes.data }};
+                this.updatePlacedOrdersForSocketId(order.socket_id);
+
+                return { data: { trade: 'test' as any }};
             }
         } catch (error) {
             return { error: error.message };
         }
+    }
+
+    
+
+
+    updatePlacedOrdersForSocketId(socketid: string) {
+        const orders = orderbookManager.getOrdersBySocketId(socketid);
+        const socketObj = socketService.io.sockets.sockets.get(socketid);
+        socketObj.emit(EmitEvents.PLACED_ORDERS, orders);
     }
 
     removeOrder(uuid: string, socket_id: string): IResult {
@@ -234,19 +247,15 @@ export class Orderbook {
             }
 
             // saveToHistory({ ...channel.trade, txid: res.data.txid });
-            const buyerOrders = orderbookManager.getOrdersBySocketId(buyerSocket.id);
-            const sellerOrders = orderbookManager.getOrdersBySocketId(sellerSocket.id);
-            buyerSocket.emit(EmitEvents.PLACED_ORDERS, buyerOrders);
-            sellerSocket.emit(EmitEvents.PLACED_ORDERS, sellerOrders);
             return channelRes;
         } catch (error) {
             return { error: error.message };
         }
     }
 
-    private updateOrderAmount(order: TOrder, amount: number) {
-        order.props.amount = amount;
-    }
+    // private updateOrderAmount(order: TOrder, amount: number) {
+    //     order.props.amount = amount;
+    // }
 
     private lockOrder(order: TOrder, lock: boolean = true) {
         order.lock = lock;
