@@ -1,6 +1,14 @@
 import { Socket } from "socket.io";
 import { IResult } from "../../utils/types/mix.types";
 
+class SwapEvent {
+    constructor(
+        public eventName: string,
+        public socketId: string,
+        public data: any,
+    ) {}
+}
+const swapEventName = 'swap';
 export class ChannelSwap {
     private readyRes: (value: IResult) => void;
     constructor(
@@ -28,37 +36,26 @@ export class ChannelSwap {
     }
 
     private handleEvents(): void {
-        const eventsArray = [
-            'TERMINATE_TRADE',
-            'SELLER:MS_DATA',
-            'SELLER:COMMIT_UTXO' ,
-            'SELLER:SIGNED_RAWTX',
-            'BUYER:COMMIT',
-            'BUYER:RAWTX',
-            'BUYER:FINALTX',
-        ];
-        eventsArray.forEach(e => this.removePreviuesEventListeners(e));
-        eventsArray.forEach(e => this.handleEventsAndPassToCP(e));
-
-        this.client.on(`${this.client.id}::BUYER:FINALTX`, (finalTx) => {
-            if (this.readyRes) this.readyRes({ data: { txid: finalTx } });
-            eventsArray.forEach(e => this.removePreviuesEventListeners(e));
-        });
-
-        this.dealer.on(`${this.dealer.id}::BUYER:FINALTX`, (finalTx) => {
-            if (this.readyRes) this.readyRes({ data: { txid: finalTx } });
-            eventsArray.forEach(e => this.removePreviuesEventListeners(e));
-        });
+        this.removePreviuesEventListeners(swapEventName);
+        this.handleEventsAndPassToCP(swapEventName);
+        [this.client.id, this.dealer.id]
+            .forEach(p => {
+                [this.dealer, this.client]
+                    .forEach(c => {
+                        c.on(`${p}::${swapEventName}`, (swapEvent: SwapEvent) => {
+                            const { eventName, data, socketId } = swapEvent;
+                            if (eventName === "BUYER:STEP6") {
+                                if (this.readyRes) this.readyRes({ data: { txid: data } });
+                                this.removePreviuesEventListeners(swapEventName);
+                            }
         
-        this.client.on(`${this.client.id}::TERMINATE_TRADE`, (reason) => {
-            if (this.readyRes) this.readyRes({ error: reason });
-            eventsArray.forEach(e => this.removePreviuesEventListeners(e));
-        });
-
-        this.dealer.on(`${this.dealer.id}::TERMINATE_TRADE`, (reason) => {
-            if (this.readyRes) this.readyRes({ error: reason });
-            eventsArray.forEach(e => this.removePreviuesEventListeners(e));
-        });
+                            if (eventName === "TERMINATE_TRADE") {
+                                if (this.readyRes) this.readyRes({ error: data });
+                                this.removePreviuesEventListeners(swapEventName);
+                            }
+                        });
+                    });
+            });
     }
 
     private removePreviuesEventListeners(event: string) {
@@ -69,7 +66,7 @@ export class ChannelSwap {
     private handleEventsAndPassToCP(event: string) {
         const dealerEvent = `${this.dealer.id}::${event}`;
         const clientEvent = `${this.client.id}::${event}`;
-        this.dealer.on(dealerEvent, (data) => this.client.emit(dealerEvent, this.dealer.id, data));
-        this.client.on(clientEvent, (data) => this.dealer.emit(clientEvent, this.client.id, data));
+        this.dealer.on(dealerEvent, (data: SwapEvent) => this.client.emit(dealerEvent, data));
+        this.client.on(clientEvent, (data: SwapEvent) => this.dealer.emit(clientEvent, data));
     }
 }

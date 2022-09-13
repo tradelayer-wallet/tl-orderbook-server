@@ -11,7 +11,7 @@ export class MarketsManager {
     getAvailableSpotMarkets(): IResult {
         try {
             const wEthToken = createToken('WETH', 'Wrapped ETH', 4);
-            const ltcToken = createToken('LTC', 'LTC', -1);
+            const ltcToken = createToken('LTC', 'Litecoin', -1);
             const allToken = createToken('ALL', 'ALL', 1);
     
             const ltcMartkets: IMarket[] = [
@@ -36,7 +36,7 @@ export class MarketsManager {
         try {
             const wEthToken = createToken('WETH', 'Wrapped ETH', 4);
             const wBtcToken = createToken('WBTC', 'Wrapped BTC', 8);
-            const usdToken = createToken('USD', 'United States', -3);
+            const usdToken = createToken('USD', 'US Dollar', -3);
             const ltcContracts: IContract[] = [
                 createContract(wEthToken, usdToken, 5, 'wETH/USD', 4, false),
                 createContract(wBtcToken, usdToken, 7, 'BTC/USD', 9, true),

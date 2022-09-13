@@ -8,6 +8,8 @@ interface IRawSpotOrder {
     keypair: IKeyPair;
     action: EOrderAction;
     type: EOrderType.SPOT;
+    isLimitOrder: boolean;
+    marketName: string;
     props: {
         id_desired: number,
         id_for_sale: number,
@@ -20,6 +22,8 @@ interface IRawFuturesOrder {
     keypair: IKeyPair;
     action: EOrderAction;
     type: EOrderType.FUTURES;
+    isLimitOrder: boolean;
+    marketName: string;
     props: {
         contract_id: number,
         amount: number,

@@ -34,7 +34,7 @@ export class Orderbook {
     constructor(firstOrder: TOrder) {
         this._type = firstOrder.type;
         this.addProps(firstOrder);
-        this.addOrder(firstOrder)
+        this.addOrder(firstOrder);
     }
 
     get type(): EOrderType {
@@ -47,6 +47,7 @@ export class Orderbook {
 
     set orders(value: TOrder[]) {
         this._orders = value;
+        socketService.io.emit(EmitEvents.UPDATE_ORDERS_REQUEST);
     }
 
     private addProps(order: TOrder): IResult {
@@ -135,17 +136,17 @@ export class Orderbook {
                     throw new Error(`${newChannelRes.error || "Undefined Error"}`);
                 }
 
-                // if (buildTradeRes.data.unfilled?.uuid === matchRes.data.match.uuid) {
-                //     matchRes.data.match.props.amount = buildTradeRes.data.unfilled.props.amount;
-                //     this.lockOrder(matchRes.data.match, false);
-                // } else {
-                //     this.removeOrder(matchRes.data.match.uuid, matchRes.data.match.socket_id);
-                // }
+                if (buildTradeRes.data.unfilled?.uuid === matchRes.data.match.uuid) {
+                    matchRes.data.match.props.amount = buildTradeRes.data.unfilled.props.amount;
+                    this.lockOrder(matchRes.data.match, false);
+                } else {
+                    this.removeOrder(matchRes.data.match.uuid, matchRes.data.match.socket_id);
+                }
 
-                // if (buildTradeRes.data.unfilled?.uuid === order.uuid) {
-                    
-                // }
-
+                if (buildTradeRes.data.unfilled?.uuid === order.uuid) {
+                    const res = await this.addOrder(buildTradeRes.data.unfilled);
+                    return { data: res.data };
+                }
                 return { data: { trade: newChannelRes.data }};
             }
         } catch (error) {
@@ -170,7 +171,6 @@ export class Orderbook {
 
             // remove the order
             this.orders = this.orders.filter(o => o !== orderForRemove);
-            socketService.io.emit(EmitEvents.UPDATE_ORDERS_REQUEST);
             return { data: `Order with uuid ${uuid} was removed!` };
         } catch (error) {
             return { error: error.message };
@@ -249,8 +249,9 @@ export class Orderbook {
     }
 
     private lockOrder(order: TOrder, lock: boolean = true) {
-        // order.lock = lock;
-        this.removeOrder(order.uuid, order.socket_id);
+        order.lock = lock;
+        socketService.io.emit(EmitEvents.UPDATE_ORDERS_REQUEST);
+        // this.removeOrder(order.uuid, order.socket_id);
     }
 }
 

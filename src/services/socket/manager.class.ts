@@ -44,15 +44,15 @@ const onDisconnect = (socket: Socket) => (reason: string) => {
 };
 
 const onNewOrder = (socket: Socket) => async (rawOrder: TRawOrder) => {
+    if (!rawOrder.isLimitOrder) {
+        socket.emit(OrderEmitEvents.ERROR, 'Merket Orders Not allowed');
+        return;
+    }
     const order: TOrder = orderFactory(rawOrder, socket.id);
     const res = await orderbookManager.addOrder(order);
     if (res.error || !res.data) {
         socket.emit(OrderEmitEvents.ERROR, res.error || 'Undifined Error');
         return;
-    }
-
-    if (res.data) {
-        socketService.io.emit(EmitEvents.UPDATE_ORDERS_REQUEST);
     }
 
     if (res.data.order) {
@@ -64,7 +64,7 @@ const onNewOrder = (socket: Socket) => async (rawOrder: TRawOrder) => {
 
 const onUpdateOrderbook = (socket: Socket) => async (filter: TFilter) => {
     const orderbook = orderbookManager.orderbooks.find(e => e.findByFilter(filter))
-    const orders = orderbook ? orderbook.orders : [];
+    const orders = orderbook ? orderbook.orders.filter(o => !o.lock) : [];
     socket.emit(EmitEvents.ORDERBOOK_DATA, orders);
 };
 
