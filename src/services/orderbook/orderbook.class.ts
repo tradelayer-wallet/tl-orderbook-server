@@ -6,6 +6,7 @@ import { ChannelSwap } from "../channel-swap/channel-swap.class";
 import { TFilter } from "../../utils/types/markets.types";
 import { orderbookManager } from ".";
 import { EmitEvents } from "../socket/events";
+import { readFileSync, writeFileSync } from 'fs';
 
 export interface ITrade {
     amountDesired: number;
@@ -20,11 +21,23 @@ export interface ITrade {
     propIdDesired?: number;
     propIdForSale?: number;
     contractId?: number;
+    txid?: string;
+}
+
+export interface IHistoryTrade {
+    amountDesired: number;
+    amountForSale: number;
+    price: number;
+    txid: string;
+    buyerAddress: string;
+    sellerAddress: string;
 }
 
 export class Orderbook {
     private _type: EOrderType;
     private _orders: TOrder[] = [];
+    private _historyTrades: IHistoryTrade[] = [];
+
     private props: {
         contract_id?: number, // used only for Futures Orderbooks
         id_desired?: number,  // used only for Spot Orderbooks
@@ -35,6 +48,7 @@ export class Orderbook {
         this._type = firstOrder.type;
         this.addProps(firstOrder);
         this.addOrder(firstOrder);
+        this.addExistingHistories();
     }
 
     get type(): EOrderType {
@@ -48,6 +62,20 @@ export class Orderbook {
     set orders(value: TOrder[]) {
         this._orders = value;
         socketService.io.emit(EmitEvents.UPDATE_ORDERS_REQUEST);
+    }
+
+    get historyTrades() {
+        return this._historyTrades;
+    }
+
+    get orderbookName() {
+        return this.type === EOrderType.SPOT
+        ? `spot_${this.props.id_for_sale}_${this.props.id_desired}`
+        : `futures-${this.props.contract_id}`;
+    }
+
+    get fileHistoryPath() {
+        return `histories/${this.orderbookName}.hist`;
     }
 
     private addProps(order: TOrder): IResult {
@@ -235,7 +263,7 @@ export class Orderbook {
         }
     }
 
-    private async newChannel(trade: any, isFilled: boolean): Promise<IResult> {
+    private async newChannel(trade: ITrade, isFilled: boolean): Promise<IResult> {
         try {
             const { buyerSocketId, sellerSocketId } = trade;
             const buyerSocket = socketService.io.sockets.sockets.get(buyerSocketId);
@@ -244,23 +272,45 @@ export class Orderbook {
             const channelRes = await channel.onReady();
             if (channelRes.error || !channelRes.data) {
                 throw new Error(channelRes.error || 'Undefined Channel swap error. Code 1');
+            };
+            const historyTrade: IHistoryTrade = {
+                txid: channelRes.data.txid,
+                sellerAddress: trade.sellerAddress,
+                buyerAddress: trade.buyerAddress,
+                amountForSale: trade.amountForSale,
+                amountDesired: trade.amountDesired,
+                price: parseFloat((trade.amountForSale / trade.amountDesired).toFixed(6)),
             }
-
-            // saveToHistory({ ...channel.trade, txid: res.data.txid });
+            this.saveToHistory(historyTrade);
             return channelRes;
         } catch (error) {
             return { error: error.message };
         }
     }
 
-    // private updateOrderAmount(order: TOrder, amount: number) {
-    //     order.props.amount = amount;
-    // }
-
     private lockOrder(order: TOrder, lock: boolean = true) {
         order.lock = lock;
         socketService.io.emit(EmitEvents.UPDATE_ORDERS_REQUEST);
-        // this.removeOrder(order.uuid, order.socket_id);
+    }
+
+    private saveToHistory(historyTrade: IHistoryTrade) {
+        this._historyTrades = [...this.historyTrades, historyTrade];
+        writeFileSync(this.fileHistoryPath, JSON.stringify(this.historyTrades));
+        socketService.io.emit(EmitEvents.UPDATE_ORDERS_REQUEST);
+    }
+
+    private addExistingHistories() {
+        try {
+            const existing = readFileSync(this.fileHistoryPath);
+            const existingArray = JSON.parse(existing.toString());
+            this._historyTrades = existingArray;
+            socketService.io.emit(EmitEvents.UPDATE_ORDERS_REQUEST);
+        } catch (err) {
+            if (err.message.includes('no such file or directory')) {
+                writeFileSync(this.fileHistoryPath, JSON.stringify(this.historyTrades));
+                socketService.io.emit(EmitEvents.UPDATE_ORDERS_REQUEST);
+            }
+        }
     }
 }
 

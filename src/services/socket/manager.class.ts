@@ -61,7 +61,8 @@ const onNewOrder = (socket: Socket) => async (rawOrder: TRawOrder) => {
 const onUpdateOrderbook = (socket: Socket) => async (filter: TFilter) => {
     const orderbook = orderbookManager.orderbooks.find(e => e.findByFilter(filter))
     const orders = orderbook ? orderbook.orders.filter(o => !o.lock) : [];
-    socket.emit(EmitEvents.ORDERBOOK_DATA, orders);
+    const history = orderbook ? orderbook.historyTrades.filter(o => o.txid) : [];
+    socket.emit(EmitEvents.ORDERBOOK_DATA, { orders, history });
 };
 
 const onClosedOrder = (socket: Socket) => (orderUUID: string) => {
