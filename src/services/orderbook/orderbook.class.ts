@@ -162,6 +162,7 @@ export class Orderbook {
 
                 const newChannelRes = await this.newChannel(buildTradeRes.data.trade, !buildTradeRes.data.unfilled);
                 if (newChannelRes.error || !newChannelRes.data) {
+                    this.lockOrder(matchRes.data.match, false);
                     throw new Error(`${newChannelRes.error || "Undefined Error"}`);
                 }
 
@@ -179,7 +180,7 @@ export class Orderbook {
                 }
                 this.updatePlacedOrdersForSocketId(order.socket_id);
 
-                return { data: { trade: 'test' as any }};
+                return { data: { trade: newChannelRes.data }};
             }
         } catch (error) {
             return { error: error.message };
