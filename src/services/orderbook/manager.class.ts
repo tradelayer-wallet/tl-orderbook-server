@@ -19,11 +19,11 @@ export class OrderbookManager {
         }
     }
 
-    async addOrder(order: TOrder): Promise<IResult<{ order?: TOrder, trade?: any }>> {
+    async addOrder(order: TOrder, noTrades: boolean = false): Promise<IResult<{ order?: TOrder, trade?: any }>> {
             try {
                 const existingOrderbook = this.orderbooks.find(b => b.checkCompatible(order));
                 const res = existingOrderbook
-                    ? await existingOrderbook.addOrder(order)
+                    ? await existingOrderbook.addOrder(order, noTrades)
                     : this.newOrderbook(order);
                 return res; 
             } catch (error) {

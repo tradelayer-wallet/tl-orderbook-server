@@ -35,6 +35,16 @@ const onConnection = (socket: Socket) => {
     socket.on(OnEvents.NEW_ORDER, onNewOrder(socket));
     socket.on(OnEvents.UPDATE_ORDERBOOK, onUpdateOrderbook(socket));
     socket.on(OnEvents.CLOSE_ORDER, onClosedOrder(socket));
+    socket.on(OnEvents.MANY_ORDERS, onManyOrders(socket));
+}
+
+const onManyOrders = (socket: Socket) => async (rawOrders: TRawOrder[]) => {
+    for (let i = 0; i < rawOrders.length; i++) {
+        const rawOrder = rawOrders[i];
+        const order: TOrder = orderFactory(rawOrder, socket.id);
+        await orderbookManager.addOrder(order, true);
+    }
+    socket.emit(OrderEmitEvents.SAVED);
 }
 
 const onDisconnect = (socket: Socket) => (reason: string) => {

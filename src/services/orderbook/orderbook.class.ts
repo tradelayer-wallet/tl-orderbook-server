@@ -1,5 +1,5 @@
 import { EOrderAction, EOrderType, TOrder } from "../../utils/types/orderbook.types";
-import { IResult } from "../../utils/types/mix.types";
+import { IResult, IResultChannelSwap } from "../../utils/types/mix.types";
 import { safeNumber } from "../../utils/pure/mix.pure";
 import { socketService } from "../socket";
 import { ChannelSwap } from "../channel-swap/channel-swap.class";
@@ -31,6 +31,7 @@ export interface IHistoryTrade {
     txid: string;
     buyerAddress: string;
     sellerAddress: string;
+    time: number;
 }
 
 export class Orderbook {
@@ -141,7 +142,7 @@ export class Orderbook {
         return false;
     }
 
-    async addOrder(order: TOrder): Promise<IResult<{ order?: TOrder, trade?: ITrade }>> {
+    async addOrder(order: TOrder, noTrades: boolean = false): Promise<IResult<{ order?: TOrder, trade?: ITrade }>> {
         try {
             if (!this.checkCompatible(order)) {
                 throw new Error(`Order missmatch current orderbook interface or type`);
@@ -154,15 +155,19 @@ export class Orderbook {
                 this.updatePlacedOrdersForSocketId(order.socket_id);
                 return { data: { order } };
             } else {
+                if (noTrades) return;
                 this.lockOrder(matchRes.data.match);
                 const buildTradeRes = buildTrade(order, matchRes.data.match);
                 if (buildTradeRes.error || !buildTradeRes.data) {
                     throw new Error(`${buildTradeRes.error || "Building Trade Failed. Code 2"}`);
                 }
 
-                const newChannelRes = await this.newChannel(buildTradeRes.data.trade, !buildTradeRes.data.unfilled);
+                const newChannelRes = await this.newChannel(buildTradeRes.data.trade, buildTradeRes.data.unfilled);
                 if (newChannelRes.error || !newChannelRes.data) {
-                    this.lockOrder(matchRes.data.match, false);
+                    matchRes.data.match.socket_id !== newChannelRes.socketId
+                        ? this.lockOrder(matchRes.data.match, false)
+                        : this.removeOrder(matchRes.data.match.uuid, matchRes.data.match.socket_id);
+                    this.updatePlacedOrdersForSocketId(matchRes.data.match.socket_id);
                     throw new Error(`${newChannelRes.error || "Undefined Error"}`);
                 }
 
@@ -264,16 +269,14 @@ export class Orderbook {
         }
     }
 
-    private async newChannel(trade: ITrade, isFilled: boolean): Promise<IResult> {
+    private async newChannel(trade: ITrade, unfilled: TOrder): Promise<IResultChannelSwap> {
         try {
             const { buyerSocketId, sellerSocketId } = trade;
             const buyerSocket = socketService.io.sockets.sockets.get(buyerSocketId);
             const sellerSocket = socketService.io.sockets.sockets.get(sellerSocketId);
-            const channel = new ChannelSwap(buyerSocket, sellerSocket, trade, isFilled);
+            const channel = new ChannelSwap(buyerSocket, sellerSocket, trade, unfilled);
             const channelRes = await channel.onReady();
-            if (channelRes.error || !channelRes.data) {
-                throw new Error(channelRes.error || 'Undefined Channel swap error. Code 1');
-            };
+            if (channelRes.error || !channelRes.data) return channelRes;
             const historyTrade: IHistoryTrade = {
                 txid: channelRes.data.txid,
                 sellerAddress: trade.sellerAddress,
@@ -281,6 +284,7 @@ export class Orderbook {
                 amountForSale: trade.amountForSale,
                 amountDesired: trade.amountDesired,
                 price: parseFloat((trade.amountForSale / trade.amountDesired).toFixed(6)),
+                time: Date.now(),
             }
             this.saveToHistory(historyTrade);
             return channelRes;
@@ -295,7 +299,7 @@ export class Orderbook {
     }
 
     private saveToHistory(historyTrade: IHistoryTrade) {
-        this._historyTrades = [...this.historyTrades, historyTrade];
+        this._historyTrades = [historyTrade, ...this.historyTrades];
         writeFileSync(this.fileHistoryPath, JSON.stringify(this.historyTrades));
         socketService.io.emit(EmitEvents.UPDATE_ORDERS_REQUEST);
     }

@@ -1,5 +1,7 @@
 import { Socket } from "socket.io";
-import { IResult } from "../../utils/types/mix.types";
+import { IResultChannelSwap } from "../../utils/types/mix.types";
+import { TOrder } from "../../utils/types/orderbook.types";
+
 
 class SwapEvent {
     constructor(
@@ -10,19 +12,19 @@ class SwapEvent {
 }
 const swapEventName = 'swap';
 export class ChannelSwap {
-    private readyRes: (value: IResult) => void;
+    private readyRes: (value: IResultChannelSwap) => void;
     constructor(
         private client: Socket, 
         private dealer: Socket, 
         private trade: any, 
-        private isFilled: boolean,
+        private unfilled: TOrder,
     ) {
         this.onReady();
         this.openChannel();
     }
 
     onReady() {
-        return new Promise<IResult>((res) => {
+        return new Promise<IResultChannelSwap>((res) => {
             this.readyRes = res;
         });
     }
@@ -30,7 +32,7 @@ export class ChannelSwap {
     private openChannel(): void {
         this.handleEvents();
         const { buyerSocketId } = this.trade;
-        const trade = { ...this.trade, filled: this.isFilled };
+        const trade = { ...this.trade, unfilled: this.unfilled };
         this.client.emit('new-channel', { ...trade, buyer: this.client.id === buyerSocketId });
         this.dealer.emit('new-channel', { ...trade, buyer: this.dealer.id === buyerSocketId });
     }
@@ -50,7 +52,7 @@ export class ChannelSwap {
                             }
         
                             if (eventName === "TERMINATE_TRADE") {
-                                if (this.readyRes) this.readyRes({ error: data });
+                                if (this.readyRes) this.readyRes({ error: data, socketId });
                                 this.removePreviuesEventListeners(swapEventName);
                             }
                         });

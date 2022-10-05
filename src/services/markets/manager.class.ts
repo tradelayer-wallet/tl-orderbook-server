@@ -11,20 +11,25 @@ export class MarketsManager {
     getAvailableSpotMarkets(): IResult {
         try {
             const wEthToken = createToken('WETH', 'Wrapped ETH', 4);
+            const wBtcToken = createToken('WBTC', 'Wrapped BTC', 17);
+
             const ltcToken = createToken('LTC', 'Litecoin', -1);
             const allToken = createToken('ALL', 'ALL', 1);
     
             const ltcMartkets: IMarket[] = [
                 createMarket(wEthToken, ltcToken, false),
+                createMarket(wBtcToken, ltcToken, false),
                 createMarket(allToken, ltcToken, false),
             ];
         
             const usdMarkets: IMarket[] = [];
-            const allMarkets:  IMarket[] = [];
+            const allMarkets:  IMarket[] = [
+                createMarket(wEthToken, wBtcToken, false),
+            ];
         
             const ltcMarketType = createMarketType('LTC', ltcMartkets, MARKET_ICONS.LTC, false);
             const usdMarketType = createMarketType('USD', usdMarkets, MARKET_ICONS.USD, true);
-            const allMarketType = createMarketType('ALL', allMarkets, MARKET_ICONS.ALL, true);
+            const allMarketType = createMarketType('ALL', allMarkets, MARKET_ICONS.ALL, false);
             const result: IMarketType[] = [ ltcMarketType, usdMarketType, allMarketType ];
             return { data: result };
         } catch (error) {
