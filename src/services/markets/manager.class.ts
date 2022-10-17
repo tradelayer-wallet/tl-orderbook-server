@@ -42,17 +42,16 @@ export class MarketsManager {
             const wEthToken = createToken('WETH', 'Wrapped ETH', 4);
             const wBtcToken = createToken('WBTC', 'Wrapped BTC', 8);
             const usdToken = createToken('USD', 'US Dollar', -3);
-            const ltcContracts: IContract[] = [
-                createContract(wEthToken, usdToken, 5, 'wETH/USD', 4, false),
-                createContract(wBtcToken, usdToken, 7, 'BTC/USD', 9, true),
+
+            const usdContracts: IContract[] = [
+                createContract(wEthToken, usdToken, 5, 'wETH/USD', wEthToken, false),
+                createContract(wBtcToken, usdToken, 7, 'wBTC/USD', wBtcToken, true),
             ];
-            const btcContracts: IContract[] = [];
             const dogeContracts: IContract[] = [];
         
-            const ltcMarketType = createMarketType('LTC', ltcContracts, MARKET_ICONS.LTC, false);
-            const btcMarketType = createMarketType('BTC', btcContracts, MARKET_ICONS.BTC, true);
+            const ltcMarketType = createMarketType('USD', usdContracts, MARKET_ICONS.USD, false);
             const dogeMarketType = createMarketType('DOGE', dogeContracts, MARKET_ICONS.DOGE, true);
-            const result: IMarketType[] = [ ltcMarketType, btcMarketType, dogeMarketType ];
+            const result: IMarketType[] = [ ltcMarketType, dogeMarketType ];
             return { data: result };
         } catch (error) {
             return { error: error.message };

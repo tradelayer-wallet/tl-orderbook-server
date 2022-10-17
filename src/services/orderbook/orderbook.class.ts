@@ -1,4 +1,4 @@
-import { EOrderAction, EOrderType, TOrder } from "../../utils/types/orderbook.types";
+import { EOrderAction, EOrderType, IFuturesOrderProps, IHistoryTrade, ISpotOrderProps, ITradeInfo, TOrder } from "../../utils/types/orderbook.types";
 import { IResult, IResultChannelSwap } from "../../utils/types/mix.types";
 import { safeNumber } from "../../utils/pure/mix.pure";
 import { socketService } from "../socket";
@@ -8,43 +8,12 @@ import { orderbookManager } from ".";
 import { EmitEvents } from "../socket/events";
 import { readFileSync, writeFileSync } from 'fs';
 
-export interface ITrade {
-    amountDesired: number;
-    amountForSale: number;
-    buyerAddress: string;
-    buyerPubKey: string;
-    buyerSocketId: string;
-    sellerAddress: string;
-    sellerPubKey: string;
-    sellerSocketId: string;
-    secondSocketId: string;
-    propIdDesired?: number;
-    propIdForSale?: number;
-    contractId?: number;
-    txid?: string;
-}
-
-export interface IHistoryTrade {
-    amountDesired: number;
-    amountForSale: number;
-    price: number;
-    txid: string;
-    buyerAddress: string;
-    sellerAddress: string;
-    time: number;
-}
-
 export class Orderbook {
     private _type: EOrderType;
     private _orders: TOrder[] = [];
     private _historyTrades: IHistoryTrade[] = [];
 
-    private props: {
-        contract_id?: number, // used only for Futures Orderbooks
-        id_desired?: number,  // used only for Spot Orderbooks
-        id_for_sale?: number, // used only for Spot Orderbooks
-    } = null;
-
+    private props: ISpotOrderProps | IFuturesOrderProps = null
     constructor(firstOrder: TOrder) {
         this._type = firstOrder.type;
         this.addProps(firstOrder);
@@ -70,9 +39,11 @@ export class Orderbook {
     }
 
     get orderbookName() {
-        return this.type === EOrderType.SPOT
-        ? `spot_${this.props.id_for_sale}_${this.props.id_desired}`
-        : `futures-${this.props.contract_id}`;
+        return this.type === EOrderType.SPOT && 'id_desired' in this.props
+        ? `spot_${this.props.id_for_sale}_${(this.props as ISpotOrderProps).id_desired}`
+        : this.type === EOrderType.FUTURES && 'contract_id' in this.props
+            ? `futures-${this.props.contract_id}`
+            : null;
     }
 
     get fileHistoryPath() {
@@ -88,12 +59,12 @@ export class Orderbook {
             const { type } = order;
             if (type === EOrderType.SPOT) {
                 const { id_desired, id_for_sale } = order.props;
-                this.props = { id_desired, id_for_sale };
+                this.props = { id_desired, id_for_sale } as ISpotOrderProps;
             }
 
             if (type === EOrderType.FUTURES) {
                 const { contract_id } = order.props;
-                this.props = { contract_id };
+                this.props = { contract_id } as IFuturesOrderProps;
             }
 
         } catch (error) {
@@ -104,7 +75,7 @@ export class Orderbook {
     findByFilter(filter: TFilter) {
         if (!this.props) return false;
         if (filter.type !== this.type) return false;
-        if (filter.type === EOrderType.SPOT) {
+        if (filter.type === EOrderType.SPOT && 'id_desired' in this.props ) {
 
             const checkA = filter.first_token === this.props.id_desired 
                 && filter.second_token === this.props.id_for_sale;
@@ -114,8 +85,8 @@ export class Orderbook {
 
             return checkA || checkB;
         }
-        if (filter.type === EOrderType.FUTURES) {
-            return filter.contractId === this.props.contract_id;
+        if (filter.type === EOrderType.FUTURES && 'contract_id' in this.props) {
+            return filter.contract_id === this.props.contract_id;
         }
 
         return false;
@@ -124,7 +95,7 @@ export class Orderbook {
     checkCompatible(order: TOrder): boolean {
         if (!this.props) return false;
         if (order.type !== this.type) return false;
-        if (order.type === EOrderType.SPOT) {
+        if (order.type === EOrderType.SPOT && 'id_desired' in this.props) {
 
             const checkA = order.props.id_desired === this.props.id_desired 
                 && order.props.id_for_sale === this.props.id_for_sale;
@@ -135,14 +106,14 @@ export class Orderbook {
             return checkA || checkB;
         }
 
-        if (order.type === EOrderType.FUTURES) {
+        if (order.type === EOrderType.FUTURES && 'contract_id' in this.props) {
             return order.props.contract_id === this.props.contract_id;
         }
 
         return false;
     }
 
-    async addOrder(order: TOrder, noTrades: boolean = false): Promise<IResult<{ order?: TOrder, trade?: ITrade }>> {
+    async addOrder(order: TOrder, noTrades: boolean = false): Promise<IResult<{ order?: TOrder, trade?: ITradeInfo }>> {
         try {
             if (!this.checkCompatible(order)) {
                 throw new Error(`Order missmatch current orderbook interface or type`);
@@ -162,7 +133,7 @@ export class Orderbook {
                     throw new Error(`${buildTradeRes.error || "Building Trade Failed. Code 2"}`);
                 }
 
-                const newChannelRes = await this.newChannel(buildTradeRes.data.trade, buildTradeRes.data.unfilled);
+                const newChannelRes = await this.newChannel(buildTradeRes.data.tradeInfo, buildTradeRes.data.unfilled);
                 if (newChannelRes.error || !newChannelRes.data) {
                     matchRes.data.match.socket_id !== newChannelRes.socketId
                         ? this.lockOrder(matchRes.data.match, false)
@@ -269,24 +240,25 @@ export class Orderbook {
         }
     }
 
-    private async newChannel(trade: ITrade, unfilled: TOrder): Promise<IResultChannelSwap> {
+    private async newChannel(tradeInfo: ITradeInfo, unfilled: TOrder): Promise<IResultChannelSwap> {
         try {
-            const { buyerSocketId, sellerSocketId } = trade;
+            const buyerSocketId = tradeInfo.buyer.socketId;
+            const sellerSocketId = tradeInfo.seller.socketId;
             const buyerSocket = socketService.io.sockets.sockets.get(buyerSocketId);
             const sellerSocket = socketService.io.sockets.sockets.get(sellerSocketId);
-            const channel = new ChannelSwap(buyerSocket, sellerSocket, trade, unfilled);
+            const channel = new ChannelSwap(buyerSocket, sellerSocket, tradeInfo, unfilled);
             const channelRes = await channel.onReady();
             if (channelRes.error || !channelRes.data) return channelRes;
-            const historyTrade: IHistoryTrade = {
-                txid: channelRes.data.txid,
-                sellerAddress: trade.sellerAddress,
-                buyerAddress: trade.buyerAddress,
-                amountForSale: trade.amountForSale,
-                amountDesired: trade.amountDesired,
-                price: parseFloat((trade.amountForSale / trade.amountDesired).toFixed(6)),
-                time: Date.now(),
-            }
-            this.saveToHistory(historyTrade);
+            // const historyTrade: IHistoryTrade = {
+            //     txid: channelRes.data.txid,
+            //     sellerAddress: trade.sellerAddress,
+            //     buyerAddress: trade.buyerAddress,
+            //     amountForSale: trade.props.amountForSale,
+            //     amountDesired: trade.props.amountDesired,
+            //     price: parseFloat((trade.amountForSale / trade.amountDesired).toFixed(6)),
+            //     time: Date.now(),
+            // }
+            // this.saveToHistory(historyTrade);
             return channelRes;
         } catch (error) {
             return { error: error.message };
@@ -319,7 +291,7 @@ export class Orderbook {
     }
 }
 
-const buildTrade = (new_order: TOrder, old_order: TOrder): IResult<{ unfilled: TOrder, trade: ITrade }> => {
+const buildTrade = (new_order: TOrder, old_order: TOrder): IResult<{ unfilled: TOrder, tradeInfo: ITradeInfo }> => {
     try {
         const ordersArray = [ new_order, old_order ];
         const buyOrder = ordersArray.find(t => t.action === EOrderAction.BUY);
@@ -338,28 +310,40 @@ const buildTrade = (new_order: TOrder, old_order: TOrder): IResult<{ unfilled: T
         const amount = Math.min(newOrderAmount, oldOrderAmount);
         const price = old_order.props.price;
 
-        const trade: ITrade = {
-            amountDesired: amount,
-            amountForSale: safeNumber(amount * price),
-            buyerAddress: buyOrder.keypair.address,
-            buyerPubKey: buyOrder.keypair.pubkey, 
-            buyerSocketId: buyOrder.socket_id,
-            sellerAddress: sellOrder.keypair.address, 
-            sellerPubKey: sellOrder.keypair.pubkey, 
-            sellerSocketId: sellOrder.socket_id,
-            secondSocketId: new_order.socket_id,
+        const tradeInfo: ITradeInfo = {
+            type: new_order.type,
+            buyer: {
+                socketId: buyOrder.socket_id,
+                keypair: {
+                    address: buyOrder.keypair.address,
+                    pubkey: buyOrder.keypair.pubkey,
+                },
+            },
+            seller: {
+                socketId: sellOrder.socket_id,
+                keypair: {
+                    address: sellOrder.keypair.address,
+                    pubkey: sellOrder.keypair.pubkey,
+                }
+            },
+            taker: new_order.socket_id,
+            maker: old_order.socket_id,
+            props: buyOrder.type === EOrderType.FUTURES 
+                ? {
+                    amount: amount,
+                    contract_id: buyOrder.props.contract_id,
+                    price: price,
+                    levarage: buyOrder.props.levarage,
+                    collateral: buyOrder.props.collateral,
+                }
+                : {
+                    propIdDesired: buyOrder.props.id_desired,
+                    propIdForSale:  buyOrder.props.id_for_sale,
+                    amountDesired: amount,
+                    amountForSale: safeNumber(amount * price),
+                }
         };
-
-        if (buyOrder.type === EOrderType.SPOT) {
-            trade.propIdDesired = buyOrder.props.id_desired;
-            trade.propIdForSale = buyOrder.props.id_for_sale;
-        }
-
-        if (buyOrder.type === EOrderType.FUTURES) {
-            trade.contractId = buyOrder.props.contract_id;
-        }
-
-        return { data: { unfilled, trade }}
+        return { data: { unfilled, tradeInfo }}
     } catch (error) {
         return { error: error.message };
     }

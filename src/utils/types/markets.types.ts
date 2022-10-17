@@ -16,9 +16,9 @@ export interface IMarket {
 export interface IContract {
     first_token: IToken,
     second_token: IToken,
-    contractId: number;
+    contract_id: number;
     contractName: string;
-    collateral: number;
+    collateral: IToken;
     disabled: boolean;
     pairString: string;
 }
@@ -38,7 +38,7 @@ interface ISpotFilter {
 
 interface IFuturesFilter {
     type: EOrderType.FUTURES,
-    contractId: number,
+    contract_id: number,
 }
 
 export type TFilter = ISpotFilter | IFuturesFilter;

@@ -1,6 +1,6 @@
 import { Socket } from "socket.io";
 import { IResultChannelSwap } from "../../utils/types/mix.types";
-import { TOrder } from "../../utils/types/orderbook.types";
+import { ITradeInfo, TOrder } from "../../utils/types/orderbook.types";
 
 
 class SwapEvent {
@@ -16,7 +16,7 @@ export class ChannelSwap {
     constructor(
         private client: Socket, 
         private dealer: Socket, 
-        private trade: any, 
+        private tradeInfo: ITradeInfo, 
         private unfilled: TOrder,
     ) {
         this.onReady();
@@ -31,10 +31,10 @@ export class ChannelSwap {
 
     private openChannel(): void {
         this.handleEvents();
-        const { buyerSocketId } = this.trade;
-        const trade = { ...this.trade, unfilled: this.unfilled };
-        this.client.emit('new-channel', { ...trade, buyer: this.client.id === buyerSocketId });
-        this.dealer.emit('new-channel', { ...trade, buyer: this.dealer.id === buyerSocketId });
+        const buyerSocketId = this.tradeInfo.buyer.socketId;
+        const trade = { tradeInfo: this.tradeInfo, unfilled: this.unfilled };
+        this.client.emit('new-channel', { ...trade, isBuyer: this.client.id === buyerSocketId });
+        this.dealer.emit('new-channel', { ...trade, isBuyer: this.dealer.id === buyerSocketId });
     }
 
     private handleEvents(): void {

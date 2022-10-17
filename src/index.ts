@@ -21,6 +21,7 @@ server
         console.log(`Server Started: http://localhost:${PORT}`);
     })
     .catch((error) => {
+        console.log({error})
         server.log.error(error.message);
         process.exit(1);
     });
