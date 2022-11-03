@@ -32,7 +32,7 @@ export const logsRoutes = (fastify: FastifyInstance, opts: any, done: any) => {
                         const logArray = readyRes
                             .split('\n')
                             .slice(0, -1);
-                        const finalArr = logArray.map(l => JSON.parse(l));
+                        const finalArr = logArray.map(l => type === ELogType.TXIDS ? l : JSON.parse(l));
                         const result: IResult = { data: finalArr };
                         reply.send(result);
                     }
