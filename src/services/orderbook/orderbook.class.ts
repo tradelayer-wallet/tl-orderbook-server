@@ -1,6 +1,6 @@
 import { EOrderAction, EOrderType, IFuturesOrderProps, IHistoryTrade, ISpotOrderProps, ITradeInfo, TOrder } from "../../utils/types/orderbook.types";
 import { IResult, IResultChannelSwap } from "../../utils/types/mix.types";
-import { safeNumber } from "../../utils/pure/mix.pure";
+import { ELogType, safeNumber, saveLog } from "../../utils/pure/mix.pure";
 import { socketService } from "../socket";
 import { ChannelSwap } from "../channel-swap/channel-swap.class";
 import { TFilter } from "../../utils/types/markets.types";
@@ -126,6 +126,7 @@ export class Orderbook {
                 this.updatePlacedOrdersForSocketId(order.socket_id);
                 return { data: { order } };
             } else {
+                saveLog(ELogType.MATCHES, JSON.stringify(matchRes.data.match));
                 if (noTrades) return;
                 this.lockOrder(matchRes.data.match);
                 const buildTradeRes = buildTrade(order, matchRes.data.match);
@@ -189,6 +190,8 @@ export class Orderbook {
 
             // remove the order
             this.orders = this.orders.filter(o => o !== orderForRemove);
+
+            saveLog(ELogType.CLOSED_ORDERS, JSON.stringify(orderForRemove));
             return { data: `Order with uuid ${uuid} was removed!` };
         } catch (error) {
             return { error: error.message };
@@ -249,6 +252,7 @@ export class Orderbook {
             const channel = new ChannelSwap(buyerSocket, sellerSocket, tradeInfo, unfilled);
             const channelRes = await channel.onReady();
             if (channelRes.error || !channelRes.data) return channelRes;
+            saveLog(ELogType.TXIDS, channelRes.data.txid);
             // const historyTrade: IHistoryTrade = {
             //     txid: channelRes.data.txid,
             //     sellerAddress: trade.sellerAddress,

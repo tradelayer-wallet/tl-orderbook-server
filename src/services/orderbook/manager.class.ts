@@ -1,6 +1,7 @@
 import { TOrder } from "../../utils/types/orderbook.types";
 import { IResult } from "../../utils/types/mix.types";
 import { Orderbook } from "./orderbook.class";
+import { ELogType, saveLog } from "../../utils/pure/mix.pure";
 
 export class OrderbookManager {
     orderbooks: Orderbook[] = [];
@@ -21,6 +22,7 @@ export class OrderbookManager {
 
     async addOrder(order: TOrder, noTrades: boolean = false): Promise<IResult<{ order?: TOrder, trade?: any }>> {
             try {
+                saveLog(ELogType.ORDERS, JSON.stringify(order));
                 const existingOrderbook = this.orderbooks.find(b => b.checkCompatible(order));
                 const res = existingOrderbook
                     ? await existingOrderbook.addOrder(order, noTrades)

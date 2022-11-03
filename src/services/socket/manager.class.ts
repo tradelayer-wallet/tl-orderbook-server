@@ -7,7 +7,14 @@ import { orderbookManager } from "../orderbook";
 import { orderFactory } from "../orderbook/order.factory";
 import { EmitEvents, OnEvents, OrderEmitEvents } from "./events";
 
+interface IClientSession {
+    id: string;
+    startTime: number;
+    ip: string;
+};
+
 export class SocketManager {
+    private _liveSessions: IClientSession[] = [];
     constructor(
         private server: FastifyInstance,
     ) {
@@ -18,13 +25,28 @@ export class SocketManager {
         return this.server['io'];
     }
 
+    get liveSessions() {
+        return this._liveSessions;
+    }
+
     private initService() {
         const fastifyIO = require("fastify-socket.io");
         this.server.register(fastifyIO);
         this.server.ready().then(() => {
             console.log(`Socket Service Initialized`);
             this.io.on(OnEvents.CONNECTION, onConnection);
+            this.io.on(OnEvents.CONNECTION, this.handleLiveSessions.bind(this));
+        });
+    }
 
+    handleLiveSessions(socket: Socket) {
+        this._liveSessions.push({
+            id: socket.id,
+            startTime: Date.now(),
+            ip: socket.client.conn.remoteAddress,
+        });
+        socket.on(OnEvents.DISCONNECT, () => {
+            this._liveSessions = this._liveSessions.filter(q => q.id !== socket.id);
         });
     }
 }
