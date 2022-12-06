@@ -1,35 +1,48 @@
-import { appendFileSync, readFileSync, writeFileSync } from "fs";
-export enum ELogType {
-    TXIDS = 'TXIDS',
-    ORDERS = 'ORDERS',
-    CLOSED_ORDERS = 'CLOSED_ORDERS',
-    MATCHES = 'MATCHES',
-}
+import { appendFile, readdirSync, readFileSync, writeFileSync } from "fs";
+import { IHistoryTrade, TOrder } from "../types/orderbook.types";
+import * as moment from 'moment';
 
 export const safeNumber = (n: number) => parseFloat((n).toFixed(6));
 
-export const logsPath = `logs`;
-export const saveLog = (logType: ELogType, data: string) => {
-    try {
-        const maxLines = 100;
-        const fileName = `${logType}`;
-        const line = `${data}\n`;
-        const path = `${logsPath}/${fileName}.log`;
-        appendFileSync(path, line);
+export type TLogType = "ORDER" | "TRADE";
 
-        try {
-            const readyRes = readFileSync(path, { encoding: 'utf8' });
-            const logArray = readyRes
-                .split('\n')
-                .slice(0, -1);
-            if (logArray.length > maxLines) {
-                const newData = `${logArray.slice(-1 * maxLines).join('\n')}\n`;
-                writeFileSync(path, newData);
+interface IClosedOrders {
+    uuid: string;
+    timestamp: number;
+    socket_id: string;
+};
+
+export const saveLog = (name: string, type: TLogType, data: IHistoryTrade | TOrder | IClosedOrders) => {
+    try {
+        const date = moment().format('DD-MM-YYYY');
+        const path = `logs/${type}-${name}-${date}.log`;
+        const _data = `${JSON.stringify(data)}\n`;
+        appendFile(path, _data, (err) => {
+            if (err) throw new Error(err.message);
+        });
+    } catch (error: any) {
+        console.log(error.message);
+    }
+};
+
+export const updateOrderLog = (name: string, uuid: string, type: "CANCALED" | "FILLED") => {
+    try {
+        const _path = `logs/`;
+        const data = readdirSync(_path);
+        const fileNamesList = data.filter(q => q.includes(name));
+        for (let i = 0; i < fileNamesList.length; i++) {
+            const file = fileNamesList[i];
+            const fileData = readFileSync(`${_path}${file}`, { encoding: "utf8" });
+            const arrayData = fileData.split(`\n`).slice(0, -1).map(q => JSON.parse(q) as TOrder);
+            const existing = arrayData.find(q => q.uuid === uuid);
+            if (existing) {
+                existing['state'] = type;
+                writeFileSync(`${_path}${file}`, `${arrayData.map(q => JSON.stringify(q)).join('\n')}\n`)
+                break;
             }
-        } catch(readError) {
-            console.log(readError)
+
         }
     } catch (error) {
-        console.log(error);
+        console.log({ error });
     }
 };

@@ -15,11 +15,13 @@ export class MarketsManager {
 
             const ltcToken = createToken('LTC', 'Litecoin', -1);
             const allToken = createToken('ALL', 'ALL', 1);
-    
+            const adaToken = createToken('WADA', 'Wrapped Cardano', 18);
+
             const ltcMartkets: IMarket[] = [
                 createMarket(wEthToken, ltcToken, false),
                 createMarket(wBtcToken, ltcToken, false),
-                createMarket(allToken, ltcToken, false),
+                // createMarket(allToken, ltcToken, false),
+                createMarket(adaToken, ltcToken, false),
             ];
         
             const usdMarkets: IMarket[] = [];
@@ -29,7 +31,7 @@ export class MarketsManager {
         
             const ltcMarketType = createMarketType('LTC', ltcMartkets, MARKET_ICONS.LTC, false);
             const usdMarketType = createMarketType('USD', usdMarkets, MARKET_ICONS.USD, true);
-            const allMarketType = createMarketType('ALL', allMarkets, MARKET_ICONS.ALL, false);
+            const allMarketType = createMarketType('ALL', allMarkets, MARKET_ICONS.ALL, true);
             const result: IMarketType[] = [ ltcMarketType, usdMarketType, allMarketType ];
             return { data: result };
         } catch (error) {
@@ -42,8 +44,10 @@ export class MarketsManager {
             const wEthToken = createToken('WETH', 'Wrapped ETH', 4);
             const wBtcToken = createToken('WBTC', 'Wrapped BTC', 8);
             const usdToken = createToken('USD', 'US Dollar', -3);
+            const adaToken = createToken('WADA', 'Cardano', 18);
 
             const usdContracts: IContract[] = [
+                createContract(adaToken, usdToken, 17, 'wADA/USD', adaToken, false),
                 createContract(wEthToken, usdToken, 5, 'wETH/USD', wEthToken, false),
                 createContract(wBtcToken, usdToken, 7, 'wBTC/USD', wBtcToken, true),
             ];

@@ -1,7 +1,7 @@
 import { FastifyInstance } from "fastify";
-import { readFileSync, existsSync, writeFileSync } from "fs";
+import { readFileSync, existsSync, writeFileSync, readdirSync } from "fs";
+import moment = require("moment");
 import { socketService } from "../services/socket";
-import { ELogType, logsPath } from "../utils/pure/mix.pure";
 import { IResult } from "../utils/types/mix.types";
 
 export const logsRoutes = (fastify: FastifyInstance, opts: any, done: any) => {
@@ -16,30 +16,30 @@ export const logsRoutes = (fastify: FastifyInstance, opts: any, done: any) => {
         }
     });
 
-    Object.keys(ELogType)
-        .forEach(key => {
-            fastify.get(`/${key.toLowerCase()}`, async (request, reply) => {
-                try {
-                    const type = ELogType[key];
-                    const path = `${logsPath}/${type}.log`;
-                    const isExist = existsSync(path);
-                    if (!isExist) {
-                        const result: IResult = { data: [] };
-                        reply.send(result);
-                        return;
-                    } else {
-                        const readyRes = readFileSync(path, { encoding: 'utf8' });
-                        const logArray = readyRes
-                            .split('\n')
-                            .slice(0, -1);
-                        const finalArr = logArray.map(l => type === ELogType.TXIDS ? l : JSON.parse(l));
-                        const result: IResult = { data: finalArr };
-                        reply.send(result);
-                    }
-                } catch (error) {
-                    reply.send({ error: error.message });
-                }
+    fastify.get('/orders', async (request, reply) => {
+        try {
+            const _path = `logs/`;
+            const today = moment()
+                .format('DD-MM-YYYY');
+            const yesterday = moment()
+                .subtract(1, 'days')
+                .format('DD-MM-YYYY');
+            const files = readdirSync(_path)
+                .filter(f => f.includes(today) || f.includes(yesterday));
+            const resArray = [];
+            files.forEach(f => {
+                const filePath = _path + f;
+                readFileSync(filePath, 'utf8')
+                    .split('\n')
+                    .slice(0, -1)
+                    .forEach(q => resArray.push(JSON.parse(q)));
             });
-        });
+            const result: IResult = { data: resArray };
+            reply.send(result);
+        } catch (error) {
+            reply.send({ error: error.message });
+        }
+    });
+
     done();
 };

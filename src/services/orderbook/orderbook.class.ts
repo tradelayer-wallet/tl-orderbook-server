@@ -1,41 +1,41 @@
-import { EOrderAction, EOrderType, IFuturesOrderProps, IHistoryTrade, ISpotOrderProps, ITradeInfo, TOrder } from "../../utils/types/orderbook.types";
+import { 
+    EOrderAction,
+    EOrderType,
+    IFuturesOrderProps,
+    IHistoryTrade,
+    ISpotOrderProps,
+    ITradeInfo,
+    TOrder,
+} from "../../utils/types/orderbook.types";
 import { IResult, IResultChannelSwap } from "../../utils/types/mix.types";
-import { ELogType, safeNumber, saveLog } from "../../utils/pure/mix.pure";
+import { safeNumber, saveLog, updateOrderLog } from "../../utils/pure/mix.pure";
 import { socketService } from "../socket";
 import { ChannelSwap } from "../channel-swap/channel-swap.class";
 import { TFilter } from "../../utils/types/markets.types";
 import { orderbookManager } from ".";
 import { EmitEvents } from "../socket/events";
-import { readFileSync, writeFileSync } from 'fs';
+import { readdirSync, readFileSync } from "fs";
 
 export class Orderbook {
     private _type: EOrderType;
     private _orders: TOrder[] = [];
     private _historyTrades: IHistoryTrade[] = [];
+    private props: ISpotOrderProps | IFuturesOrderProps = null;
 
-    private props: ISpotOrderProps | IFuturesOrderProps = null
     constructor(firstOrder: TOrder) {
         this._type = firstOrder.type;
         this.addProps(firstOrder);
         this.addOrder(firstOrder);
-        this.addExistingHistories();
+        this.addExistingTradesHistory();
     }
 
-    get type(): EOrderType {
+    private get type(): EOrderType {
         return this._type;
-    }
-
-    get orders(): TOrder[] {
-        return this._orders;
     }
 
     set orders(value: TOrder[]) {
         this._orders = value;
         socketService.io.emit(EmitEvents.UPDATE_ORDERS_REQUEST);
-    }
-
-    get historyTrades() {
-        return this._historyTrades;
     }
 
     get orderbookName() {
@@ -46,8 +46,41 @@ export class Orderbook {
             : null;
     }
 
-    get fileHistoryPath() {
-        return `histories/${this.orderbookName}.hist`;
+    get orders(): TOrder[] {
+        return this._orders;
+    }
+
+    get historyTrades() {
+        return this._historyTrades;
+    }
+
+    private addExistingTradesHistory() {
+        try {
+            const data: IHistoryTrade[] = [];
+            const existingFiles = readdirSync('logs');
+            const names = this.type === EOrderType.SPOT && 'id_desired' in this.props && 'id_for_sale' in this.props
+            ? [`spot_${this.props.id_for_sale}-${this.props.id_desired}`, `spot_${this.props.id_desired}_${this.props.id_for_sale}`]
+            : this.type === EOrderType.FUTURES && 'contract_id' in this.props
+                ? [`futures-${this.props.contract_id}`]
+                : null;
+            const currentOBTradeFiles = existingFiles.filter(q => {
+                if (!q.startsWith('TRADE')) return false;
+                if (!names) return false;
+                return names.some(w => q.includes(w));
+            });
+            currentOBTradeFiles.forEach(f => {
+                const stringData = readFileSync(`logs/${f}`, 'utf8');
+                const arrayData = stringData
+                    .split('\n')
+                    .slice(0, -1)
+                    .map(q => JSON.parse(q) as IHistoryTrade);
+                arrayData.forEach(d => data.push(d));
+            });
+            this._historyTrades = data.slice(0, 2000);
+            socketService.io.emit(EmitEvents.UPDATE_ORDERS_REQUEST);
+        } catch (error) {
+            console.log({ error });
+        }
     }
 
     private addProps(order: TOrder): IResult {
@@ -67,6 +100,144 @@ export class Orderbook {
                 this.props = { contract_id } as IFuturesOrderProps;
             }
 
+        } catch (error) {
+            return { error: error.message };
+        }
+    }
+
+    private async newChannel(tradeInfo: ITradeInfo, unfilled: TOrder): Promise<IResultChannelSwap> {
+        try {
+            const buyerSocketId = tradeInfo.buyer.socketId;
+            const sellerSocketId = tradeInfo.seller.socketId;
+            const buyerSocket = socketService.io.sockets.sockets.get(buyerSocketId);
+            const sellerSocket = socketService.io.sockets.sockets.get(sellerSocketId);
+            const channel = new ChannelSwap(buyerSocket, sellerSocket, tradeInfo, unfilled);
+            const channelRes = await channel.onReady();
+            if (channelRes.error || !channelRes.data) return channelRes;
+
+            const historyTrade: IHistoryTrade = {
+                txid: channelRes.data.txid,
+                time: Date.now(),
+                ...tradeInfo,
+            };
+            this.saveToHistory(historyTrade);
+            return channelRes;
+        } catch (error) {
+            return { error: error.message };
+        }
+    }
+
+    private lockOrder(order: TOrder, lock: boolean = true) {
+        order.lock = lock;
+        socketService.io.emit(EmitEvents.UPDATE_ORDERS_REQUEST);
+    }
+
+    private saveToHistory(historyTrade: IHistoryTrade) {
+        this._historyTrades = [historyTrade, ...this.historyTrades.slice(0, 1999)];
+        saveLog(this.orderbookName, "TRADE", historyTrade);
+        socketService.io.emit(EmitEvents.UPDATE_ORDERS_REQUEST);
+    }
+
+    updatePlacedOrdersForSocketId(socketid: string) {
+        const openedOrders = orderbookManager.getOrdersBySocketId(socketid);
+        const orderHistory = orderbookManager.getOrdersHistory();
+        const socketObj = socketService.io.sockets.sockets.get(socketid);
+        socketObj.emit(EmitEvents.PLACED_ORDERS, { openedOrders, orderHistory });
+    }
+
+    private checkMatch(order: TOrder): IResult<{ match: TOrder }> {
+        try {
+            const { props, action } = order;
+            const { price } = props;
+        
+            const sortFunc = action === EOrderAction.BUY
+                ? (a: TOrder, b: TOrder) => a.props.price - b.props.price
+                : (a: TOrder, b: TOrder) => b.props.price - a.props.price;
+
+ 
+            const filteredOrders = this.orders.filter(o => {
+                const idChecks = o.type === EOrderType.SPOT && order.type === EOrderType.SPOT
+                    ? o.props.id_desired === order.props.id_for_sale && o.props.id_for_sale === order.props.id_desired
+                    : o.type === EOrderType.FUTURES && order.type === EOrderType.FUTURES
+                        ? o.props.contract_id === order.props.contract_id
+                        : false;
+                const buySellCheck = order.action === EOrderAction.BUY
+                    ? o.action === EOrderAction.SELL
+                    : order.action === EOrderAction.SELL
+                        ? o.action === EOrderAction.BUY
+                        : false;
+                const priceCheck = order.action === EOrderAction.BUY
+                    ? o.props.price <= price
+                    : order.action === EOrderAction.SELL
+                        ? o.props.price >= price
+                        : false;
+                const lockCheck = !o.lock;
+                return idChecks && buySellCheck && priceCheck && lockCheck && lockCheck;
+            }).sort(sortFunc);
+            if (filteredOrders.length) {
+                const matchOrder= filteredOrders[0];
+                if (matchOrder.socket_id === order.socket_id) {
+                    throw new Error("Match of the order from the same Account");
+                }
+                if (matchOrder.keypair.address === order.keypair.address) {
+                    throw new Error("Match of the order from the same address");
+                }
+                return { data: { match: matchOrder } };
+            }
+            return { data: { match: null } };
+        } catch(error) {
+            return { error: error.message };
+        }
+    }
+
+    async addOrder(order: TOrder, noTrades: boolean = false): Promise<IResult<{ order?: TOrder, trade?: ITradeInfo }>> {
+        try {
+            if (!this.checkCompatible(order)) {
+                throw new Error(`Order missmatch current orderbook interface or type`);
+            }
+
+            const matchRes = this.checkMatch(order);
+            if (matchRes.error || !matchRes.data) throw new Error(`${matchRes.error || "Undefined Error"}`);
+            if (!matchRes.data.match) {
+                saveLog(this.orderbookName, "ORDER", order);
+                this.orders = [...this.orders, order];
+                this.updatePlacedOrdersForSocketId(order.socket_id);
+                return { data: { order } };
+            } else {
+
+                if (noTrades) return;
+                this.lockOrder(matchRes.data.match);
+                updateOrderLog(this.orderbookName, matchRes.data.match.uuid, 'FILLED');
+                const buildTradeRes = buildTrade(order, matchRes.data.match);
+                if (buildTradeRes.error || !buildTradeRes.data) {
+                    throw new Error(`${buildTradeRes.error || "Building Trade Failed. Code 2"}`);
+                }
+
+                const newChannelRes = await this.newChannel(buildTradeRes.data.tradeInfo, buildTradeRes.data.unfilled);
+                if (newChannelRes.error || !newChannelRes.data) {
+                    matchRes.data.match.socket_id !== newChannelRes.socketId
+                        ? this.lockOrder(matchRes.data.match, false)
+                        : this.removeOrder(matchRes.data.match.uuid, matchRes.data.match.socket_id);
+                    this.updatePlacedOrdersForSocketId(matchRes.data.match.socket_id);
+                    throw new Error(`${newChannelRes.error || "Undefined Error"}`);
+                }
+
+                if (buildTradeRes.data.unfilled?.uuid === matchRes.data.match.uuid) {
+                    matchRes.data.match.props.amount = buildTradeRes.data.unfilled.props.amount;
+                    this.lockOrder(matchRes.data.match, false);
+                } else {
+                    this.removeOrder(matchRes.data.match.uuid, matchRes.data.match.socket_id);
+                }
+                this.updatePlacedOrdersForSocketId(matchRes.data.match.socket_id);
+
+                if (buildTradeRes.data.unfilled?.uuid === order.uuid) {
+                    const res = await this.addOrder(buildTradeRes.data.unfilled);
+                    return { data: res.data };
+                }
+                this.updatePlacedOrdersForSocketId(order.socket_id);
+
+                return { data: { trade: newChannelRes.data }};
+            }
         } catch (error) {
             return { error: error.message };
         }
@@ -113,66 +284,6 @@ export class Orderbook {
         return false;
     }
 
-    async addOrder(order: TOrder, noTrades: boolean = false): Promise<IResult<{ order?: TOrder, trade?: ITradeInfo }>> {
-        try {
-            if (!this.checkCompatible(order)) {
-                throw new Error(`Order missmatch current orderbook interface or type`);
-            }
-
-            const matchRes = this.checkMatch(order);
-            if (matchRes.error || !matchRes.data) throw new Error(`${matchRes.error || "Undefined Error"}`);
-            if (!matchRes.data.match) {
-                this.orders = [...this.orders, order];
-                this.updatePlacedOrdersForSocketId(order.socket_id);
-                return { data: { order } };
-            } else {
-                saveLog(ELogType.MATCHES, JSON.stringify(matchRes.data.match));
-                if (noTrades) return;
-                this.lockOrder(matchRes.data.match);
-                const buildTradeRes = buildTrade(order, matchRes.data.match);
-                if (buildTradeRes.error || !buildTradeRes.data) {
-                    throw new Error(`${buildTradeRes.error || "Building Trade Failed. Code 2"}`);
-                }
-
-                const newChannelRes = await this.newChannel(buildTradeRes.data.tradeInfo, buildTradeRes.data.unfilled);
-                if (newChannelRes.error || !newChannelRes.data) {
-                    matchRes.data.match.socket_id !== newChannelRes.socketId
-                        ? this.lockOrder(matchRes.data.match, false)
-                        : this.removeOrder(matchRes.data.match.uuid, matchRes.data.match.socket_id);
-                    this.updatePlacedOrdersForSocketId(matchRes.data.match.socket_id);
-                    throw new Error(`${newChannelRes.error || "Undefined Error"}`);
-                }
-
-                if (buildTradeRes.data.unfilled?.uuid === matchRes.data.match.uuid) {
-                    matchRes.data.match.props.amount = buildTradeRes.data.unfilled.props.amount;
-                    this.lockOrder(matchRes.data.match, false);
-                } else {
-                    this.removeOrder(matchRes.data.match.uuid, matchRes.data.match.socket_id);
-                }
-                this.updatePlacedOrdersForSocketId(matchRes.data.match.socket_id);
-
-                if (buildTradeRes.data.unfilled?.uuid === order.uuid) {
-                    const res = await this.addOrder(buildTradeRes.data.unfilled);
-                    return { data: res.data };
-                }
-                this.updatePlacedOrdersForSocketId(order.socket_id);
-
-                return { data: { trade: newChannelRes.data }};
-            }
-        } catch (error) {
-            return { error: error.message };
-        }
-    }
-
-    
-
-
-    updatePlacedOrdersForSocketId(socketid: string) {
-        const orders = orderbookManager.getOrdersBySocketId(socketid);
-        const socketObj = socketService.io.sockets.sockets.get(socketid);
-        socketObj.emit(EmitEvents.PLACED_ORDERS, orders);
-    }
-
     removeOrder(uuid: string, socket_id: string): IResult {
         try {
             const orderForRemove = this.orders.find(o => o.uuid === uuid);
@@ -191,106 +302,9 @@ export class Orderbook {
             // remove the order
             this.orders = this.orders.filter(o => o !== orderForRemove);
 
-            saveLog(ELogType.CLOSED_ORDERS, JSON.stringify(orderForRemove));
             return { data: `Order with uuid ${uuid} was removed!` };
         } catch (error) {
             return { error: error.message };
-        }
-    }
-
-    checkMatch(order: TOrder): IResult<{ match: TOrder }> {
-        try {
-            const { props, action } = order;
-            const { price } = props;
-        
-            const sortFunc = action === EOrderAction.BUY
-                ? (a: TOrder, b: TOrder) => a.props.price - b.props.price
-                : (a: TOrder, b: TOrder) => b.props.price - a.props.price;
-
- 
-            const filteredOrders = this.orders.filter(o => {
-                const idChecks = o.type === EOrderType.SPOT && order.type === EOrderType.SPOT
-                    ? o.props.id_desired === order.props.id_for_sale && o.props.id_for_sale === order.props.id_desired
-                    : o.type === EOrderType.FUTURES && order.type === EOrderType.FUTURES
-                        ? o.props.contract_id === order.props.contract_id
-                        : false;
-                const buySellCheck = order.action === EOrderAction.BUY
-                    ? o.action === EOrderAction.SELL
-                    : order.action === EOrderAction.SELL
-                        ? o.action === EOrderAction.BUY
-                        : false;
-                const priceCheck = order.action === EOrderAction.BUY
-                    ? o.props.price <= price
-                    : order.action === EOrderAction.SELL
-                        ? o.props.price >= price
-                        : false;
-                const lockCheck = !o.lock;
-                return idChecks && buySellCheck && priceCheck && lockCheck && lockCheck;
-            }).sort(sortFunc);
-            if (filteredOrders.length) {
-                const matchOrder= filteredOrders[0];
-                if (matchOrder.socket_id === order.socket_id) {
-                    throw new Error("Match of the order from the same Account");
-                }
-                if (matchOrder.keypair.address === order.keypair.address) {
-                    throw new Error("Match of the order from the same address");
-                }
-                return { data: { match: matchOrder } };
-            }
-            return { data: { match: null } };
-        } catch(error) {
-            return { error: error.message };
-        }
-    }
-
-    private async newChannel(tradeInfo: ITradeInfo, unfilled: TOrder): Promise<IResultChannelSwap> {
-        try {
-            const buyerSocketId = tradeInfo.buyer.socketId;
-            const sellerSocketId = tradeInfo.seller.socketId;
-            const buyerSocket = socketService.io.sockets.sockets.get(buyerSocketId);
-            const sellerSocket = socketService.io.sockets.sockets.get(sellerSocketId);
-            const channel = new ChannelSwap(buyerSocket, sellerSocket, tradeInfo, unfilled);
-            const channelRes = await channel.onReady();
-            if (channelRes.error || !channelRes.data) return channelRes;
-            saveLog(ELogType.TXIDS, channelRes.data.txid);
-            // const historyTrade: IHistoryTrade = {
-            //     txid: channelRes.data.txid,
-            //     sellerAddress: trade.sellerAddress,
-            //     buyerAddress: trade.buyerAddress,
-            //     amountForSale: trade.props.amountForSale,
-            //     amountDesired: trade.props.amountDesired,
-            //     price: parseFloat((trade.amountForSale / trade.amountDesired).toFixed(6)),
-            //     time: Date.now(),
-            // }
-            // this.saveToHistory(historyTrade);
-            return channelRes;
-        } catch (error) {
-            return { error: error.message };
-        }
-    }
-
-    private lockOrder(order: TOrder, lock: boolean = true) {
-        order.lock = lock;
-        socketService.io.emit(EmitEvents.UPDATE_ORDERS_REQUEST);
-    }
-
-    private saveToHistory(historyTrade: IHistoryTrade) {
-        this._historyTrades = [historyTrade, ...this.historyTrades];
-        writeFileSync(this.fileHistoryPath, JSON.stringify(this.historyTrades));
-        socketService.io.emit(EmitEvents.UPDATE_ORDERS_REQUEST);
-    }
-
-    private addExistingHistories() {
-        try {
-            const existing = readFileSync(this.fileHistoryPath);
-            const existingArray = JSON.parse(existing.toString());
-            this._historyTrades = existingArray;
-            socketService.io.emit(EmitEvents.UPDATE_ORDERS_REQUEST);
-        } catch (err) {
-            if (err.message.includes('no such file or directory')) {
-                writeFileSync(this.fileHistoryPath, JSON.stringify(this.historyTrades));
-                socketService.io.emit(EmitEvents.UPDATE_ORDERS_REQUEST);
-            }
         }
     }
 }

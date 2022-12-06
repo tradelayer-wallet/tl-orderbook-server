@@ -1,8 +1,7 @@
 import { FastifyInstance } from "fastify";
 import { Server, Socket } from "socket.io";
-import { socketService } from ".";
 import { TFilter } from "../../utils/types/markets.types";
-import { EOrderType, TOrder, TRawOrder } from "../../utils/types/orderbook.types";
+import { TOrder, TRawOrder } from "../../utils/types/orderbook.types";
 import { orderbookManager } from "../orderbook";
 import { orderFactory } from "../orderbook/order.factory";
 import { EmitEvents, OnEvents, OrderEmitEvents } from "./events";
@@ -100,6 +99,7 @@ const onUpdateOrderbook = (socket: Socket) => async (filter: TFilter) => {
 const onClosedOrder = (socket: Socket) => (orderUUID: string) => {
     const res = orderbookManager.removeOrder(orderUUID, socket.id);
     const openedOrders = orderbookManager.getOrdersBySocketId(socket.id);
-    socket.emit(EmitEvents.PLACED_ORDERS, openedOrders);
+    const orderHistory = orderbookManager.getOrdersHistory();
+    socket.emit(EmitEvents.PLACED_ORDERS, { openedOrders, orderHistory });
 };
 
