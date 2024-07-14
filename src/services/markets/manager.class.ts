@@ -10,29 +10,30 @@ export class MarketsManager {
 
     getAvailableSpotMarkets(): IResult {
         try {
-            const wEthToken = createToken('WETH', 'Wrapped ETH', 4);
-            const wBtcToken = createToken('WBTC', 'Wrapped BTC', 17);
+            // const wEthToken = createToken('WETH', 'Wrapped ETH', 4);
+            // const wBtcToken = createToken('WBTC', 'Wrapped BTC', 17);
 
-            const ltcToken = createToken('LTC', 'Litecoin', -1);
-            const allToken = createToken('ALL', 'ALL', 1);
-            const adaToken = createToken('WADA', 'Wrapped Cardano', 18);
-
+            const ltcToken = createToken('TEST', 'TEST Token 2', 4);
+            // const allToken = createToken('ALL', 'ALL', 1);
+            // const adaToken = createToken('WADA', 'Wrapped Cardano', 18);
+            const testToken = createToken('TEST2', 'TEST Token', 5);
             const ltcMartkets: IMarket[] = [
-                createMarket(wEthToken, ltcToken, false),
-                createMarket(wBtcToken, ltcToken, false),
+                createMarket(testToken, ltcToken, false),
+                // createMarket(wBtcToken, ltcToken, false),
                 // createMarket(allToken, ltcToken, false),
-                createMarket(adaToken, ltcToken, false),
+                // createMarket(adaToken, ltcToken, false),
             ];
         
-            const usdMarkets: IMarket[] = [];
-            const allMarkets:  IMarket[] = [
-                createMarket(wEthToken, wBtcToken, false),
-            ];
+            // const usdMarkets: IMarket[] = [];
+            // const allMarkets:  IMarket[] = [
+            //     createMarket(wEthToken, wBtcToken, false),
+            // ];
         
             const ltcMarketType = createMarketType('LTC', ltcMartkets, MARKET_ICONS.LTC, false);
-            const usdMarketType = createMarketType('USD', usdMarkets, MARKET_ICONS.USD, true);
-            const allMarketType = createMarketType('ALL', allMarkets, MARKET_ICONS.ALL, true);
-            const result: IMarketType[] = [ ltcMarketType, usdMarketType, allMarketType ];
+            // const usdMarketType = createMarketType('USD', usdMarkets, MARKET_ICONS.USD, true);
+            // const allMarketType = createMarketType('ALL', allMarkets, MARKET_ICONS.ALL, true);
+            // const result: IMarketType[] = [ ltcMarketType, usdMarketType, allMarketType ];
+            const result: IMarketType[] = [ ltcMarketType ];
             return { data: result };
         } catch (error) {
             return { error: error.message };
