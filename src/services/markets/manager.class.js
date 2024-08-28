@@ -13,7 +13,7 @@ var MarketsManager = (function () {
             var TL = (0, market_factory_1.createToken)('TL','TL',1)
             var sLTC = (0, market_factory_1.createToken)('sLTC','sLTC','s-1-5')
             var ltcMartkets = [
-                (0, market_factory_1.createMarket)(TBILL, LTC, false),
+                (0, market_factory_1.createMarket)(LTC, TBILL, false),
                 (0, market_factory_1.createMarket)(TL, LTC, false),
                 (0, market_factory_1.createMarket)(sLTC, LTC, false),
                 (0, market_factory_1.createMarket)(TL, TBILL, false),
