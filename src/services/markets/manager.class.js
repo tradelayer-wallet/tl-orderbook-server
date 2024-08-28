@@ -10,8 +10,8 @@ var MarketsManager = (function () {
         try {
             var LTC = (0, market_factory_1.createToken)('LTC', 'LTC', 0);
             var TBILL = (0, market_factory_1.createToken)('TBILL', 'TBILL', 5);
-            var TL = (0, market_factory_1.createToken)('TL':'TL',1)
-            var sLTC = (0, market_factory_1.createToken)('sLTC':'sLTC','s-1-5')
+            var TL = (0, market_factory_1.createToken)('TL','TL',1)
+            var sLTC = (0, market_factory_1.createToken)('sLTC','sLTC','s-1-5')
             var ltcMartkets = [
                 (0, market_factory_1.createMarket)(TBILL, LTC, false),
                 (0, market_factory_1.createMarket)(TL, LTC, false),
@@ -30,8 +30,8 @@ var MarketsManager = (function () {
     MarketsManager.prototype.getAvailableFuturesMarkets = function () {
             var LTC = (0, market_factory_1.createToken)('LTC', 'Litecoin', 0);
             var TBILL = (0, market_factory_1.createToken)('TBILL', 'US Treasury Bill', 5);
-            var TL = (0, market_factory_1.createToken)('TL':'TradeLayer Native Metacoin',1)
-            var BTCoracle = (0, market_factory_1.createToken)('BTC':'Bitcoin Oracle',1)
+            var TL = (0, market_factory_1.createToken)('TL','TradeLayer Native Metacoin',1)
+            var BTCoracle = (0, market_factory_1.createToken)('BTC','Bitcoin Oracle',1)
         try {
             var usdContracts = [
                 (0, market_factory_1.createContract)(TL, TBILL, 4, 'TL/TBILL', TBILL, false),
