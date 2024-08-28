@@ -12,14 +12,14 @@ var MarketsManager = (function () {
             var TBILL = (0, market_factory_1.createToken)('TBILL', 'TBILL', 5);
             var TL = (0, market_factory_1.createToken)('TL','TL',1)
             var sLTC = (0, market_factory_1.createToken)('sLTC','sLTC','s-1-5')
-            var ltcMartkets = [
+            var ltcMarkets = [
                 (0, market_factory_1.createMarket)(LTC, TBILL, false),
                 (0, market_factory_1.createMarket)(TL, LTC, false),
                 (0, market_factory_1.createMarket)(sLTC, LTC, false),
                 (0, market_factory_1.createMarket)(TL, TBILL, false),
                 (0, market_factory_1.createMarket)(sLTC, TBILL, false)
             ];
-            var ltcMarketType = (0, market_factory_1.createMarketType)('LTC', ltcMartkets, market_factory_1.MARKET_ICONS.LTC, false);
+            var ltcMarketType = (0, market_factory_1.createMarketType)('LTC', ltcMarkets, market_factory_1.MARKET_ICONS.LTC, false);
             var result = [ltcMarketType];
             return { data: result };
         }
