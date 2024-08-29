@@ -58,14 +58,17 @@ var OrderbookManager = (function () {
         }
     };
     OrderbookManager.prototype.addOrder = function (order, noTrades) {
+        console.log('inside server add order '+JSON.stringify(order))
         if (noTrades === void 0) { noTrades = false; }
         return __awaiter(this, void 0, void 0, function () {
             var existingOrderbook, res, _a, error_1;
             return __generator(this, function (_b) {
                 switch (_b.label) {
+                    console.log('b label '+_b.label)
                     case 0:
                         _b.trys.push([0, 4, , 5]);
                         existingOrderbook = this.orderbooks.find(function (b) { return b.checkCompatible(order); });
+                        console.log('existing orderbook? '+JSON.stringify(existingOrderbook))
                         if (!existingOrderbook) return [3, 2];
                         return [4, existingOrderbook.addOrder(order, noTrades)];
                     case 1:
