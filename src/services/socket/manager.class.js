@@ -126,8 +126,9 @@ var onNewOrder = function (socket) { return function (rawOrder) { return __await
     var order, res;
     return __generator(this, function (_a) {
         switch (_a.label) {
-                console.log('inside new order in server '+_a.label)
+                
             case 0:
+            console.log('inside new order in server '+_a.label)
                 if (!rawOrder.isLimitOrder) {
                     socket.emit(events_1.OrderEmitEvents.ERROR, 'Market Orders Not allowed');
                     return [2];
@@ -136,6 +137,7 @@ var onNewOrder = function (socket) { return function (rawOrder) { return __await
                 console.log('order '+order)
                 return [4, orderbook_1.orderbookManager.addOrder(order)];
             case 1:
+            console.log('inside new order in server '+_a.label)
                 res = _a.sent();
                 if (res.error || !res.data) {
                     socket.emit(events_1.OrderEmitEvents.ERROR, res.error || 'Undefined Error');

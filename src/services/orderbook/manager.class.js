@@ -64,26 +64,33 @@ var OrderbookManager = (function () {
             var existingOrderbook, res, _a, error_1;
             return __generator(this, function (_b) {
                 switch (_b.label) {
-                    console.log('b label '+_b.label)
+                   
                     case 0:
+                     console.log('b label '+_b.label)
                         _b.trys.push([0, 4, , 5]);
                         existingOrderbook = this.orderbooks.find(function (b) { return b.checkCompatible(order); });
                         console.log('existing orderbook? '+JSON.stringify(existingOrderbook))
                         if (!existingOrderbook) return [3, 2];
                         return [4, existingOrderbook.addOrder(order, noTrades)];
                     case 1:
+                     console.log('b label '+_b.label)
                         _a = _b.sent();
                         return [3, 3];
                     case 2:
+                     console.log('b label '+_b.label)
                         _a = this.newOrderbook(order);
                         _b.label = 3;
                     case 3:
+                     console.log('b label '+_b.label)
                         res = _a;
                         return [2, res];
                     case 4:
+                     console.log('b label '+_b.label)
                         error_1 = _b.sent();
                         return [2, { error: error_1.message }];
-                    case 5: return [2];
+                    case 5: 
+                     console.log('b label '+_b.label)
+                     return [2];
                 }
             });
         });
