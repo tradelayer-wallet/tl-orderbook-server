@@ -3,7 +3,7 @@ import { EOrderType } from "./orderbook.types";
 export interface IToken {
     shortName: string;
     fullName: string;
-    propertyId: number;
+    propertyId: number| string;
 }
 
 export interface IMarket {
