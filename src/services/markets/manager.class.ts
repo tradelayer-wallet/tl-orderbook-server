@@ -5,35 +5,25 @@ import { createContract, createMarket, createMarketType, createToken, MARKET_ICO
 export class MarketsManager {
     constructor() {
         console.log(`Markets Service Initialized`);
-
     }
 
     getAvailableSpotMarkets(): IResult {
         try {
-            // const wEthToken = createToken('WETH', 'Wrapped ETH', 4);
-            // const wBtcToken = createToken('WBTC', 'Wrapped BTC', 17);
+            const LTC = createToken('LTC', 'LTC', 0);
+            const TBILL = createToken('TBILL', 'TBILL', 5);
+            const TL = createToken('TL', 'TL', 1);
+            const sLTC = createToken('sLTC', 'sLTC', 's-1-5');
 
-            const ltcToken = createToken('TEST', 'TEST Token 2', 4);
-            // const allToken = createToken('ALL', 'ALL', 1);
-            // const adaToken = createToken('WADA', 'Wrapped Cardano', 18);
-            const testToken = createToken('TEST2', 'TEST Token', 5);
-            const ltcMartkets: IMarket[] = [
-                createMarket(testToken, ltcToken, false),
-                // createMarket(wBtcToken, ltcToken, false),
-                // createMarket(allToken, ltcToken, false),
-                // createMarket(adaToken, ltcToken, false),
+            const ltcMarkets: IMarket[] = [
+                createMarket(LTC, TBILL, false),
+                createMarket(TL, LTC, false),
+                createMarket(sLTC, LTC, false),
+                createMarket(TL, TBILL, false),
+                createMarket(sLTC, TBILL, false)
             ];
-        
-            // const usdMarkets: IMarket[] = [];
-            // const allMarkets:  IMarket[] = [
-            //     createMarket(wEthToken, wBtcToken, false),
-            // ];
-        
-            const ltcMarketType = createMarketType('LTC', ltcMartkets, MARKET_ICONS.LTC, false);
-            // const usdMarketType = createMarketType('USD', usdMarkets, MARKET_ICONS.USD, true);
-            // const allMarketType = createMarketType('ALL', allMarkets, MARKET_ICONS.ALL, true);
-            // const result: IMarketType[] = [ ltcMarketType, usdMarketType, allMarketType ];
-            const result: IMarketType[] = [ ltcMarketType ];
+
+            const ltcMarketType = createMarketType('LTC', ltcMarkets, MARKET_ICONS.LTC, false);
+            const result: IMarketType[] = [ltcMarketType];
             return { data: result };
         } catch (error) {
             return { error: error.message };
@@ -42,21 +32,24 @@ export class MarketsManager {
 
     getAvailableFuturesMarkets(): IResult {
         try {
-            const wEthToken = createToken('WETH', 'Wrapped ETH', 4);
-            const wBtcToken = createToken('WBTC', 'Wrapped BTC', 8);
-            const usdToken = createToken('USD', 'US Dollar', -3);
-            const adaToken = createToken('WADA', 'Cardano', 18);
+            const LTC = createToken('LTC', 'Litecoin', 0);
+            const TBILL = createToken('TBILL', 'US Treasury Bill', 5);
+            const TL = createToken('TL', 'TradeLayer Native Metacoin', 1);
+            const BTCoracle = createToken('BTC', 'Bitcoin Oracle', 1);
 
             const usdContracts: IContract[] = [
-                createContract(adaToken, usdToken, 17, 'wADA/USD', adaToken, false),
-                createContract(wEthToken, usdToken, 5, 'wETH/USD', wEthToken, false),
-                createContract(wBtcToken, usdToken, 7, 'wBTC/USD', wBtcToken, true),
+                createContract(TL, TBILL, 4, 'TL/TBILL', TBILL, false),
+                createContract(LTC, TBILL, 5, 'LTC/TBILL', TBILL, false),
+                createContract(BTCoracle, TBILL, 2, 'BTC/USD', TBILL, false)
             ];
-            const dogeContracts: IContract[] = [];
-        
-            const ltcMarketType = createMarketType('USD', usdContracts, MARKET_ICONS.USD, false);
-            const dogeMarketType = createMarketType('DOGE', dogeContracts, MARKET_ICONS.DOGE, true);
-            const result: IMarketType[] = [ ltcMarketType, dogeMarketType ];
+
+            const ltcContracts: IContract[] = [
+                createContract(TL, LTC, 1, 'TL/LTC', TL, false),
+            ];
+
+            const ltcMarketType = createMarketType('LTC', ltcContracts, MARKET_ICONS.LTC, false);
+            const usdMarketType = createMarketType('USD', usdContracts, MARKET_ICONS.USD, true);
+            const result: IMarketType[] = [ltcMarketType, usdMarketType];
             return { data: result };
         } catch (error) {
             return { error: error.message };
