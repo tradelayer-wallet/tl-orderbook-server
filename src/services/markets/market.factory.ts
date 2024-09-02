@@ -1,6 +1,6 @@
 import { IContract, IMarket, IMarketType, IToken } from "../../utils/types/markets.types";
 
-export const createToken = (shortName: string, fullName: string, propertyId: number): IToken => {
+export const createToken = (shortName: string, fullName: string, propertyId: number|string): IToken => {
     return { shortName, fullName, propertyId };
 };
 
