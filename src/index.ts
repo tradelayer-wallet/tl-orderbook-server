@@ -5,7 +5,8 @@ import { initSocketService } from './services/socket';
 import { initOrderbookService } from './services/orderbook';
 import { initMarketsService } from './services/markets';
 
-const PORT = envConfig.SERVER_PORT;
+const port = process.env.PORT || 3000;
+
 const OPTIONS: FastifyServerOptions = {};
 
 const server = Fastify(OPTIONS);
