@@ -1,4 +1,3 @@
-
 import { IContract, IMarket, IMarketType } from "../../utils/types/markets.types";
 import { IResult } from "../../utils/types/mix.types";
 import { createContract, createMarket, createMarketType, createToken, MARKET_ICONS } from "./market.factory";
@@ -7,7 +6,8 @@ export class MarketsManager {
     constructor() {
         console.log(`Markets Service Initialized`);
     }
-    MarketsManager.prototype.getAvailableSpotMarkets = function () {
+
+    getAvailableSpotMarkets(): IResult {
         try {
             const LTC = createToken('LTC', 'LTC', 0);
             const TBILL = createToken('TBILL', 'TBILL', 5);
@@ -24,17 +24,14 @@ export class MarketsManager {
 
             const ltcMarketType = createMarketType('LTC', ltcMarkets, MARKET_ICONS.LTC, false);
             const result: IMarketType[] = [ltcMarketType];
+
             return { data: result };
-        }
-        catch (error) {
+        } catch (error) {
             return { error: error.message };
         }
-    };
-    MarketsManager.prototype.getAvailableFuturesMarkets = function () {
-            var LTC = (0, market_factory_1.createToken)('LTC', 'Litecoin', 0);
-            var TBILL = (0, market_factory_1.createToken)('TBILL', 'US Treasury Bill', 5);
-            var TL = (0, market_factory_1.createToken)('TL','TradeLayer Native Metacoin',1)
-            var BTCoracle = (0, market_factory_1.createToken)('BTC','Bitcoin Oracle',1)
+    }
+
+    getAvailableFuturesMarkets(): IResult {
         try {
             const LTC = createToken('LTC', 'Litecoin', 0);
             const TBILL = createToken('TBILL', 'US Treasury Bill', 5);
@@ -53,13 +50,12 @@ export class MarketsManager {
 
             const ltcMarketType = createMarketType('LTC', ltcContracts, MARKET_ICONS.LTC, false);
             const usdMarketType = createMarketType('USD', usdContracts, MARKET_ICONS.USD, true);
+
             const result: IMarketType[] = [ltcMarketType, usdMarketType];
 
             return { data: result };
-        }
-        catch (error) {
+        } catch (error) {
             return { error: error.message };
         }
-
     }
 }
