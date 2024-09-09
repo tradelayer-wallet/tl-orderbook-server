@@ -3,6 +3,7 @@ import { EOrderType } from "./orderbook.types";
 export interface IToken {
     shortName: string;
     fullName: string;
+
     propertyId: number|string;
 }
 
