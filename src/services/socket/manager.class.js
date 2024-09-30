@@ -84,6 +84,7 @@ var SocketManager = (function () {
     };
     return SocketManager;
 }());
+
 exports.SocketManager = SocketManager;
 var onConnection = function (socket) {
     console.log("New Connection: ".concat(socket.id));
@@ -144,6 +145,9 @@ var onNewOrder = function (socket) { return function (rawOrder) { return __await
                     return [2];
                 }
                 if (res.data.order)
+                     const openedOrders = orderbookManager.getOrdersBySocketId(socket.id);
+                     const orderHistory = orderbookManager.getOrdersHistory();
+                    socket.emit(events_1.EmitEvents.PLACED_ORDERS, { openedOrders, orderHistory });
                     socket.emit(events_1.OrderEmitEvents.SAVED, res.data.order.uuid);
                 return [2];
         }
