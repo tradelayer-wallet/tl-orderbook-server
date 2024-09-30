@@ -86,7 +86,12 @@ const onNewOrder = (socket: Socket) => async (rawOrder: TRawOrder) => {
         return;
     }
 
-    if (res.data.order) socket.emit(OrderEmitEvents.SAVED, res.data.order.uuid);
+    if (res.data.order){
+        socket.emit(OrderEmitEvents.SAVED, res.data.order.uuid);
+         const openedOrders = orderbookManager.getOrdersBySocketId(socket.id);
+    const orderHistory = orderbookManager.getOrdersHistory();
+    socket.emit(EmitEvents.PLACED_ORDERS, { openedOrders, orderHistory });
+    }
 };
 
 const onUpdateOrderbook = (socket: Socket) => async (filter: TFilter) => {
