@@ -87,11 +87,11 @@ const onNewOrder = (socket: Socket) => async (rawOrder: TRawOrder) => {
     }
 
     if (res.data.order){
-        //socket.emit(OrderEmitEvents.SAVED, res.data.order.uuid);
-         const openedOrders = orderbookManager.getOrdersBySocketId(socket.id);
-    const orderHistory = orderbookManager.getOrdersHistory();
-    socket.emit(EmitEvents.PLACED_ORDERS, { openedOrders, orderHistory });
-    socket.emit(events_1.OrderEmitEvents.SAVED, res.data.order.uuid);
+          socket.emit(OrderEmitEvents.SAVED, res.data.order.uuid);
+          const openedOrders = orderbookManager.getOrdersBySocketId(socket.id);
+          const orderHistory = orderbookManager.getOrdersHistory();
+          socket.emit(EmitEvents.PLACED_ORDERS, { openedOrders, orderHistory });
+    //socket.emit(events_1.OrderEmitEvents.SAVED, res.data.order.uuid);
     }
 };
 
