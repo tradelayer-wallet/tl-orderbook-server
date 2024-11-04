@@ -174,21 +174,46 @@ export class Orderbook {
                 const lockCheck = !o.lock;
                 return idChecks && buySellCheck && priceCheck && lockCheck && lockCheck;
             }).sort(sortFunc);
-            if (filteredOrders.length) {
-                const matchOrder= filteredOrders[0];
+          
+            const matches: TOrder[] = [];
+            let totalFilledAmount = 0;
+
+            for (const matchOrder of filteredOrders) {
                 if (matchOrder.socket_id === order.socket_id) {
                     throw new Error("Match of the order from the same Account");
                 }
                 if (matchOrder.keypair.address === order.keypair.address) {
                     throw new Error("Match of the order from the same address");
                 }
-                return { data: { match: matchOrder } };
+
+                const fillableAmount = Math.min(order.props.amount - totalFilledAmount, matchOrder.props.amount);
+                if (fillableAmount <= 0) break;
+
+                // Create a trade based on the current match order
+                const { data } = this.buildTrade({ ...order, props: { ...order.props, amount: fillableAmount } }, { ...matchOrder, props: { ...matchOrder.props, amount: fillableAmount } });
+                if (data) {
+                    matches.push(data.tradeInfo);  // Store trade info
+                    totalFilledAmount += fillableAmount;
+
+                    // Reduce the amount of the match order
+                    matchOrder.props.amount = safeNumber(matchOrder.props.amount - fillableAmount);
+                    if (matchOrder.props.amount <= 0) {
+                        // Remove the match order if fully filled
+                        this.removeOrder(matchOrder);  // Implement this method to remove the order from your orderbook
+                    }
+                }
             }
-            return { data: { match: null } };
-        } catch(error) {
+
+            // Return all matched orders and the remaining unfilled order
+            const remainingOrder = totalFilledAmount < order.props.amount
+                ? { ...order, props: { ...order.props, amount: safeNumber(order.props.amount - totalFilledAmount) } }
+                : null;
+
+            return { data: { matches, remainingOrder } };
+        } catch (error) {
             return { error: error.message };
         }
-    }
+}
 
     async addOrder(order: TOrder, noTrades: boolean = false): Promise<IResult<{ order?: TOrder, trade?: ITradeInfo }>> {
         try {
