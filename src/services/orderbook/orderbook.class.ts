@@ -334,25 +334,25 @@ export class Orderbook {
     }
 }
 
-const buildTrade = (new_order: TOrder, old_order: TOrder): IResult<{ unfilled: TOrder, tradeInfo: ITradeInfo }> => {
+const buildTrade = (new_order: TOrder, old_order: TOrder): IResult<{ unfilled: TOrder; trades: ITradeInfo[] }> => {
     try {
-        const ordersArray = [ new_order, old_order ];
+        const ordersArray = [new_order, old_order];
         const buyOrder = ordersArray.find(t => t.action === EOrderAction.BUY);
         const sellOrder = ordersArray.find(t => t.action === EOrderAction.SELL);
 
         if (!buyOrder || !sellOrder) throw new Error("Building Trade Failed. Code 1");
-        const newOrderAmount = new_order.props.amount;
-        const oldOrderAmount = old_order.props.amount
 
-        const unfilled = (newOrderAmount > oldOrderAmount
-            ? {...new_order, props: {...new_order.props, amount: safeNumber(newOrderAmount - oldOrderAmount)}}
-            : newOrderAmount < oldOrderAmount
-                ? {...old_order, props: {...old_order.props, amount: safeNumber(oldOrderAmount - newOrderAmount)}}
-                : null) as TOrder;
+        const newOrderAmount = new_order.props.amount;
+        const oldOrderAmount = old_order.props.amount;
 
         const amount = Math.min(newOrderAmount, oldOrderAmount);
         const price = old_order.props.price;
 
+        // Initialize an array to hold multiple trade information
+        const trades: ITradeInfo[] = [];
+        const remainingAmount = safeNumber(newOrderAmount - amount);
+        
+        // Create a trade info object for the matched trade
         const tradeInfo: ITradeInfo = {
             type: new_order.type,
             buyer: {
@@ -376,17 +376,26 @@ const buildTrade = (new_order: TOrder, old_order: TOrder): IResult<{ unfilled: T
                     amount: amount,
                     contract_id: buyOrder.props.contract_id,
                     price: price,
-                    levarage: buyOrder.props.levarage,
+                    leverage: buyOrder.props.leverage,
                     collateral: buyOrder.props.collateral,
                 }
                 : {
                     propIdDesired: buyOrder.props.id_desired,
-                    propIdForSale:  buyOrder.props.id_for_sale,
+                    propIdForSale: buyOrder.props.id_for_sale,
                     amountDesired: amount,
                     amountForSale: safeNumber(amount * price),
                 }
         };
-        return { data: { unfilled, tradeInfo }}
+
+        trades.push(tradeInfo);  // Add the trade info to the array
+
+        // Determine the unfilled order
+        const unfilled: TOrder = (newOrderAmount > oldOrderAmount)
+            ? { ...new_order, props: { ...new_order.props, amount: remainingAmount } }
+            : { ...old_order, props: { ...old_order.props, amount: safeNumber(oldOrderAmount - amount) } };
+
+        return { data: { unfilled, trades } };
+
     } catch (error) {
         return { error: error.message };
     }
