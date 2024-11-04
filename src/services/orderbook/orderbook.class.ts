@@ -214,32 +214,37 @@ export class Orderbook {
             return { error: error.message };
         }
 }
+async addOrder(order: TOrder, noTrades: boolean = false): Promise<IResult<{ order?: TOrder, trade?: ITradeInfo[] }>> {
+    try {
+        if (!this.checkCompatible(order)) {
+            throw new Error(`Order mismatch current orderbook interface or type`);
+        }
 
-    async addOrder(order: TOrder, noTrades: boolean = false): Promise<IResult<{ order?: TOrder, trade?: ITradeInfo }>> {
-        try {
-            if (!this.checkCompatible(order)) {
-                throw new Error(`Order missmatch current orderbook interface or type`);
+        const matchRes = this.checkMatch(order);
+        if (matchRes.error || !matchRes.data) throw new Error(`${matchRes.error || "Undefined Error"}`);
+        if (!matchRes.data.match) {
+            // Save order if no match found
+            saveLog(this.orderbookName, "ORDER", order);
+            this.orders = [...this.orders, order];
+            this.updatePlacedOrdersForSocketId(order.socket_id);
+            return { data: { order } };
+        } else {
+            if (noTrades) return;
+
+            this.lockOrder(matchRes.data.match);
+            updateOrderLog(this.orderbookName, matchRes.data.match.uuid, 'FILLED');
+            
+            const buildTradeRes = buildTrade(order, matchRes.data.match);
+            if (buildTradeRes.error || !buildTradeRes.data) {
+                throw new Error(`${buildTradeRes.error || "Building Trade Failed. Code 2"}`);
             }
 
-            const matchRes = this.checkMatch(order);
-            if (matchRes.error || !matchRes.data) throw new Error(`${matchRes.error || "Undefined Error"}`);
-            if (!matchRes.data.match) {
-                saveLog(this.orderbookName, "ORDER", order);
-                this.orders = [...this.orders, order];
-                this.updatePlacedOrdersForSocketId(order.socket_id);
-                return { data: { order } };
-            } else {
-
-                if (noTrades) return;
-                this.lockOrder(matchRes.data.match);
-                updateOrderLog(this.orderbookName, matchRes.data.match.uuid, 'FILLED');
-                const buildTradeRes = buildTrade(order, matchRes.data.match);
-                if (buildTradeRes.error || !buildTradeRes.data) {
-                    throw new Error(`${buildTradeRes.error || "Building Trade Failed. Code 2"}`);
-                }
-
-                const newChannelRes = await this.newChannel(buildTradeRes.data.tradeInfo, buildTradeRes.data.unfilled);
+            // Process each trade from the buildTrade result
+            const tradeResults: ITradeInfo[] = [];
+            for (const tradeInfo of buildTradeRes.data.trades) {
+                const newChannelRes = await this.newChannel(tradeInfo, buildTradeRes.data.unfilled);
                 if (newChannelRes.error || !newChannelRes.data) {
+                    // If there's an error with a trade, log it or handle it appropriately
                     matchRes.data.match.socket_id !== newChannelRes.socketId
                         ? this.lockOrder(matchRes.data.match, false)
                         : this.removeOrder(matchRes.data.match.uuid, matchRes.data.match.socket_id);
@@ -247,46 +252,31 @@ export class Orderbook {
                     throw new Error(`${newChannelRes.error || "Undefined Error"}`);
                 }
 
-                if (buildTradeRes.data.unfilled?.uuid === matchRes.data.match.uuid) {
-                    matchRes.data.match.props.amount = buildTradeRes.data.unfilled.props.amount;
-                    this.lockOrder(matchRes.data.match, false);
-                } else {
-                    this.removeOrder(matchRes.data.match.uuid, matchRes.data.match.socket_id);
-                }
-                this.updatePlacedOrdersForSocketId(matchRes.data.match.socket_id);
-
-                if (buildTradeRes.data.unfilled?.uuid === order.uuid) {
-                    const res = await this.addOrder(buildTradeRes.data.unfilled);
-                    return { data: res.data };
-                }
-                this.updatePlacedOrdersForSocketId(order.socket_id);
-
-                return { data: { trade: newChannelRes.data }};
+                tradeResults.push(newChannelRes.data); // Collect results of the trades
             }
-        } catch (error) {
-            return { error: error.message };
+
+            // Handle unfilled orders
+            if (buildTradeRes.data.unfilled?.uuid === matchRes.data.match.uuid) {
+                matchRes.data.match.props.amount = buildTradeRes.data.unfilled.props.amount;
+                this.lockOrder(matchRes.data.match, false);
+            } else {
+                this.removeOrder(matchRes.data.match.uuid, matchRes.data.match.socket_id);
+            }
+            this.updatePlacedOrdersForSocketId(matchRes.data.match.socket_id);
+
+            if (buildTradeRes.data.unfilled?.uuid === order.uuid) {
+                const res = await this.addOrder(buildTradeRes.data.unfilled);
+                return { data: res.data };
+            }
+            this.updatePlacedOrdersForSocketId(order.socket_id);
+
+            return { data: { trade: tradeResults } }; // Return all trade results
         }
+    } catch (error) {
+        return { error: error.message };
     }
+}
 
-    findByFilter(filter: TFilter) {
-        if (!this.props) return false;
-        if (filter.type !== this.type) return false;
-        if (filter.type === EOrderType.SPOT && 'id_desired' in this.props ) {
-
-            const checkA = filter.first_token === this.props.id_desired 
-                && filter.second_token === this.props.id_for_sale;
-
-            const checkB = filter.first_token === this.props.id_for_sale 
-                && filter.second_token  === this.props.id_desired;
-
-            return checkA || checkB;
-        }
-        if (filter.type === EOrderType.FUTURES && 'contract_id' in this.props) {
-            return filter.contract_id === this.props.contract_id;
-        }
-
-        return false;
-    }
 
     checkCompatible(order: TOrder): boolean {
         if (!this.props) return false;
@@ -376,7 +366,7 @@ const buildTrade = (new_order: TOrder, old_order: TOrder): IResult<{ unfilled: T
                     amount: amount,
                     contract_id: buyOrder.props.contract_id,
                     price: price,
-                    leverage: buyOrder.props.leverage,
+                    levarage: buyOrder.props.levarage,
                     collateral: buyOrder.props.collateral,
                 }
                 : {
