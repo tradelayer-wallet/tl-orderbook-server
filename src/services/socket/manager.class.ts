@@ -84,16 +84,16 @@ const onNewOrder = (socket: Socket) => async (rawOrder: TRawOrder) => {
     if (order.type === 'SPOT') {
         const { id_for_sale, id_desired, action } = order.props;
 
-        // For SELL orders, id_for_sale should be greater than id_desired
+        // Automatically adjust action for SELL orders if id_for_sale <= id_desired
         if (action === 'SELL' && id_for_sale <= id_desired) {
-            socket.emit(OrderEmitEvents.ERROR, 'SELL order: id_for_sale must be greater than id_desired');
-            return;
+            order.props.action = 'BUY'; // Change to BUY action if mismatch
+            socket.emit(OrderEmitEvents.INFO, 'SELL order mismatch: Automatically changed to BUY');
         }
 
-        // For BUY orders, id_for_sale should be less than id_desired
+        // Automatically adjust action for BUY orders if id_for_sale >= id_desired
         if (action === 'BUY' && id_for_sale >= id_desired) {
-            socket.emit(OrderEmitEvents.ERROR, 'BUY order: id_for_sale must be less than id_desired');
-            return;
+            order.props.action = 'SELL'; // Change to SELL action if mismatch
+            socket.emit(OrderEmitEvents.INFO, 'BUY order mismatch: Automatically changed to SELL');
         }
     }
     const order: TOrder = orderFactory(rawOrder, socket.id);
