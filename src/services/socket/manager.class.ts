@@ -79,6 +79,23 @@ const onNewOrder = (socket: Socket) => async (rawOrder: TRawOrder) => {
         socket.emit(OrderEmitEvents.ERROR, 'Merket Orders Not allowed');
         return;
     }
+
+    // Reject invalid SPOT orders based on id_for_sale and id_desired
+    if (order.type === 'SPOT') {
+        const { id_for_sale, id_desired, action } = order.props;
+
+        // For SELL orders, id_for_sale should be greater than id_desired
+        if (action === 'SELL' && id_for_sale <= id_desired) {
+            socket.emit(OrderEmitEvents.ERROR, 'SELL order: id_for_sale must be greater than id_desired');
+            return;
+        }
+
+        // For BUY orders, id_for_sale should be less than id_desired
+        if (action === 'BUY' && id_for_sale >= id_desired) {
+            socket.emit(OrderEmitEvents.ERROR, 'BUY order: id_for_sale must be less than id_desired');
+            return;
+        }
+    }
     const order: TOrder = orderFactory(rawOrder, socket.id);
     const res = await orderbookManager.addOrder(order);
     if (res.error || !res.data) {
