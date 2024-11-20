@@ -120,7 +120,9 @@ const onUpdateOrderbook = (socket: Socket) => async (filter: TFilter) => {
 };
 
 const onClosedOrder = (socket: Socket) => (orderUUID: string) => {
+    console.log('inside close order '+orderUUID)
     const res = orderbookManager.removeOrder(orderUUID, socket.id);
+    console.log('cancel res ' +JSON.stringify(res))
     const openedOrders = orderbookManager.getOrdersBySocketId(socket.id);
     const orderHistory = orderbookManager.getOrdersHistory();
     socket.emit(EmitEvents.PLACED_ORDERS, { openedOrders, orderHistory });
