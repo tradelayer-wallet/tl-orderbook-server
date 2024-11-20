@@ -5,6 +5,8 @@ import { TOrder, TRawOrder } from "../../utils/types/orderbook.types";
 import { orderbookManager } from "../orderbook";
 import { orderFactory } from "../orderbook/order.factory";
 import { EmitEvents, OnEvents, OrderEmitEvents } from "./events";
+import { EOrderAction } from "../../utils/types/orderbook.types";
+
 
 interface IClientSession {
     id: string;
@@ -81,23 +83,24 @@ const onNewOrder = (socket: Socket) => async (rawOrder: TRawOrder) => {
     }
 
      // Adjust incorrect parameter mismatches
-    if (order.type === 'SPOT') {
-        const { id_for_sale, id_desired, action } = order.props;
+    if (rawOrder.type === 'SPOT') {
+        const { id_for_sale, id_desired } = rawOrder.props;
 
-        // Automatically adjust action for SELL orders if id_for_sale <= id_desired
-        if (action === 'SELL' && id_for_sale <= id_desired) {
-            order.props.action = 'BUY'; // Change to BUY action if mismatch
-            socket.emit(OrderEmitEvents.INFO, 'SELL order mismatch: Automatically changed to BUY');
+    // Automatically adjust action for SELL orders if id_for_sale <= id_desired
+        if (rawOrder.action === EOrderAction.SELL && id_for_sale <= id_desired) {
+            rawOrder.action = EOrderAction.BUY; // Change to BUY action if mismatch
         }
 
         // Automatically adjust action for BUY orders if id_for_sale >= id_desired
-        if (action === 'BUY' && id_for_sale >= id_desired) {
-            order.props.action = 'SELL'; // Change to SELL action if mismatch
-            socket.emit(OrderEmitEvents.INFO, 'BUY order mismatch: Automatically changed to SELL');
+        if (rawOrder.action === EOrderAction.BUY && id_for_sale >= id_desired) {
+            rawOrder.action = EOrderAction.SELL; // Change to SELL action if mismatch
         }
+
     }
 
-    const order: TOrder = orderFactory(rawOrder, socket.id);
+      const order: TOrder = orderFactory(rawOrder, socket.id);
+
+
     const res = await orderbookManager.addOrder(order);
     if (res.error || !res.data) {
         socket.emit(OrderEmitEvents.ERROR, res.error || 'Undifined Error');
@@ -121,7 +124,9 @@ const onUpdateOrderbook = (socket: Socket) => async (filter: TFilter) => {
 };
 
 const onClosedOrder = (socket: Socket) => (orderUUID: string) => {
+    console.log('canceling on server '+orderUUID)
     const res = orderbookManager.removeOrder(orderUUID, socket.id);
+    console.log('cancel res '+JSON.stringify(res))
     const openedOrders = orderbookManager.getOrdersBySocketId(socket.id);
     const orderHistory = orderbookManager.getOrdersHistory();
     socket.emit(EmitEvents.PLACED_ORDERS, { openedOrders, orderHistory });
