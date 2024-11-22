@@ -14,8 +14,8 @@ const swapEventName = 'swap';
 
 export class ChannelSwap {
     private readyRes: (value: IResultChannelSwap) => void;
-    private client: uWS.WebSocket; // uWS WebSocket type
-    private dealer: uWS.WebSocket; // uWS WebSocket type
+    private client: uWS.WebSocket;
+    private dealer: uWS.WebSocket;
     private eventListeners: Map<string, Set<string>> = new Map(); // Map to track listeners per socket
 
     constructor(
@@ -59,12 +59,12 @@ export class ChannelSwap {
                             const { eventName, data, socketId } = swapEvent;
                             if (eventName === "BUYER:STEP6") {
                                 if (this.readyRes) this.readyRes({ data: { txid: data } });
-                                this.removeListenerFromSocket(this.client.getId(),this.dealer.getId(),eventName)
+                                this.removeListenerFromSocket(this.client, this.dealer, swapEventName);
                             }
 
                             if (eventName === "TERMINATE_TRADE") {
                                 if (this.readyRes) this.readyRes({ error: data, socketId });
-                                this.removeListenerFromSocket(this.client.getId(),this.dealer.getId(),eventName)
+                                this.removeListenerFromSocket(this.client, this.dealer, swapEventName);
                             }
                         });
                         this.addListenerToSocket(c, `${p}::${swapEventName}`);
@@ -84,17 +84,23 @@ export class ChannelSwap {
     // Remove listeners when necessary
     private removeListenerFromSocket(clientSocket: uWS.WebSocket, dealerSocket: uWS.WebSocket, event: string) {
         const clientSocketId = String(clientSocket.getId());
-        const dealerSocketId = String(dealerSocket.getId())
+        const dealerSocketId = String(dealerSocket.getId());
+
         const socketClientListeners = this.eventListeners.get(clientSocketId);
-        const socketDealerListener = this.eventListeners.get(dealerSocketId)
-        if (socketClientListeners||socketDealerListeners) {
-            socketClientListeners.delete(event);  // Remove the specific listener
-            socketDealerListeners.delete(event)
-            if (socketClientListeners.size === 0) {
-                this.eventListeners.delete(clientSocketId);  // Clean up if no listeners left
+        const socketDealerListeners = this.eventListeners.get(dealerSocketId);
+
+        // If event exists, remove it
+        if (socketClientListeners || socketDealerListeners) {
+            socketClientListeners?.delete(event);
+            socketDealerListeners?.delete(event);
+
+            // Clean up listeners if there are no more for the socket
+            if (socketClientListeners && socketClientListeners.size === 0) {
+                this.eventListeners.delete(clientSocketId);
             }
-            if (socketClientListeners.size === 0) {
-                this.eventListeners.delete(dealerSocketId)  // Clean up if no listeners left
+
+            if (socketDealerListeners && socketDealerListeners.size === 0) {
+                this.eventListeners.delete(dealerSocketId);
             }
         }
     }
@@ -108,5 +114,4 @@ export class ChannelSwap {
         this.dealer.on(dealerEvent, (data: SwapEvent) => this.client.send(dealerEvent, data));
         this.client.on(clientEvent, (data: SwapEvent) => this.dealer.send(clientEvent, data));
     }
-
 }
