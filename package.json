@@ -27,6 +27,8 @@
     "webpack-cli": "^4.7.2"
   },
   "dependencies": {
-    "moment": "^2.29.4"
+    "@geut/fastify-uws": "^6.0.0",
+    "moment": "^2.29.4",
+    "uws": "^200.0.0"
   }
 }
