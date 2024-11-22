@@ -87,12 +87,12 @@ const onNewOrder = (socket: Socket) => async (rawOrder: TRawOrder) => {
         const { id_for_sale, id_desired } = rawOrder.props;
 
     // Automatically adjust action for SELL orders if id_for_sale <= id_desired
-        if (rawOrder.action === EOrderAction.SELL && id_for_sale <= id_desired) {
+        if (rawOrder.action === EOrderAction.SELL && id_for_sale >= id_desired) {
             rawOrder.action = EOrderAction.BUY; // Change to BUY action if mismatch
         }
 
         // Automatically adjust action for BUY orders if id_for_sale >= id_desired
-        if (rawOrder.action === EOrderAction.BUY && id_for_sale >= id_desired) {
+        if (rawOrder.action === EOrderAction.BUY && id_for_sale <= id_desired) {
             rawOrder.action = EOrderAction.SELL; // Change to SELL action if mismatch
         }
 
