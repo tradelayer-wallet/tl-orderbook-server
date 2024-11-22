@@ -4,8 +4,11 @@
     "noEmitOnError": true,
     "removeComments": true,
     "sourceMap": false,
-    "target": "ES5",
-    "module": "commonjs",
+    "target": "ES2017",
+    "module": "ESNext",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "types": ["node", "uws"]
   },
-  "include": ["./src/**/*"],
+  "include": ["./src/**/*"]
 }

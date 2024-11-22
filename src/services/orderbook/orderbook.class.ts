@@ -35,7 +35,12 @@ export class Orderbook {
 
     set orders(value: TOrder[]) {
         this._orders = value;
-        socketService.io.emit(EmitEvents.UPDATE_ORDERS_REQUEST);
+        this._orders.forEach(order => {
+            const socket = socketService.getSocketById(order.socket_id);  // Adjusted to use uWS
+            if (socket) {
+                socket.send(JSON.stringify({ event: EmitEvents.UPDATE_ORDERS_REQUEST }));
+            }
+        });
     }
 
     get orderbookName() {
@@ -77,7 +82,12 @@ export class Orderbook {
                 arrayData.forEach(d => data.push(d));
             });
             this._historyTrades = data.slice(0, 2000);
-            socketService.io.emit(EmitEvents.UPDATE_ORDERS_REQUEST);
+            this._orders.forEach(order => {
+                const socket = socketService.getSocketById(order.socket_id);
+                if (socket) {
+                    socket.send(JSON.stringify({ event: EmitEvents.UPDATE_ORDERS_REQUEST }));
+                }
+            });
         } catch (error) {
             console.log({ error });
         }
@@ -109,8 +119,8 @@ export class Orderbook {
         try {
             const buyerSocketId = tradeInfo.buyer.socketId;
             const sellerSocketId = tradeInfo.seller.socketId;
-            const buyerSocket = socketService.io.sockets.sockets.get(buyerSocketId);
-            const sellerSocket = socketService.io.sockets.sockets.get(sellerSocketId);
+            const buyerSocket = socketService.getSocketById(buyerSocketId);  // Adjusted to use uWS
+            const sellerSocket = socketService.getSocketById(sellerSocketId);  // Adjusted to use uWS
             const channel = new ChannelSwap(buyerSocket, sellerSocket, tradeInfo, unfilled);
             const channelRes = await channel.onReady();
             if (channelRes.error || !channelRes.data) return channelRes;
@@ -129,20 +139,32 @@ export class Orderbook {
 
     private lockOrder(order: TOrder, lock: boolean = true) {
         order.lock = lock;
-        socketService.io.emit(EmitEvents.UPDATE_ORDERS_REQUEST);
+        this._orders.forEach(order => {
+            const socket = socketService.getSocketById(order.socket_id);
+            if (socket) {
+                socket.send(JSON.stringify({ event: EmitEvents.UPDATE_ORDERS_REQUEST }));
+            }
+        });
     }
 
     private saveToHistory(historyTrade: IHistoryTrade) {
         this._historyTrades = [historyTrade, ...this.historyTrades.slice(0, 1999)];
         saveLog(this.orderbookName, "TRADE", historyTrade);
-        socketService.io.emit(EmitEvents.UPDATE_ORDERS_REQUEST);
+        this._orders.forEach(order => {
+            const socket = socketService.getSocketById(order.socket_id);
+            if (socket) {
+                socket.send(JSON.stringify({ event: EmitEvents.UPDATE_ORDERS_REQUEST }));
+            }
+        });
     }
 
     updatePlacedOrdersForSocketId(socketid: string) {
         const openedOrders = orderbookManager.getOrdersBySocketId(socketid);
         const orderHistory = orderbookManager.getOrdersHistory();
-        const socketObj = socketService.io.sockets.sockets.get(socketid);
-        socketObj.emit(EmitEvents.PLACED_ORDERS, { openedOrders, orderHistory });
+        const socketObj = socketService.getSocketById(socketid);
+        if (socketObj) {
+            socketObj.send(JSON.stringify({ event: EmitEvents.PLACED_ORDERS, openedOrders, orderHistory }));
+        }
     }
 
     private checkMatch(order: TOrder): IResult<{ match: TOrder }> {
