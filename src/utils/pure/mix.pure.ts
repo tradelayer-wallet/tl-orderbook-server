@@ -1,6 +1,7 @@
 import { appendFile, readdirSync, readFileSync, writeFileSync } from "fs";
 import { IHistoryTrade, TOrder } from "../types/orderbook.types";
-import * as moment from 'moment';
+import moment from 'moment';
+
 
 export const safeNumber = (n: number) => parseFloat((n).toFixed(6));
 

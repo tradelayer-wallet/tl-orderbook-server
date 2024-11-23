@@ -1,5 +1,4 @@
-import { FastifyInstance } from 'fastify';
-import fastifyUwsPlugin from '@geut/fastify-uws/plugin';
+import HyperExpress from 'hyper-express';
 import { IResult } from "../../utils/types/mix.types";
 import { ITradeInfo, TOrder, TRawOrder } from "../../utils/types/orderbook.types";
 import { orderbookManager } from "../orderbook";
@@ -15,56 +14,59 @@ interface IClientSession {
 }
 
 export class SocketManager {
-    private _liveSessions: IClientSession[] = [];
-    private app: fastify.FastifyInstance;  // Fastify app instance
-    private server: any;
+    private _liveSessions: Map<string, HyperExpress.Websocket> = new Map();
 
-    constructor(private fastifyInstance: fastify.FastifyInstance) {
+    constructor(private app: HyperExpress.Server) {
         this.initService();
     }
 
-    private initService() {
-        // Register fastify-uWS plugin
-        this.fastifyInstance.register(fastifyUwsPlugin);
-
-        // Once Fastify app is ready, we can access uWS app
-        this.fastifyInstance.addHook('onReady', async () => {
-            // Access the uWS app from Fastify
-            const uwsApp = this.fastifyInstance.getUws();
-            console.log("uWS App Initialized");
-
-            // Handle WebSocket connections
-            uwsApp.ws('/ws', {
-                open: this.handleOpen.bind(this),
-                message: this.handleMessage.bind(this),
-                close: this.handleClose.bind(this),
-            });
-        });
-
-        console.log('Socket Service Initialized with fastify-uWS');
+    // Method to get a WebSocket by its ID (from active sessions)
+    public getSocketById(socketId: string): HyperExpress.Websocket | undefined {
+        return this._liveSessions.get(socketId);
     }
 
-    // WebSocket connection open handler
-    private handleOpen(ws: uWS.WebSocket) {
-        // Track sessions when a new WebSocket connection is made
-        this._liveSessions.push({
-            id: ws.getId().toString(),
-            startTime: Date.now(),
-            ip: ws.getRemoteAddress(),
+    // manager.class.ts
+    private initService() {
+      this.app.ws('/ws', (ws) => {
+        this.handleOpen(ws);
+
+        ws.on('message', (message) => {
+          this.handleMessage(ws, message);
         });
-        console.log(`New connection: ${ws.getId()}`);
+
+        ws.on('close', () => {
+          this.handleClose(ws);
+        });
+      });
+
+      console.log('Socket Service Initialized with HyperExpress');
+    }
+
+
+    // WebSocket connection open handler
+    private handleOpen(ws: HyperExpress.Websocket) {
+        const id = this.generateUniqueId();
+        (ws as any).id = id; // Attach the ID to the WebSocket object
+
+        this._liveSessions.set(id, ws);
+        console.log(`New connection: ${id}`);
+
+        // Optionally send a welcome message or session info
+        ws.send(JSON.stringify({ event: 'connected', id }));
     }
 
     // WebSocket connection close handler
-    private handleClose(ws: uWS.WebSocket, code: number, message: ArrayBuffer) {
-        // Remove sessions when a WebSocket connection is closed
-        this._liveSessions = this._liveSessions.filter(session => session.id !== ws.getId().toString());
-        console.log(`Connection closed: ${ws.getId()}`);
+    private handleClose(ws: HyperExpress.Websocket) {
+        const id = (ws as any).id;
+        this._liveSessions.delete(id);
+        console.log(`Connection closed: ${id}`);
     }
 
-    // Handle messages for various events
-    private handleMessage(ws: uWS.WebSocket, message: ArrayBuffer) {
-        const data = JSON.parse(Buffer.from(message).toString());
+    // Handle incoming messages for various events
+    private async handleMessage(ws: HyperExpress.Websocket, message: ArrayBuffer | string) {
+        const data = JSON.parse(
+            typeof message === 'string' ? message : Buffer.from(message).toString()
+        );
 
         // Handle different event types based on the 'event' key in the message
         switch (data.event) {
@@ -90,7 +92,7 @@ export class SocketManager {
     }
 
     // Handle new order event
-    private async handleNewOrder(ws: uWS.WebSocket, data: any) {
+    private async handleNewOrder(ws: HyperExpress.Websocket, data: any) {
         if (!data.isLimitOrder) {
             ws.send(JSON.stringify({ event: OrderEmitEvents.ERROR, message: 'Market Orders Not allowed' }));
             return;
@@ -110,7 +112,8 @@ export class SocketManager {
         }
 
         // Create order and emit the response
-        const order = await orderFactory(data, ws.getId().toString());
+        const id = (ws as any).id;
+        const order = await orderFactory(data, id);
         const res = await orderbookManager.addOrder(order);
         if (res.error || !res.data) {
             ws.send(JSON.stringify({ event: OrderEmitEvents.ERROR, message: res.error || 'Undefined Error' }));
@@ -119,14 +122,14 @@ export class SocketManager {
 
         if (res.data.order) {
             ws.send(JSON.stringify({ event: OrderEmitEvents.SAVED, orderUuid: res.data.order.uuid }));
-            const openedOrders = orderbookManager.getOrdersBySocketId(ws.getId().toString());
+            const openedOrders = orderbookManager.getOrdersBySocketId(id);
             const orderHistory = orderbookManager.getOrdersHistory();
             ws.send(JSON.stringify({ event: EmitEvents.PLACED_ORDERS, openedOrders, orderHistory }));
         }
     }
 
     // Handle updating the orderbook event
-    private async handleUpdateOrderbook(ws: uWS.WebSocket, data: any) {
+    private async handleUpdateOrderbook(ws: HyperExpress.Websocket, data: any) {
         const filter = data.filter;
         const orderbook = orderbookManager.orderbooks.find(e => e.findByFilter(filter));
         const orders = orderbook ? orderbook.orders.filter(o => !o.lock) : [];
@@ -135,39 +138,66 @@ export class SocketManager {
     }
 
     // Handle closing an order
-    private handleCloseOrder(ws: uWS.WebSocket, data: any) {
+    private handleCloseOrder(ws: HyperExpress.Websocket, data: any) {
+        const id = (ws as any).id;
         const orderUUID = data.orderUUID;
         console.log('Canceling order on server: ' + orderUUID);
-        const res = orderbookManager.removeOrder(orderUUID, ws.getId().toString());
+        const res = orderbookManager.removeOrder(orderUUID, id);
         console.log('Cancel result: ' + JSON.stringify(res));
-        const openedOrders = orderbookManager.getOrdersBySocketId(ws.getId().toString());
+        const openedOrders = orderbookManager.getOrdersBySocketId(id);
         const orderHistory = orderbookManager.getOrdersHistory();
         ws.send(JSON.stringify({ event: EmitEvents.PLACED_ORDERS, openedOrders, orderHistory }));
     }
 
     // Handle many orders
-    private handleManyOrders(ws: uWS.WebSocket, data: any) {
+    private handleManyOrders(ws: HyperExpress.Websocket, data: any) {
+        const id = (ws as any).id;
         const rawOrders = data.orders;
         rawOrders.forEach(async (rawOrder: TRawOrder) => {
-            const order: TOrder = orderFactory(rawOrder, ws.getId().toString());
+            const order: TOrder = await orderFactory(rawOrder, id);
             await orderbookManager.addOrder(order, true);
         });
         ws.send(JSON.stringify({ event: OrderEmitEvents.SAVED }));
     }
 
     // Handle disconnect event
-    private handleDisconnect(ws: uWS.WebSocket, data: any) {
+    private handleDisconnect(ws: HyperExpress.Websocket, data: any) {
+        const id = (ws as any).id;
         const reason = data.reason;
-        const openedOrders = orderbookManager.getOrdersBySocketId(ws.getId().toString());
-        openedOrders.forEach(o => orderbookManager.removeOrder(o.uuid, ws.getId().toString()));
-        console.log(`${ws.getId()} Disconnected! Reason: ${reason}`);
+        const openedOrders = orderbookManager.getOrdersBySocketId(id);
+        openedOrders.forEach(o => orderbookManager.removeOrder(o.uuid, id));
+        console.log(`${id} Disconnected! Reason: ${reason}`);
+        ws.close();
+    }
+
+    // Utility method to generate unique IDs for clients
+    private generateUniqueId(): string {
+        return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     }
 
     // Getter for live sessions
     public get liveSessions() {
-        return this._liveSessions;
+        return Array.from(this._liveSessions.keys());
     }
 }
 
-// Export the SocketManager class
-export { SocketManager };
+// Initialize HyperExpress app
+const app = new HyperExpress.Server();
+
+// Initialize SocketManager
+const socketManager = new SocketManager(app);
+
+// Handle basic routes
+app.get('/', (req, res) => {
+    res.send('Welcome to the TradeLayer Orderbook Server!');
+});
+
+// Start the HyperExpress server
+const PORT = 9191; // or process.env.SERVER_PORT || 3000;
+app.listen(PORT)
+    .then(() => {
+        console.log(`Server running at http://localhost:${PORT}`);
+    })
+    .catch(err => {
+        console.error('Error starting server:', err);
+    });

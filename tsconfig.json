@@ -4,11 +4,13 @@
     "noEmitOnError": true,
     "removeComments": true,
     "sourceMap": false,
-    "target": "ES2017",
-    "module": "ESNext",
+    "target": "ES5",
+    "module": "commonjs",
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "types": ["node", "uws"]
+     "moduleResolution": "node",
+    "types": ["node", "@types/uws"]
+
   },
-  "include": ["./src/**/*"]
+  "include": ["./src/**/*"],
 }

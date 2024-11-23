@@ -1,27 +1,28 @@
-import Fastify, { FastifyServerOptions } from 'fastify';
+// src/index.ts
+import HyperExpress from 'hyper-express';
 import { handleRoutes } from './routes/routes';
 import { envConfig } from './config/env.config';
 import { initSocketService } from './services/socket';
 import { initOrderbookService } from './services/orderbook';
 import { initMarketsService } from './services/markets';
 
-const PORT = envConfig.SERVER_PORT|| 9191;
-const OPTIONS: FastifyServerOptions = {};
+const PORT = envConfig.SERVER_PORT || 9191;
 
-const server = Fastify(OPTIONS);
+// Initialize HyperExpress server
+const server = new HyperExpress.Server();
 
+// Initialize services with the server instance
 handleRoutes(server);
 initSocketService(server);
 initOrderbookService();
 initMarketsService();
 
-server
-    .listen(PORT, '0.0.0.0')
-    .then((serverUrl) => {
+// Start the HyperExpress server
+server.listen(PORT)
+    .then(() => {
         console.log(`Server Started: http://localhost:${PORT}`);
     })
     .catch((error) => {
-        console.log({error})
-        server.log.error(error.message);
+        console.error('Error starting server:', error);
         process.exit(1);
     });

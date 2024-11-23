@@ -1,24 +1,25 @@
-import { FastifyInstance } from "fastify";
-import { marketsManager } from "../services/markets";
-import { IResult } from "../utils/types/mix.types";
+import HyperExpress from 'hyper-express';
+const router = new HyperExpress.Router();
+import { marketsManager } from '../services/markets';
 
-export const marketsRoutes = (fastify: FastifyInstance, opts: any, done: any) => {
-    fastify.get('/spot', async (request, reply) => {
-        try {
-            const result: IResult = marketsManager.getAvailableSpotMarkets();
-            reply.send(result);
-        } catch (error) {
-            reply.send({ error: error.message });
-        }
-    });
 
-    fastify.get('/futures', async (request, reply) => {
-        try {
-            const result: IResult = marketsManager.getAvailableFuturesMarkets();
-            reply.send(result);
-        } catch (error) {
-            reply.send({ error: error.message });
-        }
-    });
-    done();
-}
+
+router.get('/spot', async (req, res) => {
+    try {
+        const result = marketsManager.getAvailableSpotMarkets();
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.get('/futures', async (req, res) => {
+    try {
+        const result = marketsManager.getAvailableFuturesMarkets();
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+export { router as marketsRoutes };

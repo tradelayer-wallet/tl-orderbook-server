@@ -1,8 +1,12 @@
-import { FastifyInstance } from "fastify";
-import { SocketManager } from "./manager.class";
+import HyperExpress from 'hyper-express';
+import { SocketManager } from './manager.class';
 
-export const initSocketService = (server: FastifyInstance) => {
-    socketService = new SocketManager(server);
-};
+const app = new HyperExpress.Server();
 
-export let socketService: SocketManager;
+export let socketManager: SocketManager;
+
+export function initSocketService(server: HyperExpress.Server) {
+    // Initialize SocketManager with the HyperExpress server
+    socketManager = new SocketManager(server);
+    console.log('Socket Service Initialized');
+}

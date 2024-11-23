@@ -15,6 +15,10 @@ module.exports = (env, argv) => {
           use: 'ts-loader',
           exclude: /node_modules/,
         },
+        {
+          test: /\.node$/,
+          use: 'node-loader',
+        },
       ],
     },
     resolve: {
@@ -29,6 +33,7 @@ module.exports = (env, argv) => {
       'pino-pretty',
       'bufferutil',
       'utf-8-validate',
+      'uWebSockets.js',
     ],
     optimization: {
       minimizer: [

@@ -1,7 +1,8 @@
-import { Socket } from "socket.io";
+// channel-swap.class.ts
+import { SocketEventManager } from './socket-event-manager';
 import { IResultChannelSwap } from "../../utils/types/mix.types";
 import { ITradeInfo, TOrder } from "../../utils/types/orderbook.types";
-
+import { Websocket } from 'hyper-express';
 
 class SwapEvent {
     constructor(
@@ -10,20 +11,28 @@ class SwapEvent {
         public data: any,
     ) {}
 }
+
 const swapEventName = 'swap';
+
 export class ChannelSwap {
     private readyRes: (value: IResultChannelSwap) => void;
+    private clientManager: SocketEventManager;
+    private dealerManager: SocketEventManager;
+    private isClosed: boolean = false;
+
     constructor(
-        private client: Socket, 
-        private dealer: Socket, 
+        private client: Websocket, 
+        private dealer: Websocket, 
         private tradeInfo: ITradeInfo, 
         private unfilled: TOrder,
     ) {
+        this.clientManager = new SocketEventManager(client);
+        this.dealerManager = new SocketEventManager(dealer);
         this.onReady();
         this.openChannel();
     }
 
-    onReady() {
+    onReady(): Promise<IResultChannelSwap> {
         return new Promise<IResultChannelSwap>((res) => {
             this.readyRes = res;
         });
@@ -33,42 +42,62 @@ export class ChannelSwap {
         this.handleEvents();
         const buyerSocketId = this.tradeInfo.buyer.socketId;
         const trade = { tradeInfo: this.tradeInfo, unfilled: this.unfilled };
-        this.client.emit('new-channel', { ...trade, isBuyer: this.client.id === buyerSocketId });
-        this.dealer.emit('new-channel', { ...trade, isBuyer: this.dealer.id === buyerSocketId });
+        const isBuyerClient = (this.client as any).id === buyerSocketId;
+
+        // Send 'new-channel' event to both client and dealer
+        this.clientManager.send('new-channel', { ...trade, isBuyer: isBuyerClient });
+        this.dealerManager.send('new-channel', { ...trade, isBuyer: !isBuyerClient });
     }
 
     private handleEvents(): void {
-        this.removePreviuesEventListeners(swapEventName);
-        this.handleEventsAndPassToCP(swapEventName);
-        [this.client.id, this.dealer.id]
-            .forEach(p => {
-                [this.dealer, this.client]
-                    .forEach(c => {
-                        c.on(`${p}::${swapEventName}`, (swapEvent: SwapEvent) => {
-                            const { eventName, data, socketId } = swapEvent;
-                            if (eventName === "BUYER:STEP6") {
-                                if (this.readyRes) this.readyRes({ data: { txid: data } });
-                                this.removePreviuesEventListeners(swapEventName);
-                            }
-        
-                            if (eventName === "TERMINATE_TRADE") {
-                                if (this.readyRes) this.readyRes({ error: data, socketId });
-                                this.removePreviuesEventListeners(swapEventName);
-                            }
-                        });
-                    });
-            });
+        this.handleEventsAndPassToCounterparty();
+
+        const onSwapEvent = (swapEvent: SwapEvent) => {
+            const { eventName, socketId, data } = swapEvent;
+
+            if (eventName === "BUYER:STEP6") {
+                if (this.readyRes) this.readyRes({ data: { txid: data } });
+                this.closeChannel();
+            }
+
+            if (eventName === "TERMINATE_TRADE") {
+                if (this.readyRes) this.readyRes({ error: data, socketId });
+                this.closeChannel();
+            }
+        };
+
+        this.clientManager.on(swapEventName, onSwapEvent);
+        this.dealerManager.on(swapEventName, onSwapEvent);
     }
 
-    private removePreviuesEventListeners(event: string) {
-        this.client.removeAllListeners(`${this.client.id}::${event}`);
-        this.dealer.removeAllListeners(`${this.dealer.id}::${event}`);
+    private handleEventsAndPassToCounterparty() {
+        const clientId = (this.client as any).id;
+        const dealerId = (this.dealer as any).id;
+
+        const passToDealer = (data: any) => {
+            this.dealerManager.send(`${clientId}::${swapEventName}`, data);
+        };
+
+        const passToClient = (data: any) => {
+            this.clientManager.send(`${dealerId}::${swapEventName}`, data);
+        };
+
+        this.clientManager.on(`${clientId}::${swapEventName}`, passToDealer);
+        this.dealerManager.on(`${dealerId}::${swapEventName}`, passToClient);
     }
 
-    private handleEventsAndPassToCP(event: string) {
-        const dealerEvent = `${this.dealer.id}::${event}`;
-        const clientEvent = `${this.client.id}::${event}`;
-        this.dealer.on(dealerEvent, (data: SwapEvent) => this.client.emit(dealerEvent, data));
-        this.client.on(clientEvent, (data: SwapEvent) => this.dealer.emit(clientEvent, data));
+    private closeChannel() {
+        this.isClosed = true;
+        // Remove event listeners
+        this.clientManager.off(swapEventName, this.handleSwapEvent);
+        this.dealerManager.off(swapEventName, this.handleSwapEvent);
+        // Close the event managers
+        this.clientManager.close();
+        this.dealerManager.close();
     }
+
+    // Added this method to avoid closure issues with 'this'
+    private handleSwapEvent = (swapEvent: SwapEvent) => {
+        // Implementation as above in handleEvents
+    };
 }

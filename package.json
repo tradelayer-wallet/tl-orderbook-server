@@ -18,6 +18,7 @@
     "fastify": "^3.27.0",
     "fastify-cors": "^6.0.2",
     "fastify-socket.io": "^3.0.0",
+    "node-loader": "^2.1.0",
     "nodemon": "^2.0.14",
     "socket.io": "^4.4.1",
     "ts-loader": "^9.2.4",
@@ -28,6 +29,9 @@
   },
   "dependencies": {
     "@geut/fastify-uws": "^6.0.0",
+    "express": "^4.21.1",
+    "express-uws": "^4.0.2",
+    "hyper-express": "^6.17.2",
     "moment": "^2.29.4",
     "uws": "^200.0.0"
   }
