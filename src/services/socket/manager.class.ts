@@ -30,7 +30,13 @@ export class SocketManager {
 
     private initService() {
         const fastifyIO = require("fastify-socket.io");
-        this.server.register(fastifyIO);
+       this.server.register(fastifyIO, {
+            cors: {
+                origin: ["https://layerwallet.com", "http://localhost:4200"], // Web origins allowed
+                methods: ["GET", "POST"], // Allowed HTTP methods
+                credentials: true, // Allow cookies/auth headers
+            },
+        });
         this.server.ready().then(() => {
             console.log(`Socket Service Initialized`);
             this.io.on(OnEvents.CONNECTION, onConnection);
