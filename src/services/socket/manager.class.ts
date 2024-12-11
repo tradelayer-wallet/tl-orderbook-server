@@ -1,3 +1,4 @@
+import fs from 'fs';
 import { FastifyInstance } from "fastify";
 import { Server, Socket } from "socket.io";
 import { TFilter } from "../../utils/types/markets.types";
@@ -29,10 +30,14 @@ export class SocketManager {
     }
 
     private initService() {
+         const httpsOptions = {
+            key: fs.readFileSync('/etc/letsencrypt/live/ws.layerwallet.com/privkey.pem'),
+            cert: fs.readFileSync('/etc/letsencrypt/live/ws.layerwallet.com/fullchain.pem'),
+        };
         const fastifyIO = require("fastify-socket.io");
        this.server.register(fastifyIO, {
             cors: {
-                origin: ["*"], // Web origins allowed "https://layerwallet.com", "https://www.layerwallet.com", "http://localhost:4200",
+                origin: ["https://layerwallet.com", "https://www.layerwallet.com"], // Web origins allowed "https://layerwallet.com", "https://www.layerwallet.com", "http://localhost:4200",
                 methods: ["GET", "POST"], // Allowed HTTP methods
                 credentials: false, // Allow cookies/auth headers
             },
