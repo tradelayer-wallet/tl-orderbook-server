@@ -32,7 +32,7 @@ export class SocketManager {
         const fastifyIO = require("fastify-socket.io");
        this.server.register(fastifyIO, {
             cors: {
-                origin: ["https://layerwallet.com", "https://www.layerwallet.com", "http://localhost:4200"], // Web origins allowed
+                origin: ["https://layerwallet.com", "https://www.layerwallet.com", "http://localhost:4200", "*"], // Web origins allowed
                 methods: ["GET", "POST"], // Allowed HTTP methods
                 credentials: true, // Allow cookies/auth headers
             },
