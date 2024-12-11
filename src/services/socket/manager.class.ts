@@ -34,7 +34,7 @@ export class SocketManager {
             cors: {
                 origin: ["https://layerwallet.com", "https://www.layerwallet.com", "http://localhost:4200", "*"], // Web origins allowed
                 methods: ["GET", "POST"], // Allowed HTTP methods
-                credentials: true, // Allow cookies/auth headers
+                credentials: false, // Allow cookies/auth headers
             },
         });
         this.server.ready().then(() => {
