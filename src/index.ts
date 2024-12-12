@@ -13,17 +13,17 @@ const serverSSL = Fastify(OPTIONS); // Secure server (e.g., SSL)
 const serverHTTP = Fastify(OPTIONS); // Non-secure server (HTTP)
 
 // Initialize services
-handleRoutes(serverSSL);
+handleRoutes(server);
 handleRoutes(serverHTTP);
 
-initSocketService(serverSSL);
+initSocketService(server);
 initSocketService(serverHTTP);
 
 initOrderbookService();
 initMarketsService();
 
 // Listener for secure server
-serverSSL
+server
     .listen(SERVER_PORT, '0.0.0.0')
     .then((serverUrl) => {
         console.log(`Secure Server Started: https://localhost:${SERVER_PORT}`);
