@@ -4,6 +4,7 @@ import { envConfig } from './config/env.config';
 import { initSocketService } from './services/socket';
 import { initOrderbookService } from './services/orderbook';
 import { initMarketsService } from './services/markets';
+import * as fs from 'fs'
 
 const SERVER_PORT = envConfig.SERVER_PORT || 443;
 const HTTP_PORT = envConfig.HTTP_PORT || 9191;
