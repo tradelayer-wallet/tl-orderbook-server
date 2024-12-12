@@ -9,7 +9,7 @@ const SERVER_PORT = envConfig.SERVER_PORT || 443;
 const HTTP_PORT = envConfig.HTTP_PORT || 9191;
 const OPTIONS: FastifyServerOptions = {};
 
-const serverSSL = Fastify(OPTIONS); // Secure server (e.g., SSL)
+const server = Fastify(OPTIONS); // Secure server (e.g., SSL)
 const serverHTTP = Fastify(OPTIONS); // Non-secure server (HTTP)
 
 // Initialize services
