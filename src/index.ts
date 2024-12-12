@@ -7,8 +7,12 @@ import { initMarketsService } from './services/markets';
 
 const SERVER_PORT = envConfig.SERVER_PORT || 443;
 const HTTP_PORT = envConfig.HTTP_PORT || 9191;
-const SECURE_OPTIONS: FastifyServerOptions = { https: true }; // Ensure the server uses HTTPS where necessary
-
+const SECURE_OPTIONS: FastifyServerOptions = {
+    https: {
+        key: fs.readFileSync('/home/ubuntu/ssl/privkey.pem'),
+        cert: fs.readFileSync('/home/ubuntu/ssl/fullchain.pem'),
+    },
+};
 // Create servers
 const server = Fastify(SECURE_OPTIONS); // Secure server (HTTPS)
 const serverHTTP = Fastify(); // Non-secure server (HTTP)
