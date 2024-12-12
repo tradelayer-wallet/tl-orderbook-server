@@ -5,24 +5,41 @@ import { initSocketService } from './services/socket';
 import { initOrderbookService } from './services/orderbook';
 import { initMarketsService } from './services/markets';
 
-const PORT = envConfig.SERVER_PORT|| 443;
-const HTTP_PORT = envConfig.HTTP_PORT || 9191
+const SERVER_PORT = envConfig.SERVER_PORT || 443;
+const HTTP_PORT = envConfig.HTTP_PORT || 9191;
 const OPTIONS: FastifyServerOptions = {};
 
-const server = Fastify(OPTIONS);
+const serverSSL = Fastify(OPTIONS); // Secure server (e.g., SSL)
+const serverHTTP = Fastify(OPTIONS); // Non-secure server (HTTP)
 
-handleRoutes(server);
-initSocketService(server);
+// Initialize services
+handleRoutes(serverSSL);
+handleRoutes(serverHTTP);
+
+initSocketService(serverSSL);
+initSocketService(serverHTTP);
+
 initOrderbookService();
 initMarketsService();
 
-server
-    .listen(PORT, '0.0.0.0')
+// Listener for secure server
+serverSSL
+    .listen(SERVER_PORT, '0.0.0.0')
     .then((serverUrl) => {
-        console.log(`Server Started: http://localhost:${PORT}`);
+        console.log(`Secure Server Started: https://localhost:${SERVER_PORT}`);
     })
     .catch((error) => {
-        console.log({error})
-        server.log.error(error.message);
+        console.error('Error starting secure server:', error.message);
+        process.exit(1);
+    });
+
+// Listener for non-secure server
+serverHTTP
+    .listen(HTTP_PORT, '0.0.0.0')
+    .then((serverUrl) => {
+        console.log(`Non-Secure Server Started: http://localhost:${HTTP_PORT}`);
+    })
+    .catch((error) => {
+        console.error('Error starting non-secure server:', error.message);
         process.exit(1);
     });
