@@ -1,4 +1,4 @@
-import fs from 'fs';
+import * as fs from 'fs';
 import { FastifyInstance } from "fastify";
 import { Server, Socket } from "socket.io";
 import { TFilter } from "../../utils/types/markets.types";
