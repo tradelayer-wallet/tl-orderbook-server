@@ -31,8 +31,8 @@ export class SocketManager {
 
     private initService() {
          const httpsOptions = {
-            key: fs.readFileSync('/etc/letsencrypt/live/ws.layerwallet.com/privkey.pem'),
-            cert: fs.readFileSync('/etc/letsencrypt/live/ws.layerwallet.com/fullchain.pem'),
+               key: fs.readFileSync('/home/ubuntu/ssl/privkey.pem'),
+               cert: fs.readFileSync('/home/ubuntu/ssl/fullchain.pem'),
         };
         const fastifyIO = require("fastify-socket.io");
        this.server.register(fastifyIO, {
