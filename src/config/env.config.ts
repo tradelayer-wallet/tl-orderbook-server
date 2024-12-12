@@ -7,6 +7,8 @@ dotenv.config({ path });
 
 export const envConfig: {
     SERVER_PORT: number;
+    HTTP_PORT: number
 } = {
     SERVER_PORT: parseInt(process.env.SERVER_PORT),
+    HTTP_PORT: parseInt(process.env.HTTP_PORT)
 };
