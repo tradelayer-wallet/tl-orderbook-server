@@ -7,7 +7,7 @@ import { initOrderbookService } from './services/orderbook';
 import { initMarketsService } from './services/markets';
 
 const SERVER_PORT = envConfig.SERVER_PORT || 443;
-const HTTP_PORT = envConfig.HTTP_PORT || 80;
+const HTTP_PORT = envConfig.HTTP_PORT || 9191;
 
 // Load SSL certificates
 const SECURE_OPTIONS = {
