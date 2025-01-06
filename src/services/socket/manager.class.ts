@@ -93,6 +93,7 @@ const onNewOrder = (socket: Socket) => async (rawOrder: TRawOrder) => {
     }
     const order: TOrder = orderFactory(rawOrder, socket.id);
     const res = await orderbookManager.addOrder(order);
+    console.log('order res '+JSON.stringify(res))
     if (res.error || !res.data) {
         socket.emit(OrderEmitEvents.ERROR, res.error || 'Undifined Error');
         return;
