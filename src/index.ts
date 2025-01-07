@@ -30,7 +30,6 @@ handleRoutes(server);
 initSocketService(server);
 
 handleRoutes(serverHTTP);
-initSocketService(serverHTTP);
 
 initOrderbookService();
 initMarketsService();
