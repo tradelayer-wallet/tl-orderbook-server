@@ -22,14 +22,14 @@ const server = Fastify({
 });
 
 // Create HTTP Fastify instance
-const serverHTTP = Fastify({ logger: true });
+//const serverHTTP = Fastify({ logger: true });
 
 
 // Initialize routes and services
 handleRoutes(server);
 initSocketService(server);
 
-handleRoutes(serverHTTP);
+//handleRoutes(serverHTTP);
 
 initOrderbookService();
 initMarketsService();
