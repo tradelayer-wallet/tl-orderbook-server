@@ -142,6 +142,11 @@ export class Orderbook {
         const openedOrders = orderbookManager.getOrdersBySocketId(socketid);
         const orderHistory = orderbookManager.getOrdersHistory();
         const socketObj = socketService.io.sockets.sockets.get(socketid);
+        console.log('inside update place orders '+JSON.stringify(socketService.io.sockets.sockets))  
+        if (!socketObj) {
+            console.error(`Socket object not found for socket_id: ${socketid}`);
+            return;
+        }
         socketObj.emit(EmitEvents.PLACED_ORDERS, { openedOrders, orderHistory });
     }
 
@@ -204,6 +209,7 @@ export class Orderbook {
                 console.log('inside no match '+this.orderbookName+' '+JSON.stringify(order))
                 saveLog(this.orderbookName, "ORDER", order);
                 this.orders = [...this.orders, order];
+                console.log('is orders not the err')
                 this.updatePlacedOrdersForSocketId(order.socket_id);
                 return { data: { order } };
             } else {
