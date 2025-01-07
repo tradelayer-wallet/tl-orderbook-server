@@ -186,6 +186,7 @@ export class Orderbook {
             }
             return { data: { match: null } };
         } catch(error) {
+            console.log('error in match')
             return { error: error.message };
         }
     }
@@ -197,6 +198,7 @@ export class Orderbook {
             }
 
             const matchRes = this.checkMatch(order);
+            console.log('match res '+JSON.stringify(matchRes))
             if (matchRes.error || !matchRes.data) throw new Error(`${matchRes.error || "Undefined Error"}`);
             if (!matchRes.data.match) {
                 saveLog(this.orderbookName, "ORDER", order);
