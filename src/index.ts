@@ -1,5 +1,6 @@
 import * as fs from 'fs'; // Import fs for reading SSL certificates
 import Fastify from 'fastify';
+import fastifySocketIo from 'fastify-socket.io'; // Import socket.io plugin for Fastify
 import { handleRoutes } from './routes/routes';
 import { envConfig } from './config/env.config';
 import { initSocketService } from './services/socket';
@@ -23,6 +24,7 @@ const server = Fastify({
 
 // Create HTTP Fastify instance
 const serverHTTP = Fastify({ logger: true });
+server.register(fastifySocketIo);
 
 // Initialize routes and services
 handleRoutes(server);
