@@ -141,6 +141,8 @@ export class Orderbook {
     updatePlacedOrdersForSocketId(socketid: string) {
         const openedOrders = orderbookManager.getOrdersBySocketId(socketid);
         const orderHistory = orderbookManager.getOrdersHistory();
+
+            console.log('Current sockets:', Array.from(socketService.io.sockets.sockets.keys()));
         const socketObj = socketService.io.sockets.sockets.get(socketid);
         console.log('inside update place orders '+JSON.stringify(socketService.io.sockets.sockets))  
         if (!socketObj) {
