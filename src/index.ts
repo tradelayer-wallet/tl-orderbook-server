@@ -46,7 +46,7 @@ server
     });
 
 // Start HTTP server
-serverHTTP
+/*serverHTTP
     .listen(HTTP_PORT, '0.0.0.0')
     .then(() => {
         console.log(`Non-secure server running on http://localhost:${HTTP_PORT}`);
@@ -55,3 +55,4 @@ serverHTTP
         console.error('Error starting HTTP server:', err.message);
         process.exit(1);
     });
+*/
