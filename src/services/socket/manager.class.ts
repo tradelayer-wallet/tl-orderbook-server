@@ -101,6 +101,7 @@ const onNewOrder = (socket: Socket) => async (rawOrder: TRawOrder) => {
     }
 
     if (res.data.order) {
+        console.log('inside the if res.data.order block '+socket)
         socket.emit(OrderEmitEvents.SAVED, res.data.order.uuid);
         const openedOrders = orderbookManager.getOrdersBySocketId(socket.id);
         const orderHistory = orderbookManager.getOrdersHistory();
