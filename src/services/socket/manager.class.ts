@@ -80,6 +80,7 @@ const onManyOrders = (socket: Socket) => async (rawOrders: TRawOrder[]) => {
 };
 
 const onDisconnect = (socket: Socket) => (reason: string) => {
+     console.log(`${socket.id} Disconnected. Reason: ${reason}`);
     const openedOrders = orderbookManager.getOrdersBySocketId(socket.id);
     openedOrders.forEach((o) => orderbookManager.removeOrder(o.uuid, socket.id));
     console.log(`${socket.id} Disconnected! Reason: ${reason}`);
