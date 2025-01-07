@@ -64,7 +64,6 @@ export class SocketManager {
 
 const onConnection = (socket: Socket) => {
     console.log(`New Connection: ${socket.id}`);
-    console.log('Current Sockets:', Array.from(this.io.sockets.sockets.keys()));
 
     socket.on(OnEvents.DISCONNECT, onDisconnect(socket));
     socket.on(OnEvents.NEW_ORDER, onNewOrder(socket));
