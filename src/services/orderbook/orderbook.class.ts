@@ -201,6 +201,7 @@ export class Orderbook {
             console.log('match res '+JSON.stringify(matchRes))
             if (matchRes.error || !matchRes.data) throw new Error(`${matchRes.error || "Undefined Error"}`);
             if (!matchRes.data.match) {
+                console.log('inside no match '+this.orderbookName+' '+JSON.stringify(order))
                 saveLog(this.orderbookName, "ORDER", order);
                 this.orders = [...this.orders, order];
                 this.updatePlacedOrdersForSocketId(order.socket_id);
