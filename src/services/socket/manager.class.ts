@@ -31,13 +31,15 @@ export class SocketManager {
     private async initService() {
         try {
             const fastifyIO = require('fastify-socket.io');
-            this.server.register(fastifyIO, {
+            this.server.register(require('fastify-socket.io'), {
                 cors: {
-                    origin: ['https://layerwallet.com', 'https://www.layerwallet.com'],
+                    origin: ['https://layerwallet.com', 'https://www.layerwallet.com'], // Adjust to match your web client domains
                     methods: ['GET', 'POST'],
                     credentials: true,
                 },
+                transports: ['websocket', 'polling'], // Allow both transports
             });
+
 
             await this.server.ready();
             console.log('Socket Service Initialized');
