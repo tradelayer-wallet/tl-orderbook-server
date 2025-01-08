@@ -49,9 +49,3 @@ Promise.all([
     console.error('Error initializing services:', err.message);
     process.exit(1);
   });
-
-  .catch((err) => {
-    console.error('Error starting servers:', err.message);
-    process.exit(1);
-  });
-
