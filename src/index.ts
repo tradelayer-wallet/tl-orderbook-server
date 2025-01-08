@@ -6,7 +6,7 @@ import { initOrderbookService } from './services/orderbook';
 import { initMarketsService } from './services/markets';
 import { SocketManager } from './services/socket/manager.class';
 
-const HTTPS_PORT = envConfig.HTTPS_PORT || 443;
+const HTTPS_PORT = 443;
 const HTTP_PORT = envConfig.HTTP_PORT || 9191;
 
 // Load SSL certificates
@@ -40,8 +40,8 @@ Promise.all([
   serverHTTP.listen({ port: HTTP_PORT, host: '0.0.0.0' }),
 ])
   .then(async ([httpsAddress, httpAddress]) => {
-    const httpsPort = typeof httpsAddress === 'string' ? httpsAddress : httpsAddress?.port;
-    const httpPort = typeof httpAddress === 'string' ? httpAddress : httpAddress?.port;
+    const httpsPort = typeof httpsAddress === 'string'
+    const httpPort = typeof httpAddress === 'string'
 
     console.log(`Secure server running at port: ${httpsPort}`);
     console.log(`Non-secure server running at port: ${httpPort}`);
