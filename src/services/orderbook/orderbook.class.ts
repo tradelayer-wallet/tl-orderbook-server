@@ -115,6 +115,7 @@ export class Orderbook {
             console.log('inside new channel '+buyerSocketId+' '+sellerSocketId+' '+buyerSocket+' '+sellerSocket)
             const channel = new ChannelSwap(buyerSocket, sellerSocket, tradeInfo, unfilled);
             const channelRes = await channel.onReady();
+            console.log('channelRes '+JSON.stringify(channelRes))
             if (channelRes.error || !channelRes.data) return channelRes;
 
             const historyTrade: IHistoryTrade = {
