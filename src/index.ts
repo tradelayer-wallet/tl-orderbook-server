@@ -41,8 +41,6 @@ serverHTTPS
   .then(() => {
     console.log(`Secure server running on https://0.0.0.0:${HTTPS_PORT}`);
 
-    // Attach the single Socket.IO to the HTTPS server
-    SocketManager.attachToServer(serverHTTPS);
   })
   .catch((err) => {
     console.error('Error starting HTTPS server:', err.message);
@@ -55,8 +53,6 @@ serverHTTP
   .then(() => {
     console.log(`Non-secure server running on http://0.0.0.0:${HTTP_PORT}`);
 
-    // Attach the same Socket.IO to the HTTP server
-    SocketManager.attachToServer(serverHTTP);
   })
   .catch((err) => {
     console.error('Error starting HTTP server:', err.message);
