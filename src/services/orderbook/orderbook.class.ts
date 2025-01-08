@@ -224,7 +224,7 @@ export class Orderbook {
                 if (buildTradeRes.error || !buildTradeRes.data) {
                     throw new Error(`${buildTradeRes.error || "Building Trade Failed. Code 2"}`);
                 }
-
+                console.log('build trade info ' +JSON.stringify(buildTradeRes.data.tradeInfo)+' '+JSON.stringify(buildTradeRes.data.unfilled))
                 const newChannelRes = await this.newChannel(buildTradeRes.data.tradeInfo, buildTradeRes.data.unfilled);
                 console.log('new channel res '+JSON.stringify(newChannelRes))
                 if (newChannelRes.error || !newChannelRes.data) {
