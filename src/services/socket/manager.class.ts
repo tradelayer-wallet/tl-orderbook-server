@@ -103,12 +103,23 @@ const onNewOrder = (socket: Socket) => async (rawOrder: TRawOrder) => {
     }
 
     if (res.data.order) {
-        console.log('inside the if res.data.order block '+socket)
-        socket.emit(OrderEmitEvents.SAVED, res.data.order.uuid);
-        const openedOrders = orderbookManager.getOrdersBySocketId(socket.id);
-        const orderHistory = orderbookManager.getOrdersHistory();
-        socket.emit(EmitEvents.PLACED_ORDERS, { openedOrders, orderHistory });
-    }
+    console.log(`Inside the if res.data.order block. Socket ID: ${socket.id}`);
+    console.log(`Emitting ${OrderEmitEvents.SAVED} with UUID: ${res.data.order.uuid}`);
+    
+    socket.emit(OrderEmitEvents.SAVED, res.data.order.uuid);
+
+    console.log(`Fetching opened orders for Socket ID: ${socket.id}`);
+    const openedOrders = orderbookManager.getOrdersBySocketId(socket.id);
+    console.log(`Opened orders: ${JSON.stringify(openedOrders)}`);
+
+    console.log('Fetching order history...');
+    const orderHistory = orderbookManager.getOrdersHistory();
+    console.log(`Order history: ${JSON.stringify(orderHistory)}`);
+    
+    console.log(`Emitting ${EmitEvents.PLACED_ORDERS} with data:`, { openedOrders, orderHistory });
+    socket.emit(EmitEvents.PLACED_ORDERS, { openedOrders, orderHistory });
+}
+
 };
 
 const onUpdateOrderbook = (socket: Socket) => async (filter: TFilter) => {
