@@ -6,7 +6,7 @@ import { initSocketService } from './services/socket';
 import { initOrderbookService } from './services/orderbook';
 import { initMarketsService } from './services/markets';
 
-const HTTP_PORT = envConfig.HTTP_PORT || 9191;
+const HTTP_PORT = envConfig.HTTP_PORT || 9090;
 
 // Create HTTP Fastify instance (default to HTTP)
 const server = Fastify({ logger: true });
