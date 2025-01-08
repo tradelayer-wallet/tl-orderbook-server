@@ -9,7 +9,7 @@ import {
 } from "../../utils/types/orderbook.types";
 import { IResult, IResultChannelSwap } from "../../utils/types/mix.types";
 import { safeNumber, saveLog, updateOrderLog } from "../../utils/pure/mix.pure";
-import { socketService } from "../socket";
+import { SocketManager } from "../socket/manager.class";
 import { ChannelSwap } from "../channel-swap/channel-swap.class";
 import { TFilter } from "../../utils/types/markets.types";
 import { orderbookManager } from ".";
@@ -35,7 +35,7 @@ export class Orderbook {
 
     set orders(value: TOrder[]) {
         this._orders = value;
-        SocketService.io.emit(EmitEvents.UPDATE_ORDERS_REQUEST);
+        SocketManager.io.emit(EmitEvents.UPDATE_ORDERS_REQUEST);
         
     }
 
@@ -78,7 +78,7 @@ export class Orderbook {
                 arrayData.forEach(d => data.push(d));
             });
             this._historyTrades = data.slice(0, 2000);
-            socketService.io.emit(EmitEvents.UPDATE_ORDERS_REQUEST);
+            SocketManager.io.emit(EmitEvents.UPDATE_ORDERS_REQUEST);
         } catch (error) {
             console.log({ error });
         }
@@ -110,8 +110,8 @@ export class Orderbook {
         try {
             const buyerSocketId = tradeInfo.buyer.socketId;
             const sellerSocketId = tradeInfo.seller.socketId;
-            const buyerSocket = socketService.io.sockets.sockets.get(buyerSocketId);
-            const sellerSocket = socketService.io.sockets.sockets.get(sellerSocketId);
+            const buyerSocket = SocketManager.io.sockets.sockets.get(buyerSocketId);
+            const sellerSocket = SocketManager.io.sockets.sockets.get(sellerSocketId);
             const channel = new ChannelSwap(buyerSocket, sellerSocket, tradeInfo, unfilled);
             const channelRes = await channel.onReady();
             if (channelRes.error || !channelRes.data) return channelRes;
@@ -130,13 +130,13 @@ export class Orderbook {
 
     private lockOrder(order: TOrder, lock: boolean = true) {
         order.lock = lock;
-        socketService.io.emit(EmitEvents.UPDATE_ORDERS_REQUEST);
+        SocketManager.io.emit(EmitEvents.UPDATE_ORDERS_REQUEST);
     }
 
     private saveToHistory(historyTrade: IHistoryTrade) {
         this._historyTrades = [historyTrade, ...this.historyTrades.slice(0, 1999)];
         saveLog(this.orderbookName, "TRADE", historyTrade);
-        socketService.io.emit(EmitEvents.UPDATE_ORDERS_REQUEST);
+        SocketManager.io.emit(EmitEvents.UPDATE_ORDERS_REQUEST);
     }
 
     updatePlacedOrdersForSocketId(socketid: string) {
@@ -144,7 +144,7 @@ export class Orderbook {
         const orderHistory = orderbookManager.getOrdersHistory();
 
             console.log('Current sockets:', Array.from(socketService.io.sockets.sockets.keys()));
-        const socketObj = socketService.io.sockets.sockets.get(socketid);
+        const socketObj = SocketManager.io.sockets.sockets.get(socketid);
         console.log('inside update place orders '+JSON.stringify(socketService.io.sockets.sockets))  
         if (!socketObj) {
             console.error(`Socket object not found for socket_id: ${socketid}`);
