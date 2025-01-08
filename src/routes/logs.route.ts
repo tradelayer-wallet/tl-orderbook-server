@@ -1,13 +1,13 @@
 import { FastifyInstance } from "fastify";
 import { readFileSync, existsSync, writeFileSync, readdirSync } from "fs";
 import moment = require("moment");
-import { socketService } from "../services/socket";
+import { SocketManager } from "../services/socket/manager.class";
 import { IResult } from "../utils/types/mix.types";
 
 export const logsRoutes = (fastify: FastifyInstance, opts: any, done: any) => {
    fastify.get('/sessions', async (request, reply) => {
     try {
-        const sessions = socketService.liveSessions;
+        const sessions = SocketManager.liveSessions;
         const count = sessions.length;
         const result: IResult = { data: { sessions, count } };
         reply.send(result);
