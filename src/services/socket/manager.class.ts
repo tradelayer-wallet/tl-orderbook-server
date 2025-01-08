@@ -12,70 +12,69 @@ interface IClientSession {
   ip: string;
 }
 
-/**
- * A singleton SocketManager that can attach to multiple Fastify servers.
- */
 export class SocketManager {
   private static _io: Server | null = null;        // The single Socket.IO instance
   private static _liveSessions: IClientSession[] = []; // Keep track of connections
+  private static _initialized = false;            // Track initialization
 
   /**
-   * If Socket.IO isn't created yet, create it; otherwise reuse the same instance.
+   * Initialize the SocketManager with the provided Fastify servers.
+   * This ensures Socket.IO is properly set up before any usage.
    */
-  private static initSocketIO() {
-    if (!this._io) {
-      this._io = new Server({
-        cors: {
-          origin: ['https://layerwallet.com', 'https://www.layerwallet.com'],
-          methods: ['GET', 'POST'],
-          credentials: true,
-        },
-        transports: ['websocket', 'polling'],
-      });
-
-      // Set up the 'connection' event once
-      this._io.on(OnEvents.CONNECTION, (socket: Socket) => {
-        console.log(`New Connection: ${socket.id}`);
-        this.handleConnection(socket);
-      });
-      console.log('Socket IO created');
+  public static async init(servers: FastifyInstance[]): Promise<void> {
+    if (this._initialized) {
+      throw new Error('SocketManager is already initialized.');
     }
+
+    // Create the Socket.IO instance
+    this._io = new Server({
+      cors: {
+        origin: ['https://layerwallet.com', 'https://www.layerwallet.com'],
+        methods: ['GET', 'POST'],
+        credentials: true,
+      },
+      transports: ['websocket', 'polling'],
+    });
+
+    // Attach the Socket.IO instance to each provided server
+    servers.forEach((server) => {
+      this._io?.attach(server.server);
+      console.log(`Socket.IO attached to server on port ${server.server.address().port}`);
+    });
+
+    // Set up the 'connection' event once
+    this._io.on(OnEvents.CONNECTION, (socket: Socket) => {
+      console.log(`New Connection: ${socket.id}`);
+      this.handleConnection(socket);
+    });
+
+    this._initialized = true;
+    console.log('SocketManager initialized.');
   }
 
   /**
-   * Attach our single `io` to any given Fastify server (HTTP or HTTPS).
-   */
-  public static attachToServer(server: FastifyInstance) {
-    this.initSocketIO();
-    this._io?.attach(server.server);  // Use the native Node server
-    console.log('Socket.IO attached to server:', server.server.address());
-  }
-
-  /**
-   * Our custom connection handler (extracted from your old code).
+   * Handle a new connection. This centralizes all Socket.IO event handling logic.
    */
   private static handleConnection(socket: Socket) {
-    // 1) Track live sessions
-    SocketManager._liveSessions.push({
+    this._liveSessions.push({
       id: socket.id,
       startTime: Date.now(),
       ip: socket.client.conn.remoteAddress,
     });
 
     socket.on(OnEvents.DISCONNECT, () => {
-      SocketManager._liveSessions = SocketManager._liveSessions.filter(s => s.id !== socket.id);
+      this._liveSessions = this._liveSessions.filter(s => s.id !== socket.id);
       console.log(`${socket.id} Disconnected`);
       const openedOrders = orderbookManager.getOrdersBySocketId(socket.id);
       openedOrders.forEach(o => orderbookManager.removeOrder(o.uuid, socket.id));
     });
 
-    // 2) Hook up your events
+    // Event handlers
     socket.on(OnEvents.NEW_ORDER, this.onNewOrder(socket));
     socket.on(OnEvents.UPDATE_ORDERBOOK, this.onUpdateOrderbook(socket));
     socket.on(OnEvents.CLOSE_ORDER, this.onClosedOrder(socket));
     socket.on(OnEvents.MANY_ORDERS, this.onManyOrders(socket));
   }
-
   /**
    * The same event callbacks you had before.
    */
