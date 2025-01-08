@@ -112,7 +112,7 @@ export class Orderbook {
             const sellerSocketId = tradeInfo.seller.socketId;
             const buyerSocket = SocketManager.io.sockets.sockets.get(buyerSocketId);
             const sellerSocket = SocketManager.io.sockets.sockets.get(sellerSocketId);
-            console.log('inside new channel '+buyerSocketId+' '+sellerSocketId+' '+JSON.stringify(buyerSocket)+' '+JSON.stringify(sellerSocket))
+            console.log('inside new channel '+buyerSocketId+' '+sellerSocketId+' '+buyerSocket+' '+sellerSocket)
             const channel = new ChannelSwap(buyerSocket, sellerSocket, tradeInfo, unfilled);
             const channelRes = await channel.onReady();
             if (channelRes.error || !channelRes.data) return channelRes;
