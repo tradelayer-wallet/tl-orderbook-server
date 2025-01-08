@@ -4,7 +4,6 @@ import { handleRoutes } from './routes/routes';
 import { envConfig } from './config/env.config';
 import { initOrderbookService } from './services/orderbook';
 import { initMarketsService } from './services/markets';
-// We import our new SocketManager
 import { SocketManager } from './services/socket/socket.manager';
 
 const HTTPS_PORT = envConfig.HTTPS_PORT || 443;
@@ -35,26 +34,19 @@ handleRoutes(serverHTTP);
 initOrderbookService();
 initMarketsService();
 
-// Start HTTPS server
-serverHTTPS
-  .listen({ port: HTTPS_PORT, host: '0.0.0.0' })
-  .then(() => {
-    console.log(`Secure server running on https://0.0.0.0:${HTTPS_PORT}`);
+// Start both servers and initialize SocketManager
+Promise.all([
+  serverHTTPS.listen({ port: HTTPS_PORT, host: '0.0.0.0' }),
+  serverHTTP.listen({ port: HTTP_PORT, host: '0.0.0.0' }),
+])
+  .then(async ([httpsAddress, httpAddress]) => {
+    console.log(`Secure server running at ${httpsAddress}`);
+    console.log(`Non-secure server running at ${httpAddress}`);
 
+    // Initialize SocketManager with both servers
+    await SocketManager.init([serverHTTPS, serverHTTP]);
   })
   .catch((err) => {
-    console.error('Error starting HTTPS server:', err.message);
-    process.exit(1);
-  });
-
-// Start HTTP server
-serverHTTP
-  .listen({ port: HTTP_PORT, host: '0.0.0.0' })
-  .then(() => {
-    console.log(`Non-secure server running on http://0.0.0.0:${HTTP_PORT}`);
-
-  })
-  .catch((err) => {
-    console.error('Error starting HTTP server:', err.message);
+    console.error('Error starting servers:', err.message);
     process.exit(1);
   });
