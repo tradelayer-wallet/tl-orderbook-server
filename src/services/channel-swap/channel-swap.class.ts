@@ -33,7 +33,7 @@ export class ChannelSwap {
         this.handleEvents();
         const buyerSocketId = this.tradeInfo.buyer.socketId;
         const trade = { tradeInfo: this.tradeInfo, unfilled: this.unfilled };
-        console.log('inside openChannel '+JSON.stringify(trade)+' '+this.client.id+' '+this.dealer.id)
+        console.log('inside openChannel '+JSON.stringify(this.tradeInfo)+' '+this.client.id+' '+this.dealer.id)
         this.client.emit('new-channel', { ...trade, isBuyer: this.client.id === buyerSocketId });
         this.dealer.emit('new-channel', { ...trade, isBuyer: this.dealer.id === buyerSocketId });
     }
