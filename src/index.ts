@@ -4,7 +4,7 @@ import { handleRoutes } from './routes/routes';
 import { envConfig } from './config/env.config';
 import { initOrderbookService } from './services/orderbook';
 import { initMarketsService } from './services/markets';
-import { SocketManager } from './services/socket/socket.manager';
+import { SocketManager } from './services/socket/manager.class';
 
 const HTTPS_PORT = envConfig.HTTPS_PORT || 443;
 const HTTP_PORT = envConfig.HTTP_PORT || 9191;
