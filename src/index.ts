@@ -40,13 +40,16 @@ Promise.all([
   serverHTTP.listen({ port: HTTP_PORT, host: '0.0.0.0' }),
 ])
   .then(async ([httpsAddress, httpAddress]) => {
-    console.log(`Secure server running at ${httpsAddress}`);
-    console.log(`Non-secure server running at ${httpAddress}`);
+    const httpsPort = typeof httpsAddress === 'string' ? httpsAddress : httpsAddress?.port;
+    const httpPort = typeof httpAddress === 'string' ? httpAddress : httpAddress?.port;
 
-    // Initialize SocketManager with both servers
+    console.log(`Secure server running at port: ${httpsPort}`);
+    console.log(`Non-secure server running at port: ${httpPort}`);
+
     await SocketManager.init([serverHTTPS, serverHTTP]);
   })
   .catch((err) => {
     console.error('Error starting servers:', err.message);
     process.exit(1);
   });
+
