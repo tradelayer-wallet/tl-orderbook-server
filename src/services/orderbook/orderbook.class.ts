@@ -143,9 +143,9 @@ export class Orderbook {
         const openedOrders = orderbookManager.getOrdersBySocketId(socketid);
         const orderHistory = orderbookManager.getOrdersHistory();
 
-            console.log('Current sockets:', Array.from(socketService.io.sockets.sockets.keys()));
+            console.log('Current sockets:', Array.from(SocketManager.io.sockets.sockets.keys()));
         const socketObj = SocketManager.io.sockets.sockets.get(socketid);
-        console.log('inside update place orders '+JSON.stringify(socketService.io.sockets.sockets))  
+        console.log('inside update place orders '+JSON.stringify(SocketManager.io.sockets.sockets))  
         if (!socketObj) {
             console.error(`Socket object not found for socket_id: ${socketid}`);
             return;
