@@ -7,7 +7,7 @@ import { IResult } from "../utils/types/mix.types";
 export const logsRoutes = (fastify: FastifyInstance, opts: any, done: any) => {
    fastify.get('/sessions', async (request, reply) => {
     try {
-        const sessions = SocketManager.liveSessions;
+        const sessions = socketService.liveSessions;
         const count = sessions.length;
         const result: IResult = { data: { sessions, count } };
         reply.send(result);
