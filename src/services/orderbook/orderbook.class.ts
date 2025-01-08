@@ -226,7 +226,9 @@ export class Orderbook {
                 }
 
                 const newChannelRes = await this.newChannel(buildTradeRes.data.tradeInfo, buildTradeRes.data.unfilled);
+                console.log('new channel res '+JSON.stringify(newChannelRes)
                 if (newChannelRes.error || !newChannelRes.data) {
+                    console.log('new channel err '+JSON.stringify(newChannelRes.error))
                     matchRes.data.match.socket_id !== newChannelRes.socketId
                         ? this.lockOrder(matchRes.data.match, false)
                         : this.removeOrder(matchRes.data.match.uuid, matchRes.data.match.socket_id);
