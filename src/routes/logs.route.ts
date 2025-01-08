@@ -5,16 +5,17 @@ import { socketService } from "../services/socket";
 import { IResult } from "../utils/types/mix.types";
 
 export const logsRoutes = (fastify: FastifyInstance, opts: any, done: any) => {
-    fastify.get('/sessions', async (request, reply) => {
-        try {
-            const sessions = socketService.liveSessions;
-            const count = sessions.length;
-            const result: IResult = { data: { sessions, count } };
-            reply.send(result);
-        } catch (error) {
-            reply.send({ error: error.message });
-        }
-    });
+   fastify.get('/sessions', async (request, reply) => {
+    try {
+        const sessions = SocketManager.liveSessions;
+        const count = sessions.length;
+        const result: IResult = { data: { sessions, count } };
+        reply.send(result);
+    } catch (error) {
+        reply.send({ error: error.message });
+    }
+});
+
 
     fastify.get('/orders', async (request, reply) => {
         try {
