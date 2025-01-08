@@ -1,29 +1,37 @@
-import * as fs from 'fs'; // Import fs for reading SSL certificates
+import * as fs from 'fs';
 import Fastify from 'fastify';
-import { handleRoutes } from './routes/routes';
 import { envConfig } from './config/env.config';
+import { handleRoutes } from './routes/routes';
 import { initSocketService } from './services/socket';
 import { initOrderbookService } from './services/orderbook';
 import { initMarketsService } from './services/markets';
 
-const HTTP_PORT = envConfig.HTTP_PORT || 9090;
+const HTTPS_PORT = envConfig.HTTPS_PORT || 443;
 
-// Create HTTP Fastify instance (default to HTTP)
-const server = Fastify({ logger: true });
+const SECURE_OPTIONS = {
+  key: fs.readFileSync('/home/ubuntu/ssl/privkey.pem'),
+  cert: fs.readFileSync('/home/ubuntu/ssl/fullchain.pem'),
+};
 
-// Initialize routes and services
+// Create a single Fastify instance with HTTPS
+const server = Fastify({
+  logger: true,
+  https: SECURE_OPTIONS,
+});
+
+// Attach routes, Socket.IO, etc.
 handleRoutes(server);
 initSocketService(server);
+
 initOrderbookService();
 initMarketsService();
 
-// Start HTTP server
 server
-    .listen(HTTP_PORT, '0.0.0.0') // Bind to 9191
-    .then(() => {
-        console.log(`Non-secure server running on http://localhost:${HTTP_PORT}`);
-    })
-    .catch((err) => {
-        console.error('Error starting HTTP server:', err.message);
-        process.exit(1);
-    });
+  .listen(HTTPS_PORT, '0.0.0.0')
+  .then(() => {
+    console.log(`Secure server running on https://0.0.0.0:${HTTPS_PORT}`);
+  })
+  .catch((err) => {
+    console.error('Error starting HTTPS server:', err.message);
+    process.exit(1);
+  });
