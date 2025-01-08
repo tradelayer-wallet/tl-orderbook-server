@@ -39,7 +39,7 @@ export class SocketManager {
     // Attach the Socket.IO instance to each provided server
     servers.forEach((server) => {
       this._io?.attach(server.server);
-      console.log(`Socket.IO attached to server on port ${server.server.address().port}`);
+      //console.log(`Socket.IO attached to server on port ${server.server.address().port}`);
     });
 
     // Set up the 'connection' event once
