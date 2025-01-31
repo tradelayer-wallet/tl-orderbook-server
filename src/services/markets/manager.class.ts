@@ -11,16 +11,10 @@ export class MarketsManager {
     getAvailableSpotMarkets(): IResult<IMarketType[]> {
         try {
             const LTC = createToken('LTC', 'LTC', 0);
-            const TBILL = createToken('TBILL', 'TBILL', 5);
             const TL = createToken('TL', 'TL', 1);
-            const sLTC = createToken('sLTC', 'sLTC', 's-1-5');
 
             const ltcMarkets: IMarket[] = [
-                createMarket(LTC, TBILL, false),
                 createMarket(TL, LTC, false),
-                createMarket(sLTC, LTC, false),
-                createMarket(TL, TBILL, false),
-                createMarket(sLTC, TBILL, false)
             ];
 
             const ltcMarketType = createMarketType('LTC', ltcMarkets, MARKET_ICONS.LTC, false);
