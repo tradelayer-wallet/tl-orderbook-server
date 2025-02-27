@@ -38,7 +38,6 @@ export class SocketManager {
           this.handleClose(ws);
         });
       });
-
       console.log('Socket Service Initialized with HyperExpress');
     }
 
@@ -180,24 +179,3 @@ export class SocketManager {
         return Array.from(this._liveSessions.keys());
     }
 }
-
-// Initialize HyperExpress app
-const app = new HyperExpress.Server();
-
-// Initialize SocketManager
-const socketManager = new SocketManager(app);
-
-// Handle basic routes
-app.get('/', (req, res) => {
-    res.send('Welcome to the TradeLayer Orderbook Server!');
-});
-
-// Start the HyperExpress server
-const PORT = 9191; // or process.env.SERVER_PORT || 3000;
-app.listen(PORT)
-    .then(() => {
-        console.log(`Server running at http://localhost:${PORT}`);
-    })
-    .catch(err => {
-        console.error('Error starting server:', err);
-    });

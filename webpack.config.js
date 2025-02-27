@@ -33,7 +33,6 @@ module.exports = (env, argv) => {
       'pino-pretty',
       'bufferutil',
       'utf-8-validate',
-      'uWebSockets.js',
     ],
     optimization: {
       minimizer: [

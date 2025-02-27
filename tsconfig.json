@@ -9,7 +9,7 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
      "moduleResolution": "node",
-    "types": ["node", "@types/uws"]
+    "types": ["node"]
 
   },
   "include": ["./src/**/*"],
