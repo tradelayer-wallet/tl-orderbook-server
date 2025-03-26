@@ -91,7 +91,9 @@ export class SocketManager {
       socket.emit(OrderEmitEvents.ERROR, 'Market Orders Not allowed');
       return;
     }
+    console.log('yah')
     const order: TOrder = orderFactory(rawOrder, socket.id);
+    console.log(JSON.stringify(order))
     const res = await orderbookManager.addOrder(order);
     console.log('order res ' + JSON.stringify(res));
     if (res.error || !res.data) {
