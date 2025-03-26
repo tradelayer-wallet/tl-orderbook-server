@@ -23,17 +23,23 @@ export class OrderbookManager {
         }
     }
 
-    async addOrder(order: TOrder, noTrades: boolean = false): Promise<IResult<{ order?: TOrder, trade?: any }>> {
-            try {
-                const existingOrderbook = this.orderbooks.find(b => b.checkCompatible(order));
-                const res = existingOrderbook
-                    ? await existingOrderbook.addOrder(order, noTrades)
-                    : this.newOrderbook(order);
-                return res; 
-            } catch (error) {
-                return { error: error.message };
-            }
+async addOrder(order: TOrder, noTrades: boolean = false): Promise<IResult<{ order?: TOrder; trade?: any }>> {
+    try {
+        const existingOrderbook = this.orderbooks.find(b => b.checkCompatible(order));
+        const res = existingOrderbook
+            ? await existingOrderbook.addOrder(order, noTrades)
+            : this.newOrderbook(order);
+        return res;
+    } catch (error) {
+        let errorMessage = 'check compatibility: ';
+        if (error instanceof Error) {
+            errorMessage += error.message;
+        } else {
+            errorMessage += String(error);
+        }
+        return { error: errorMessage };
     }
+}
 
     removeOrder(uuid: string, socket_id: string): IResult {
         try {
