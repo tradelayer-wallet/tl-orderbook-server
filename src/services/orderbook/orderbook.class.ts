@@ -202,62 +202,61 @@ export class Orderbook {
     }
 
     async addOrder(order: TOrder, noTrades: boolean = false): Promise<IResult<{ order?: TOrder, trade?: ITradeInfo }>> {
-        try {
-            if (!this.checkCompatible(order)) {
-                throw new Error(`Order missmatch current orderbook interface or type`);
-            }
-
-            const matchRes = this.checkMatch(order);
-            console.log('match res '+JSON.stringify(matchRes))
-            if (matchRes.error || !matchRes.data) throw new Error(`${matchRes.error || "Undefined Error"}`);
-            if (!matchRes.data.match) {
-                console.log('inside no match '+this.orderbookName+' '+JSON.stringify(order))
-                saveLog(this.orderbookName, "ORDER", order);
-                this.orders = [...this.orders, order];
-                console.log('is orders not the err')
-                this.updatePlacedOrdersForSocketId(order.socket_id);
-                return { data: { order } };
-            } else {
-
-                if (noTrades) return;
-                this.lockOrder(matchRes.data.match);
-                updateOrderLog(this.orderbookName, matchRes.data.match.uuid, 'FILLED');
-                const buildTradeRes = buildTrade(order, matchRes.data.match);
-                if (buildTradeRes.error || !buildTradeRes.data) {
-                    throw new Error(`${buildTradeRes.error || "Building Trade Failed. Code 2"}`);
-                }
-                console.log('build trade info ' +JSON.stringify(buildTradeRes.data.tradeInfo)+' '+JSON.stringify(buildTradeRes.data.unfilled))
-                const newChannelRes = await this.newChannel(buildTradeRes.data.tradeInfo, buildTradeRes.data.unfilled);
-                console.log('new channel res '+JSON.stringify(newChannelRes))
-                if (newChannelRes.error || !newChannelRes.data) {
-                    console.log('new channel err '+JSON.stringify(newChannelRes.error))
-                    matchRes.data.match.socket_id !== newChannelRes.socketId
-                        ? this.lockOrder(matchRes.data.match, false)
-                        : this.removeOrder(matchRes.data.match.uuid, matchRes.data.match.socket_id);
-                    this.updatePlacedOrdersForSocketId(matchRes.data.match.socket_id);
-                    throw new Error(`${newChannelRes.error || "Undefined Error"}`);
-                }
-
-                if (buildTradeRes.data.unfilled?.uuid === matchRes.data.match.uuid) {
-                    matchRes.data.match.props.amount = buildTradeRes.data.unfilled.props.amount;
-                    this.lockOrder(matchRes.data.match, false);
-                } else {
-                    this.removeOrder(matchRes.data.match.uuid, matchRes.data.match.socket_id);
-                }
-                this.updatePlacedOrdersForSocketId(matchRes.data.match.socket_id);
-
-                if (buildTradeRes.data.unfilled?.uuid === order.uuid) {
-                    const res = await this.addOrder(buildTradeRes.data.unfilled);
-                    return { data: res.data };
-                }
-                this.updatePlacedOrdersForSocketId(order.socket_id);
-
-                return { data: { trade: newChannelRes.data }};
-            }
-        } catch (error) {
-            return { error: error.message };
+    try {
+        if (!this.checkCompatible(order)) {
+            throw new Error(`[A] Order mismatch current orderbook interface or type`);
         }
+
+        const matchRes = this.checkMatch(order);
+        if (matchRes.error || !matchRes.data) {
+            throw new Error(`[B] ${matchRes.error || "Undefined Error"}`);
+        }
+        
+        if (!matchRes.data.match) {
+            saveLog(this.orderbookName, "ORDER", order);
+            this.orders = [...this.orders, order];
+            this.updatePlacedOrdersForSocketId(order.socket_id);
+            return { data: { order } };
+        } else {
+            if (noTrades) return;
+            this.lockOrder(matchRes.data.match);
+            updateOrderLog(this.orderbookName, matchRes.data.match.uuid, 'FILLED');
+            
+            const buildTradeRes = buildTrade(order, matchRes.data.match);
+            if (buildTradeRes.error || !buildTradeRes.data) {
+                throw new Error(`[C] ${buildTradeRes.error || "Building Trade Failed. Code 2"}`);
+            }
+
+            const newChannelRes = await this.newChannel(buildTradeRes.data.tradeInfo, buildTradeRes.data.unfilled);
+            if (newChannelRes.error || !newChannelRes.data) {
+                matchRes.data.match.socket_id !== newChannelRes.socketId
+                    ? this.lockOrder(matchRes.data.match, false)
+                    : this.removeOrder(matchRes.data.match.uuid, matchRes.data.match.socket_id);
+                this.updatePlacedOrdersForSocketId(matchRes.data.match.socket_id);
+                throw new Error(`[D] ${newChannelRes.error || "Undefined Error"}`);
+            }
+
+            if (buildTradeRes.data.unfilled?.uuid === matchRes.data.match.uuid) {
+                matchRes.data.match.props.amount = buildTradeRes.data.unfilled.props.amount;
+                this.lockOrder(matchRes.data.match, false);
+            } else {
+                this.removeOrder(matchRes.data.match.uuid, matchRes.data.match.socket_id);
+            }
+            this.updatePlacedOrdersForSocketId(matchRes.data.match.socket_id);
+
+            if (buildTradeRes.data.unfilled?.uuid === order.uuid) {
+                const res = await this.addOrder(buildTradeRes.data.unfilled);
+                return { data: res.data };
+            }
+            this.updatePlacedOrdersForSocketId(order.socket_id);
+
+            return { data: { trade: newChannelRes.data } };
+        }
+    } catch (error) {
+        return { error: `[E] ${error.message}` };
     }
+}
+
 
     findByFilter(filter: TFilter) {
         if (!this.props) return false;
