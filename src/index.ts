@@ -18,7 +18,7 @@ initOrderbookService();
 initMarketsService();
 
 // Start the HyperExpress server
-server.listen(PORT)
+server.listen(PORT, 127.0.0.1)
     .then(() => {
         console.log(`Server Started: http://localhost:${PORT}`);
     })
