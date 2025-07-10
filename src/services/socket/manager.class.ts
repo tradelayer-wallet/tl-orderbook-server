@@ -17,6 +17,7 @@ export class SocketManager {
     private _liveSessions: Map<string, HyperExpress.Websocket> = new Map();
 
     constructor(private app: HyperExpress.Server) {
+            console.log('SocketManager constructing');
         this.initService();
     }
 
