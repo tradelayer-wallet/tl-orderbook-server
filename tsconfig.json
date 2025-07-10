@@ -8,9 +8,10 @@
     "module": "commonjs",
     "esModuleInterop": true,
     "skipLibCheck": true,
-     "moduleResolution": "node",
-    "types": ["node"]
-
+    "moduleResolution": "node",
+    "types": ["node"],
+    "outDir": "./dist",
+    "rootDir": "./src"
   },
-  "include": ["./src/**/*"],
+  "include": ["./src/**/*"]
 }
