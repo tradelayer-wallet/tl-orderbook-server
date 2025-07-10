@@ -14,7 +14,6 @@
   "devDependencies": {
     "@types/node": "^14.18.9",
     "@types/uuid": "^8.3.4",
-    "@types/uws": "^200.14.0",
     "dotenv": "^10.0.0",
     "fastify": "^3.27.0",
     "fastify-cors": "^6.0.2",
@@ -34,7 +33,6 @@
     "express-uws": "^4.0.2",
     "hyper-express": "^6.17.2",
     "moment": "^2.29.4",
-    "uws": "^200.0.0",
     "uWebSockets.js": "^20.49.0"
   }
 }
