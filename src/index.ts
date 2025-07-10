@@ -13,7 +13,7 @@ const server = new HyperExpress.Server();
 
 // Initialize services with the server instance
 handleRoutes(server);
-initSocketService(ws);
+initSocketService(server);
 initOrderbookService();
 initMarketsService();
 
