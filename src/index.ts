@@ -6,7 +6,7 @@ import { initSocketService } from './services/socket';
 import { initOrderbookService } from './services/orderbook';
 import { initMarketsService } from './services/markets';
 
-const PORT = envConfig.SERVER_PORT || 9191;
+const PORT = envConfig.SERVER_PORT || 3001;
 
 // Initialize HyperExpress server
 const server = new HyperExpress.Server();
