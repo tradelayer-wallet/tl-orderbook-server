@@ -38,11 +38,10 @@ export class Orderbook {
     set orders(value: TOrder[]) {
         this._orders = value;
         // Send updates to all connected WebSocket clients when order changes
-        this._orders.forEach(order => {
-            const socket = socketManager.getSocketById(order.socket_id) as Websocket;
-            if (socket) {
-                socket.send(JSON.stringify({ event: EmitEvents.UPDATE_ORDERS_REQUEST }));
-            }
+        socketManager.broadcastToAll({
+           event: EmitEvents.ORDERBOOK_DATA,
+           orders: this._orders,
+           history: this._historyTrades,
         });
     }
 
