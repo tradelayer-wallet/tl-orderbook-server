@@ -98,12 +98,12 @@ export class Orderbook {
             });
             this._historyTrades = data.slice(0, 2000);
             // Notify all connected clients of updated orderbook history
-            this._orders.forEach(order => {
-                const socket = socketManager.getSocketById(order.socket_id) as Websocket;
-                if (socket) {
-                    socket.send(JSON.stringify({ event: EmitEvents.UPDATE_ORDERS_REQUEST }));
-                }
+            socketManager.broadcastToAll({
+                event: EmitEvents.ORDERBOOK_DATA,
+                orders: this._orders,
+                history: this._historyTrades,
             });
+
         } catch (error) {
             console.log({ error });
         }
