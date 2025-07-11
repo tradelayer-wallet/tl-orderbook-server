@@ -180,4 +180,16 @@ export class SocketManager {
     public get liveSessions() {
         return Array.from(this._liveSessions.keys());
     }
+
+    public broadcastToAll(msg: object) {
+    const str = JSON.stringify(msg);
+    for (const ws of this._liveSessions.values()) {
+        try {
+            ws.send(str);
+        } catch (e) {
+            console.warn('Failed to send to a ws:', e);
+        }
+    }
+}
+
 }
