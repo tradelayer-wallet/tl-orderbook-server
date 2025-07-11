@@ -183,11 +183,12 @@ export class SocketManager {
 
     public broadcastToAll(msg: object) {
         const str = JSON.stringify(msg);
-    for (const ws of Array.from(this._liveSessions.values())) {
-        try {
-            ws.send(str);
-        } catch (e) {
-            console.warn('Failed to send to a ws:', e);
+        for (const ws of Array.from(this._liveSessions.values())) {
+            try {
+                ws.send(str);
+            } catch (e) {
+                console.warn('Failed to send to a ws:', e);
+            }
         }
     }
 }
