@@ -142,8 +142,11 @@ export class SocketManager {
     // Handle closing an order
     private handleCloseOrder(ws: HyperExpress.Websocket, data: any) {
         const id = (ws as any).id;
-        const orderUUID = data.orderUUID;
-        console.log('Canceling order on server: ' + orderUUID);
+        const orderUUID = typeof data === 'string'
+                            ? data
+                            : data.orderUUID || data.uuid;
+
+        console.log('Canceling order on server: ' + JSON.stringify(orderUUID));
         const res = orderbookManager.removeOrder(orderUUID, id);
         console.log('Cancel result: ' + JSON.stringify(res));
         const openedOrders = orderbookManager.getOrdersBySocketId(id);
