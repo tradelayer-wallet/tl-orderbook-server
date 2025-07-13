@@ -131,6 +131,7 @@ export class SocketManager {
 
     // Handle updating the orderbook event
     private async handleUpdateOrderbook(ws: HyperExpress.Websocket, data: any) {
+        console.log('updating ob with data '+JSON.stringify(data))
         const filter = data.filter;
         const orderbook = orderbookManager.orderbooks.find(e => e.findByFilter(filter));
         const orders = orderbook ? orderbook.orders.filter(o => !o.lock) : [];
