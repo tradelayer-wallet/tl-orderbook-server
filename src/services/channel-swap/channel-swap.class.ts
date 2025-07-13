@@ -54,7 +54,7 @@ export class ChannelSwap {
 
         const onSwapEvent = (swapEvent: SwapEvent) => {
             const { eventName, socketId, data } = swapEvent;
-
+            console.log('new swap event ' +JSON.stringify(swapEvent))
             if (eventName === "BUYER:STEP6") {
                 if (this.readyRes) this.readyRes({ data: { txid: data } });
                 this.closeChannel();
