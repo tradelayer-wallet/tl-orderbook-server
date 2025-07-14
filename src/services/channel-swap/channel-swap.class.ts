@@ -68,6 +68,7 @@ export class ChannelSwap {
   const dealerSwapEvt = `${(this.dealer as any).id}::${swapEventName}`;
 
   this.clientMgr.on(clientSwapEvt, (raw: any) => {
+    console.log('client pipe swap '+JSON.stringify(raw))
     const eventName = raw.eventName ?? 'UNKNOWN_STEP';
     const payload = new SwapEvent(eventName, (this.client as any).id, raw.data ?? raw);
     console.log('[Relay] client → dealer', clientSwapEvt, JSON.stringify(payload));
@@ -75,6 +76,7 @@ export class ChannelSwap {
   });
 
   this.dealerMgr.on(dealerSwapEvt, (raw: any) => {
+    console.log('dealer pipe swap '+JSON.stringify(raw))
     const eventName = raw.eventName ?? 'UNKNOWN_STEP';
     const payload = new SwapEvent(eventName, (this.dealer as any).id, raw.data ?? raw);
     console.log('[Relay] dealer → client', dealerSwapEvt, JSON.stringify(payload));
