@@ -12,18 +12,20 @@ export class SocketEventManager {
   }
 
   /* ---------------- private ---------------- */
-  private handleMessage(raw: string | ArrayBuffer) {
-    let parsed: any;
-    try {
-      parsed = JSON.parse(raw as string);
-    } catch (e) {
-      console.error('[SEM] JSON parse error', e);
-      return;
-    }
-    const { event, data } = parsed;
-    const set = this.handlers.get(event);
-    if (set) set.forEach(h => h(data));
+private handleMessage(raw: string | ArrayBuffer) {
+  let parsed: any;
+  try {
+    parsed = JSON.parse(raw as string);
+  } catch (e) {
+    console.error('[SEM] JSON parse error', e);
+    return;
   }
+
+  const event = parsed.event;
+  const set = this.handlers.get(event);
+  if (set) set.forEach(h => h(parsed)); // pass full parsed object
+}
+
 
   /* ---------------- public helpers ---------------- */
   on(event: string, handler: EventHandler) {
