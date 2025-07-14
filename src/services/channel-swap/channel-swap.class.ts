@@ -67,9 +67,11 @@ export class ChannelSwap {
   const dealerSwapEvt = `${(this.dealer as any).id}::${swapEventName}`;
 
   this.clientMgr.on(clientSwapEvt, data =>
+    console.log('client manager emit '+JSON.stringify(clientSwapEvt)+' '+JSON.stringify(data))
     this.dealerMgr.emit(clientSwapEvt, data)
   );
   this.dealerMgr.on(dealerSwapEvt, data =>
+  console.log('dealer manager emit '+JSON.stringify(dealerSwapEvt)+' '+JSON.stringify(data))
     this.clientMgr.emit(dealerSwapEvt, data)
   );
 }
@@ -79,7 +81,7 @@ export class ChannelSwap {
   private monitorTerminalEvents() {
     const handler: EventHandler = (swap: SwapEvent) => {
       const { eventName, socketId, data } = swap;
-
+      console.log('event name trigger '+JSON.stringify(swap))
       if (eventName === 'BUYER:STEP6') {
         this.ready?.({ data: { txid: data } });
         this.close();
