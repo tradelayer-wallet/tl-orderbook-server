@@ -17,63 +17,54 @@ export class SocketManager {
     private _liveSessions: Map<string, HyperExpress.Websocket> = new Map();
 
     constructor(private app: HyperExpress.Server) {
-            console.log('SocketManager constructing');
+        console.log('SocketManager constructing');
         this.initService();
     }
 
-    // Method to get a WebSocket by its ID (from active sessions)
     public getSocketById(socketId: string): HyperExpress.Websocket | undefined {
         return this._liveSessions.get(socketId);
     }
 
-    // manager.class.ts
     private initService() {
-      this.app.ws('/ws', (ws) => {
-        this.handleOpen(ws);
+        this.app.ws('/ws', (ws) => {
+            this.handleOpen(ws);
 
-        ws.on('message', (message) => {
-          this.handleMessage(ws, message);
+            ws.on('message', (message) => {
+                this.handleMessage(ws, message);
+            });
+
+            ws.on('close', () => {
+                this.handleClose(ws);
+            });
         });
 
-        ws.on('close', () => {
-          this.handleClose(ws);
-        });
-      });
-
-      console.log('Socket Service Initialized with HyperExpress');
+        console.log('Socket Service Initialized with HyperExpress');
     }
 
-
-    // WebSocket connection open handler
     private handleOpen(ws: HyperExpress.Websocket) {
         const id = this.generateUniqueId();
-        (ws as any).id = id; // Attach the ID to the WebSocket object
+        (ws as any).id = id;
 
         this._liveSessions.set(id, ws);
         console.log('[SM] OPEN', id, 'live=', this._liveSessions.size);
 
-        // Optionally send a welcome message or session info
         ws.send(JSON.stringify({ event: 'connected', id }));
     }
 
-    // WebSocket connection close handler
     private handleClose(ws: HyperExpress.Websocket) {
-    const id = (ws as any).id;
-    this._liveSessions.delete(id);
-    console.log(`Connection closed: ${id}`);
+        const id = (ws as any).id;
+        this._liveSessions.delete(id);
+        console.log(`Connection closed: ${id}`);
 
-    // Sweep orders on hard socket close!
-    const openedOrders = orderbookManager.getOrdersBySocketId(id);
-    openedOrders.forEach(o => orderbookManager.removeOrder(o.uuid, id));
-}
+        const openedOrders = orderbookManager.getOrdersBySocketId(id);
+        openedOrders.forEach(o => orderbookManager.removeOrder(o.uuid, id));
+    }
 
-    // Handle incoming messages for various events
     private async handleMessage(ws: HyperExpress.Websocket, message: ArrayBuffer | string) {
         const data = JSON.parse(
             typeof message === 'string' ? message : Buffer.from(message).toString()
         );
 
-        // Handle different event types based on the 'event' key in the message
         switch (data.event) {
             case OnEvents.NEW_ORDER:
                 this.handleNewOrder(ws, data);
@@ -88,7 +79,7 @@ export class SocketManager {
                 this.handleManyOrders(ws, data);
                 break;
             case OnEvents.DISCONNECT:
-                this.sweepOrders((ws as any).id, 'client‑disconnect');
+                this.sweepOrders((ws as any).id, 'client-disconnect');
                 ws.close();
                 break;
             default:
@@ -97,14 +88,12 @@ export class SocketManager {
         }
     }
 
-    // Handle new order event
     private async handleNewOrder(ws: HyperExpress.Websocket, data: any) {
         if (!data.isLimitOrder) {
             ws.send(JSON.stringify({ event: OrderEmitEvents.ERROR, message: 'Market Orders Not allowed' }));
             return;
         }
 
-        // Adjust the mismatched parameters if needed
         if (data.type === 'SPOT') {
             const { id_for_sale, id_desired } = data.props;
 
@@ -117,10 +106,10 @@ export class SocketManager {
             }
         }
 
-        // Create order and emit the response
         const id = (ws as any).id;
         const order = await orderFactory(data, id);
         const res = await orderbookManager.addOrder(order);
+
         if (res.error || !res.data) {
             ws.send(JSON.stringify({ event: OrderEmitEvents.ERROR, message: res.error || 'Undefined Error' }));
             return;
@@ -134,9 +123,8 @@ export class SocketManager {
         }
     }
 
-    // Handle updating the orderbook event
     private async handleUpdateOrderbook(ws: HyperExpress.Websocket, data: any) {
-        console.log('updating ob with data '+JSON.stringify(data))
+        console.log('updating ob with data ' + JSON.stringify(data));
         const filter = data.filter;
         const orderbook = orderbookManager.orderbooks.find(e => e.findByFilter(filter));
         const orders = orderbook ? orderbook.orders.filter(o => !o.lock) : [];
@@ -144,18 +132,6 @@ export class SocketManager {
         ws.send(JSON.stringify({ event: EmitEvents.ORDERBOOK_DATA, orders, history }));
     }
 
-    private sweepOrders(id: string, reason = 'tcp‑close') {
-        const opened = orderbookManager.getOrdersBySocketId(id);
-        opened.forEach(o => orderbookManager.removeOrder(o.uuid, id));
-        console.log(`${id} disconnected (${reason}); purged ${opened.length} orders`);
-        this._liveSessions.delete(id);
-    }
-
-    private handleClose(ws: HyperExpress.Websocket) {
-        this.sweepOrders((ws as any).id, 'tcp‑close');
-    }
-
-    // Handle many orders
     private handleManyOrders(ws: HyperExpress.Websocket, data: any) {
         const id = (ws as any).id;
         const rawOrders = data.orders;
@@ -166,25 +142,36 @@ export class SocketManager {
         ws.send(JSON.stringify({ event: OrderEmitEvents.SAVED }));
     }
 
-    // Handle disconnect event
+    private handleCloseOrder(ws: HyperExpress.Websocket, data: any) {
+        const id = (ws as any).id;
+        const uuid = data.uuid;
+        orderbookManager.removeOrder(uuid, id);
+        ws.send(JSON.stringify({ event: OrderEmitEvents.CLOSED, uuid }));
+    }
+
     private handleDisconnect(ws: HyperExpress.Websocket, data: any) {
         const id = (ws as any).id;
-         this._liveSessions.delete(id);
+        this._liveSessions.delete(id);
         const reason = data.reason;
         const openedOrders = orderbookManager.getOrdersBySocketId(id);
         openedOrders.forEach(o => orderbookManager.removeOrder(o.uuid, id));
         console.log(`${id} Disconnected! Reason: ${reason}`);
         ws.close();
     }
-    
-    // Utility method to generate unique IDs for clients
+
+    private sweepOrders(id: string, reason = 'tcp-close') {
+        const opened = orderbookManager.getOrdersBySocketId(id);
+        opened.forEach(o => orderbookManager.removeOrder(o.uuid, id));
+        console.log(`${id} disconnected (${reason}); purged ${opened.length} orders`);
+        this._liveSessions.delete(id);
+    }
+
     private generateUniqueId(): string {
         return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     }
 
-    // Getter for live sessions
     public get liveSessions() {
-        console.log('Live sessions ', JSON.stringify(Array.from(this._liveSessions.keys()))
+        console.log('Live sessions ', JSON.stringify(Array.from(this._liveSessions.keys())));
         return Array.from(this._liveSessions.keys());
     }
 
