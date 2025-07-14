@@ -64,7 +64,7 @@ export class SocketManager {
         const data = JSON.parse(
             typeof message === 'string' ? message : Buffer.from(message).toString()
         );
-
+        console.log('incoming msg data'+JSON.stringify(data))
         switch (data.event) {
             case OnEvents.NEW_ORDER:
                 this.handleNewOrder(ws, data);
