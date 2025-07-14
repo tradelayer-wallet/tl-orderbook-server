@@ -172,13 +172,14 @@ export class SocketManager {
     // Handle disconnect event
     private handleDisconnect(ws: HyperExpress.Websocket, data: any) {
         const id = (ws as any).id;
+         this._liveSessions.delete(id);
         const reason = data.reason;
         const openedOrders = orderbookManager.getOrdersBySocketId(id);
         openedOrders.forEach(o => orderbookManager.removeOrder(o.uuid, id));
         console.log(`${id} Disconnected! Reason: ${reason}`);
         ws.close();
     }
-
+    
     // Utility method to generate unique IDs for clients
     private generateUniqueId(): string {
         return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
