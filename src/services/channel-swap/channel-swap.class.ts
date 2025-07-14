@@ -53,26 +53,27 @@ export class ChannelSwap {
     // Send 'new-channel' to each side
     this.clientMgr.emit('new-channel', {
       ...trade,
-      isBuyer: this.client.id === this.buyerId
+      isBuyer: (this.client as any).id === this.buyerId
     });
     this.dealerMgr.emit('new-channel', {
       ...trade,
-      isBuyer: this.dealer.id === this.buyerId
+      isBuyer: (this.dealer as any).id === this.buyerId
     });
   }
 
   /** Relay `socketId::swap` messages between the two peers (exactly like legacy) */
-  private pipeSwapEvents() {
-    const clientSwapEvt = `${this.client.id}::${swapEventName}`;
-    const dealerSwapEvt = `${this.dealer.id}::${swapEventName}`;
+ private pipeSwapEvents() {
+  const clientSwapEvt = `${(this.client as any).id}::${swapEventName}`;
+  const dealerSwapEvt = `${(this.dealer as any).id}::${swapEventName}`;
 
-    this.clientMgr.on(clientSwapEvt, data =>
-      this.dealerMgr.emit(clientSwapEvt, data)
-    );
-    this.dealerMgr.on(dealerSwapEvt, data =>
-      this.clientMgr.emit(dealerSwapEvt, data)
-    );
-  }
+  this.clientMgr.on(clientSwapEvt, data =>
+    this.dealerMgr.emit(clientSwapEvt, data)
+  );
+  this.dealerMgr.on(dealerSwapEvt, data =>
+    this.clientMgr.emit(dealerSwapEvt, data)
+  );
+}
+
 
   /** Watch for BUYER:STEP6 or TERMINATE_TRADE and resolve/close */
   private monitorTerminalEvents() {
