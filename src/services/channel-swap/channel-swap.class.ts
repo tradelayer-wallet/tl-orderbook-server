@@ -55,6 +55,7 @@ export class ChannelSwap {
       ...trade,
       isBuyer: (this.client as any).id === this.buyerId
     });
+
     this.dealerMgr.emit('new-channel', {
       ...trade,
       isBuyer: (this.dealer as any).id === this.buyerId
@@ -62,37 +63,38 @@ export class ChannelSwap {
   }
 
   /** Relay `socketId::swap` messages between the two peers (exactly like legacy) */
- private pipeSwapEvents() {
-  const clientSwapEvt = `${(this.client as any).id}::${swapEventName}`;
-  const dealerSwapEvt = `${(this.dealer as any).id}::${swapEventName}`;
+  private pipeSwapEvents() {
+    const clientSwapEvt = `${(this.client as any).id}::${swapEventName}`;
+    const dealerSwapEvt = `${(this.dealer as any).id}::${swapEventName}`;
 
-  this.clientMgr.on(clientSwapEvt, data =>
-    console.log('client manager emit '+JSON.stringify(clientSwapEvt)+' '+JSON.stringify(data))
-    this.dealerMgr.emit(clientSwapEvt, data)
-  );
-  this.dealerMgr.on(dealerSwapEvt, data =>
-  console.log('dealer manager emit '+JSON.stringify(dealerSwapEvt)+' '+JSON.stringify(data))
-    this.clientMgr.emit(dealerSwapEvt, data)
-  );
-}
+    this.clientMgr.on(clientSwapEvt, (swap: SwapEvent) => {
+      console.log('[Relay] client → dealer', clientSwapEvt, JSON.stringify(swap));
+      this.dealerMgr.emit(clientSwapEvt, swap);
+    });
 
+    this.dealerMgr.on(dealerSwapEvt, (swap: SwapEvent) => {
+      console.log('[Relay] dealer → client', dealerSwapEvt, JSON.stringify(swap));
+      this.clientMgr.emit(dealerSwapEvt, swap);
+    });
+  }
 
   /** Watch for BUYER:STEP6 or TERMINATE_TRADE and resolve/close */
   private monitorTerminalEvents() {
     const handler: EventHandler = (swap: SwapEvent) => {
       const { eventName, socketId, data } = swap;
-      console.log('event name trigger '+JSON.stringify(swap))
+      console.log('[Monitor] swap event:', JSON.stringify(swap));
+
       if (eventName === 'BUYER:STEP6') {
         this.ready?.({ data: { txid: data } });
         this.close();
       }
+
       if (eventName === 'TERMINATE_TRADE') {
         this.ready?.({ error: data, socketId });
         this.close();
       }
     };
 
-    // Subscribe on both managers for any generic 'swap' broadcast
     this.clientMgr.on(swapEventName, handler);
     this.dealerMgr.on(swapEventName, handler);
   }
