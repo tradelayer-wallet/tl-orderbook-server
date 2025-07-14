@@ -143,10 +143,19 @@ export class SocketManager {
     }
 
     private handleCloseOrder(ws: HyperExpress.Websocket, data: any) {
-        orderbookManager.removeOrder(orderUUID, socket.id);
-        const openedOrders = orderbookManager.getOrdersBySocketId(socket.id);
-        const orderHistory = orderbookManager.getOrdersHistory();
-        socket.emit(EmitEvents.PLACED_ORDERS, { openedOrders, orderHistory });
+      const id = (ws as any).id;
+      const uuid = data.uuid;
+
+      orderbookManager.removeOrder(uuid, id);
+
+      const openedOrders = orderbookManager.getOrdersBySocketId(id);
+      const orderHistory = orderbookManager.getOrdersHistory();
+
+      ws.send(JSON.stringify({
+        event: EmitEvents.PLACED_ORDERS,
+        openedOrders,
+        orderHistory
+      }));
     }
 
     private handleDisconnect(ws: HyperExpress.Websocket, data: any) {
