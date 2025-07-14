@@ -143,20 +143,29 @@ export class SocketManager {
     }
 
     private handleCloseOrder(ws: HyperExpress.Websocket, data: any) {
-      const id = (ws as any).id;
-      const uuid = data.uuid;
+          const id = (ws as any).id;
+          const uuid = data.uuid;
 
-      orderbookManager.removeOrder(uuid, id);
+          console.log(`[Cancel] Request to cancel order ${uuid} from ${id}`);
 
-      const openedOrders = orderbookManager.getOrdersBySocketId(id);
-      const orderHistory = orderbookManager.getOrdersHistory();
+          const orderBefore = orderbookManager.getOrderByUUID?.(uuid);
+          if (!orderBefore) {
+            console.warn(`[Cancel] No such order found for UUID: ${uuid}`);
+          }
 
-      ws.send(JSON.stringify({
-        event: EmitEvents.PLACED_ORDERS,
-        openedOrders,
-        orderHistory
-      }));
-    }
+          orderbookManager.removeOrder(uuid, id);
+
+          const openedOrders = orderbookManager.getOrdersBySocketId(id);
+          const orderHistory = orderbookManager.getOrdersHistory();
+
+          console.log(`[Cancel] Sending updated PLACED_ORDERS to ${id}`);
+
+          ws.send(JSON.stringify({
+            event: EmitEvents.PLACED_ORDERS,
+            openedOrders,
+            orderHistory
+          }));
+        }
 
     private handleDisconnect(ws: HyperExpress.Websocket, data: any) {
         const id = (ws as any).id;
