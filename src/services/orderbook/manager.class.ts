@@ -24,6 +24,7 @@ export class OrderbookManager {
     }
 
     async addOrder(order: TOrder, noTrades: boolean = false): Promise<IResult<{ order?: TOrder, trade?: any }>> {
+        console.log('new order '+JSON.stringify(order)+' '+JSON.stringify(trade))
             try {
                 const existingOrderbook = this.orderbooks.find(b => b.checkCompatible(order));
                 const res = existingOrderbook
