@@ -63,20 +63,25 @@ export class ChannelSwap {
   }
 
   /** Relay `socketId::swap` messages between the two peers (exactly like legacy) */
-  private pipeSwapEvents() {
-    const clientSwapEvt = `${(this.client as any).id}::${swapEventName}`;
-    const dealerSwapEvt = `${(this.dealer as any).id}::${swapEventName}`;
+ private pipeSwapEvents() {
+  const clientSwapEvt = `${(this.client as any).id}::${swapEventName}`;
+  const dealerSwapEvt = `${(this.dealer as any).id}::${swapEventName}`;
 
-    this.clientMgr.on(clientSwapEvt, (swap: SwapEvent) => {
-      console.log('[Relay] client → dealer', clientSwapEvt, JSON.stringify(swap));
-      this.dealerMgr.emit(clientSwapEvt, swap);
-    });
+  this.clientMgr.on(clientSwapEvt, (raw: any) => {
+    const eventName = raw.eventName ?? 'UNKNOWN_STEP';
+    const payload = new SwapEvent(eventName, (this.client as any).id, raw.data ?? raw);
+    console.log('[Relay] client → dealer', clientSwapEvt, JSON.stringify(payload));
+    this.dealerMgr.emit(clientSwapEvt, payload);
+  });
 
-    this.dealerMgr.on(dealerSwapEvt, (swap: SwapEvent) => {
-      console.log('[Relay] dealer → client', dealerSwapEvt, JSON.stringify(swap));
-      this.clientMgr.emit(dealerSwapEvt, swap);
-    });
-  }
+  this.dealerMgr.on(dealerSwapEvt, (raw: any) => {
+    const eventName = raw.eventName ?? 'UNKNOWN_STEP';
+    const payload = new SwapEvent(eventName, (this.dealer as any).id, raw.data ?? raw);
+    console.log('[Relay] dealer → client', dealerSwapEvt, JSON.stringify(payload));
+    this.clientMgr.emit(dealerSwapEvt, payload);
+  });
+}
+
 
   /** Watch for BUYER:STEP6 or TERMINATE_TRADE and resolve/close */
   private monitorTerminalEvents() {
