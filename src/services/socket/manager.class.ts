@@ -50,7 +50,7 @@ export class SocketManager {
         (ws as any).id = id; // Attach the ID to the WebSocket object
 
         this._liveSessions.set(id, ws);
-        console.log(`New connection: ${id}`);
+        console.log('[SM] OPEN', id, 'live=', this._liveSessions.size);
 
         // Optionally send a welcome message or session info
         ws.send(JSON.stringify({ event: 'connected', id }));
@@ -88,7 +88,8 @@ export class SocketManager {
                 this.handleManyOrders(ws, data);
                 break;
             case OnEvents.DISCONNECT:
-                this.handleDisconnect(ws, data);
+                this.sweepOrders((ws as any).id, 'client‑disconnect');
+                ws.close();
                 break;
             default:
                 console.log(`Unknown event type: ${data.event}`);
@@ -143,19 +144,15 @@ export class SocketManager {
         ws.send(JSON.stringify({ event: EmitEvents.ORDERBOOK_DATA, orders, history }));
     }
 
-    // Handle closing an order
-    private handleCloseOrder(ws: HyperExpress.Websocket, data: any) {
-        const id = (ws as any).id;
-        const orderUUID = typeof data === 'string'
-                            ? data
-                            : data.orderUUID || data.uuid;
+    private sweepOrders(id: string, reason = 'tcp‑close') {
+        const opened = orderbookManager.getOrdersBySocketId(id);
+        opened.forEach(o => orderbookManager.removeOrder(o.uuid, id));
+        console.log(`${id} disconnected (${reason}); purged ${opened.length} orders`);
+        this._liveSessions.delete(id);
+    }
 
-        console.log('Canceling order on server: ' + JSON.stringify(orderUUID));
-        const res = orderbookManager.removeOrder(orderUUID, id);
-        console.log('Cancel result: ' + JSON.stringify(res));
-        const openedOrders = orderbookManager.getOrdersBySocketId(id);
-        const orderHistory = orderbookManager.getOrdersHistory();
-        ws.send(JSON.stringify({ event: EmitEvents.PLACED_ORDERS, openedOrders, orderHistory }));
+    private handleClose(ws: HyperExpress.Websocket) {
+        this.sweepOrders((ws as any).id, 'tcp‑close');
     }
 
     // Handle many orders
@@ -187,6 +184,7 @@ export class SocketManager {
 
     // Getter for live sessions
     public get liveSessions() {
+        console.log('Live sessions ', JSON.stringify(Array.from(this._liveSessions.keys()))
         return Array.from(this._liveSessions.keys());
     }
 
