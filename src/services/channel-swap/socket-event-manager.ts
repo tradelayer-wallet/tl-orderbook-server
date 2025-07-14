@@ -1,52 +1,52 @@
-// socket-event-manager.ts
 import { Websocket } from 'hyper-express';
 
-type EventHandler = (data: any) => void;
+/** Public handler type so ChannelSwap can import it */
+export type EventHandler = (data: any) => void;
 
 export class SocketEventManager {
-    private eventHandlers: Map<string, Set<EventHandler>> = new Map();
-    private messageListener: (message: string | ArrayBuffer) => void;
+  private handlers: Map<string, Set<EventHandler>> = new Map();
+  private readonly onMessage = this.handleMessage.bind(this);
 
-    constructor(public socket: Websocket) {
-        this.messageListener = this.handleMessage.bind(this);
-        this.socket.on('message', this.messageListener);
+  constructor(public socket: Websocket) {
+    socket.on('message', this.onMessage);
+  }
+
+  /* ---------------- private ---------------- */
+  private handleMessage(raw: string | ArrayBuffer) {
+    let parsed: any;
+    try {
+      parsed = JSON.parse(raw as string);
+    } catch (e) {
+      console.error('[SEM] JSON parse error', e);
+      return;
     }
+    const { event, data } = parsed;
+    const set = this.handlers.get(event);
+    if (set) set.forEach(h => h(data));
+  }
 
-    private handleMessage(message: string | ArrayBuffer) {
-        const parsedMessage = JSON.parse(message as string);
-        const { event, data } = parsedMessage;
+  /* ---------------- public helpers ---------------- */
+  on(event: string, handler: EventHandler) {
+    if (!this.handlers.has(event)) this.handlers.set(event, new Set());
+    this.handlers.get(event)!.add(handler);
+  }
 
-        const handlers = this.eventHandlers.get(event);
-        if (handlers) {
-            handlers.forEach(handler => handler(data));
-        }
+  off(event: string, handler: EventHandler) {
+    const set = this.handlers.get(event);
+    if (set) {
+      set.delete(handler);
+      if (!set.size) this.handlers.delete(event);
     }
+  }
 
-    on(event: string, handler: EventHandler) {
-        if (!this.eventHandlers.has(event)) {
-            this.eventHandlers.set(event, new Set());
-        }
-        this.eventHandlers.get(event).add(handler);
-    }
+  /** Alias `emit` like in Socket.IO for familiarity */
+  emit(event: string, data: any) {
+    this.socket.send(JSON.stringify({ event, data }));
+  }
 
-    off(event: string, handler: EventHandler) {
-        const handlers = this.eventHandlers.get(event);
-        if (handlers) {
-            handlers.delete(handler);
-            if (handlers.size === 0) {
-                this.eventHandlers.delete(event);
-            }
-        }
-    }
-
-    send(event: string, data: any) {
-        this.socket.send(JSON.stringify({ event, data }));
-    }
-
-    close() {
-        // Clean up event handlers
-        this.eventHandlers.clear();
-        // Remove the main message listener
-        this.socket.removeListener('message', this.messageListener);
-    }
+  /** Clean‑up */
+  dispose() {
+    this.handlers.clear();
+    this.socket.removeListener('message', this.onMessage);
+  }
 }
