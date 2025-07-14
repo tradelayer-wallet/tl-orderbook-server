@@ -144,7 +144,7 @@ export class SocketManager {
 
     private handleCloseOrder(ws: HyperExpress.Websocket, data: any) {
           const id = (ws as any).id;
-          const uuid = data.UUID;
+          const uuid = data.orderUUID;
 
           console.log(`[Cancel] Request to cancel order ${uuid} from ${id}`);
           orderbookManager.removeOrder(uuid, id);
