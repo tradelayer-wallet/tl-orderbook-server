@@ -58,10 +58,14 @@ export class SocketManager {
 
     // WebSocket connection close handler
     private handleClose(ws: HyperExpress.Websocket) {
-        const id = (ws as any).id;
-        this._liveSessions.delete(id);
-        console.log(`Connection closed: ${id}`);
-    }
+    const id = (ws as any).id;
+    this._liveSessions.delete(id);
+    console.log(`Connection closed: ${id}`);
+
+    // Sweep orders on hard socket close!
+    const openedOrders = orderbookManager.getOrdersBySocketId(id);
+    openedOrders.forEach(o => orderbookManager.removeOrder(o.uuid, id));
+}
 
     // Handle incoming messages for various events
     private async handleMessage(ws: HyperExpress.Websocket, message: ArrayBuffer | string) {
