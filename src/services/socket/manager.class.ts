@@ -146,6 +146,7 @@ export class SocketManager {
           const id = (ws as any).id;
           const uuid = data.uuid;
 
+          console.log(`[Cancel] Request to cancel order ${uuid} from ${id}`);
           orderbookManager.removeOrder(uuid, id);
 
           const openedOrders = orderbookManager.getOrdersBySocketId(id);
