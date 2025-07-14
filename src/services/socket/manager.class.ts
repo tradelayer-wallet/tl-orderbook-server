@@ -146,7 +146,7 @@ export class SocketManager {
         const id = (ws as any).id;
         const uuid = data.uuid;
         orderbookManager.removeOrder(uuid, id);
-        ws.send(JSON.stringify({ event: OrderEmitEvents.CLOSED, uuid }));
+        ws.send(JSON.stringify({ event: OrderEmitEvents.CLOSE_ORDER, uuid }));
     }
 
     private handleDisconnect(ws: HyperExpress.Websocket, data: any) {
