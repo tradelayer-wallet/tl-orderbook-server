@@ -55,7 +55,9 @@ export class SocketManager {
             .filter(o => !o.lock);
 
         const historySnapshot = orderbookManager.getOrdersHistory();
-        
+     
+        console.log('emitting orderbook on connect '+JSON.stringify(event: EmitEvents.ORDERBOOK_DATA,
+            orders:  ordersSnapshot))   
         ws.send(
           JSON.stringify({
             event: EmitEvents.ORDERBOOK_DATA,
@@ -69,11 +71,16 @@ export class SocketManager {
     private handleClose(ws: HyperExpress.Websocket) {
         const id = (ws as any).id;
         this._liveSessions.delete(id);
-        console.log(`Connection closed: ${id}`);
+        console.log(`[SM] Connection closed: ${id}`);
 
         const openedOrders = orderbookManager.getOrdersBySocketId(id);
-        openedOrders.forEach(o => orderbookManager.removeOrder(o.uuid, id));
+        console.log(`[SM] Purging orders for closed socket ${id}:`, openedOrders.map(o => o.uuid));
+        openedOrders.forEach(o => {
+            const result = orderbookManager.removeOrder(o.uuid, id);
+            console.log(`[SM] Removed order ${o.uuid}:`, result);
+        });
     }
+
 
     private async handleMessage(ws: HyperExpress.Websocket, message: ArrayBuffer | string) {
         const data = JSON.parse(
