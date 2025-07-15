@@ -56,8 +56,8 @@ export class SocketManager {
 
         const historySnapshot = orderbookManager.getOrdersHistory();
      
-        console.log('emitting orderbook on connect '+JSON.stringify(event: EmitEvents.ORDERBOOK_DATA,
-            orders:  ordersSnapshot))   
+        console.log('emitting orderbook on connect '+JSON.stringify({event: EmitEvents.ORDERBOOK_DATA,
+            orders:  ordersSnapshot}))   
         ws.send(
           JSON.stringify({
             event: EmitEvents.ORDERBOOK_DATA,
