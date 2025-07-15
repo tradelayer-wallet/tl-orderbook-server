@@ -48,9 +48,11 @@ export class SocketManager {
         this._liveSessions.set(id, ws);
         console.log('[SM] OPEN', id, 'live=', this._liveSessions.size);
 
+        // Replace .flatMap(ob => ob.orders)
         const ordersSnapshot = orderbookManager.orderbooks
-        .flatMap(ob => ob.orders)
-        .filter(o => !o.lock);
+            .map(ob => ob.orders)
+            .reduce((a, b) => a.concat(b), [])
+            .filter(o => !o.lock);
 
         const historySnapshot = orderbookManager.getOrdersHistory();
         
