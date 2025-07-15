@@ -35,14 +35,19 @@ export class Orderbook {
         return this._type;
     }
 
+    // New helper: broadcast full snapshot filtered to unlocked orders
+    private broadcastSnapshot() {
+        socketManager.broadcastToAll({
+            event: EmitEvents.ORDERBOOK_DATA,
+            orders: this._orders.filter(o => !o.lock),
+            history: this._historyTrades,
+        });
+    }
+
     set orders(value: TOrder[]) {
         this._orders = value;
         // Send updates to all connected WebSocket clients when order changes
-        socketManager.broadcastToAll({
-           event: EmitEvents.ORDERBOOK_DATA,
-           orders: this._orders,
-           history: this._historyTrades,
-        });
+        this.broadcastSnapshot();
     }
 
     get orderbookName() {
@@ -98,11 +103,7 @@ export class Orderbook {
             });
             this._historyTrades = data.slice(0, 2000);
             // Notify all connected clients of updated orderbook history
-            socketManager.broadcastToAll({
-                event: EmitEvents.ORDERBOOK_DATA,
-                orders: this._orders,
-                history: this._historyTrades,
-            });
+            this.broadcastSnapshot();
 
         } catch (error) {
             console.log({ error });
@@ -159,25 +160,16 @@ export class Orderbook {
         }
     }
 
+    // Changed to call broadcastSnapshot for everyone, not just per socket
     private lockOrder(order: TOrder, lock: boolean = true) {
         order.lock = lock;
-        this._orders.forEach(order => {
-            const socket = socketManager.getSocketById(order.socket_id) as Websocket;
-            if (socket) {
-                socket.send(JSON.stringify({ event: EmitEvents.UPDATE_ORDERS_REQUEST }));
-            }
-        });
+        this.broadcastSnapshot();
     }
 
     private saveToHistory(historyTrade: IHistoryTrade) {
         this._historyTrades = [historyTrade, ...this.historyTrades.slice(0, 1999)];
         saveLog(this.orderbookName, "TRADE", historyTrade);
-        this._orders.forEach(order => {
-            const socket = socketManager.getSocketById(order.socket_id) as Websocket;
-            if (socket) {
-                socket.send(JSON.stringify({ event: EmitEvents.UPDATE_ORDERS_REQUEST }));
-            }
-        });
+        this.broadcastSnapshot();
     }
 
     updatePlacedOrdersForSocketId(socketid: string) {
@@ -346,6 +338,7 @@ export class Orderbook {
 
             // Remove the order
             this.orders = this.orders.filter(o => o !== orderForRemove);
+            this.broadcastSnapshot();   // <- broadcast after removal
 
             return { data: `Order with uuid ${uuid} was removed!` };
         } catch (error) {
