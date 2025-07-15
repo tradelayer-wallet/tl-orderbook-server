@@ -48,6 +48,15 @@ export class SocketManager {
         this._liveSessions.set(id, ws);
         console.log('[SM] OPEN', id, 'live=', this._liveSessions.size);
 
+        const ordersSnapshot   = orderbookManager.getOrders().filter(o => !o.lock);
+        const historySnapshot  = orderbookManager.getOrdersHistory();
+        ws.send(
+          JSON.stringify({
+            event: EmitEvents.ORDERBOOK_DATA,
+            orders:  ordersSnapshot,
+            history: historySnapshot
+          })
+        );
         ws.send(JSON.stringify({ event: 'connected', id }));
     }
 
