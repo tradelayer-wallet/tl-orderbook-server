@@ -26,7 +26,7 @@ export const saveLog = (name: string, type: TLogType, data: IHistoryTrade | TOrd
     }
 };
 
-export const updateOrderLog = (name: string, uuid: string, type: "CANCALED" | "FILLED") => {
+export const updateOrderLog = (name: string, uuid: string, type: "CANCELED" | "FILLED" | "PT-FILLED") => {
     try {
         const _path = `logs/`;
         const data = readdirSync(_path);

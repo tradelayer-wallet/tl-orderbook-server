@@ -47,7 +47,7 @@ export class OrderbookManager {
                 throw new Error(`Order with uuid: ${uuid} dont exist`);
             }
             const res = orderbook.removeOrder(uuid, socket_id);
-            updateOrderLog(orderbook.orderbookName,order.uuid, "CANCALED");
+            updateOrderLog(orderbook.orderbookName,order.uuid, "CANCELED");
             return res;
         } catch (error) {
             return { error: error.message };
