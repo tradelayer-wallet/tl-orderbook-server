@@ -227,11 +227,7 @@ export class Orderbook {
         }
     }
 
-   private cloneWithAmount(o: TOrder, amt: number): TOrder {
-        return { ...o, props: { ...o.props, amount: amt } } as TOrder;
-    }
-
-/** ------------------------------------------------------------------
+    /** ------------------------------------------------------------------
  *  MULTI‑FILL aware addOrder
  *  – Matches the incoming order against *all* compatible resting
  *    orders, best‑price first, until the incoming amount is zero or
@@ -306,13 +302,6 @@ async addOrder(
         props: { ...rest.props, amount: fillAmt },
       };
 
-        // --- Change here: Use clones for the matched amount
-        const fillAmount = Math.min(order.props.amount,matchRes.data.match.props.amount);
-        const takerSlice = this.cloneWithAmount(order, fillAmount);
-        const makerSlice = this.cloneWithAmount(matchRes.data.match, fillAmount);
-      
-        this.lockOrder(matchRes.data.match);
-
       /* Build trade‑info & open the swap‐channel */
       const tradeRes = buildTrade(takerSlice, makerSlice);
       if (tradeRes.error || !tradeRes.data)
@@ -330,10 +319,8 @@ async addOrder(
       /* 2b – adjust / purge maker order on the book */
       if (rest.props.amount === fillAmt) {
         // fully consumed
-            updateOrderLog(this.orderbookName, matchRes.data.match.uuid, 'FILLED');
         this.removeOrder(rest.uuid, rest.socket_id);
       } else {
-          updateOrderLog(this.orderbookName, matchRes.data.match.uuid, 'PT-FILLED');
         // partially consumed
         rest.props.amount = safeNumber(rest.props.amount - fillAmt);
       }
