@@ -227,125 +227,60 @@ export class Orderbook {
         }
     }
 
-    /** ------------------------------------------------------------------
- *  MULTI‑FILL aware addOrder
- *  – Matches the incoming order against *all* compatible resting
- *    orders, best‑price first, until the incoming amount is zero or
- *    the book is exhausted.
- *  – Builds/opens a ChannelSwap for every fill.
- *  – Any residual (un‑filled) size is re‑inserted into the book.
- *  – Returns { trades: ITradeInfo[] } and/or { order: TOrder }.
- *  ------------------------------------------------------------------ */
-async addOrder(
-  incoming: TOrder,
-  noTrades = false
-): Promise<IResult<{ trades?: ITradeInfo[]; order?: TOrder }>> {
-  try {
-    /* 0️⃣ sanity ------------------------------------------------------ */
-    if (!this.checkCompatible(incoming))
-      throw new Error(`Order mismatch with this orderbook`);
+    async addOrder(order: TOrder, noTrades: boolean = false): Promise<IResult<{ order?: TOrder; trade?: ITradeInfo }>> {
+        try {
+            if (!this.checkCompatible(order)) {
+                throw new Error(`Order mismatch with current orderbook interface or type`);
+            }
 
-    /* 1️⃣ pick the book side we can hit ------------------------------ */
-    const priceOK = (rest: TOrder) =>
-      incoming.action === EOrderAction.BUY
-        ? rest.props.price <= incoming.props.price // taker is buying – wants the lowest ask(s)
-        : rest.props.price >= incoming.props.price; // taker is selling – wants the highest bid(s)
+            const matchRes = this.checkMatch(order);
+            if (matchRes.error || !matchRes.data) throw new Error(`${matchRes.error || "Undefined Error"}`);
 
-    const sideOK = (rest: TOrder) =>
-      incoming.action === EOrderAction.BUY
-        ? rest.action === EOrderAction.SELL
-        : rest.action === EOrderAction.BUY;
+            if (!matchRes.data.match) {
+                saveLog(this.orderbookName, "ORDER", order);
+                this.orders = [...this.orders, order];
+                this.updatePlacedOrdersForSocketId(order.socket_id);
+                return { data: { order } };
+            } else {
+                if (noTrades) return { data: {} };
+                this.lockOrder(matchRes.data.match);
+                updateOrderLog(this.orderbookName, matchRes.data.match.uuid, 'FILLED');
+                const buildTradeRes = buildTrade(order, matchRes.data.match);
+                if (buildTradeRes.error || !buildTradeRes.data) {
+                    throw new Error(`${buildTradeRes.error || "Building Trade Failed. Code 2"}`);
+                }
 
-    const idOK = (rest: TOrder) =>
-      rest.type === incoming.type &&
-      (rest.type === EOrderType.SPOT
-        ? (rest.props as ISpotOrderProps).id_desired ===
-            (incoming.props as ISpotOrderProps).id_for_sale &&
-          (rest.props as ISpotOrderProps).id_for_sale ===
-            (incoming.props as ISpotOrderProps).id_desired
-        : // FUTURES
-          (rest.props as IFuturesOrderProps).contract_id ===
-          (incoming.props as IFuturesOrderProps).contract_id);
+                const newChannelRes = await this.newChannel(buildTradeRes.data.tradeInfo, buildTradeRes.data.unfilled);
+                if (newChannelRes.error || !newChannelRes.data) {
+                    if (matchRes.data.match.socket_id !== newChannelRes.socketId) {
+                        this.lockOrder(matchRes.data.match, false);
+                    } else {
+                        this.removeOrder(matchRes.data.match.uuid, matchRes.data.match.socket_id);
+                    }
+                    this.updatePlacedOrdersForSocketId(matchRes.data.match.socket_id);
+                    throw new Error(`${newChannelRes.error || "Undefined Error"}`);
+                }
 
-    const candidateRestingOrders = this.orders
-      .filter(
-        o => !o.lock && idOK(o) && sideOK(o) && priceOK(o) // compatible & price‑acceptable
-      )
-      .sort((a, b) =>
-        incoming.action === EOrderAction.BUY
-          ? a.props.price - b.props.price // buy → cheapest first
-          : b.props.price - a.props.price // sell → highest first
-      );
+                if (buildTradeRes.data.unfilled?.uuid === matchRes.data.match.uuid) {
+                    matchRes.data.match.props.amount = buildTradeRes.data.unfilled.props.amount;
+                    this.lockOrder(matchRes.data.match, false);
+                } else {
+                    this.removeOrder(matchRes.data.match.uuid, matchRes.data.match.socket_id);
+                }
+                this.updatePlacedOrdersForSocketId(matchRes.data.match.socket_id);
 
-    /* 2️⃣ iterate & fill --------------------------------------------- */
-    let remaining = incoming.props.amount;
-    const trades: ITradeInfo[] = [];
+                if (buildTradeRes.data.unfilled?.uuid === order.uuid) {
+                    const res = await this.addOrder(buildTradeRes.data.unfilled);
+                    return { data: res.data };
+                }
+                this.updatePlacedOrdersForSocketId(order.socket_id);
 
-    for (const rest of candidateRestingOrders) {
-      if (remaining <= 0) break;
-
-      /* 2a – self‑trade / same address guard */
-      if (rest.socket_id === incoming.socket_id)
-        throw new Error(`Match of the order from the same socket`);
-      if (rest.keypair.address === incoming.keypair.address)
-        throw new Error(`Match of the order from the same address`);
-
-      const fillAmt = Math.min(remaining, rest.props.amount);
-
-      /* Slice out the fill‑sized “views” of each order */
-      const takerSlice: TOrder = {
-        ...incoming,
-        props: { ...incoming.props, amount: fillAmt },
-      };
-      const makerSlice: TOrder = {
-        ...rest,
-        props: { ...rest.props, amount: fillAmt },
-      };
-
-      /* Build trade‑info & open the swap‐channel */
-      const tradeRes = buildTrade(takerSlice, makerSlice);
-      if (tradeRes.error || !tradeRes.data)
-        throw new Error(tradeRes.error ?? `buildTrade failed`);
-
-      if (!noTrades) {
-        const ch = await this.newChannel(
-          tradeRes.data.tradeInfo,
-          tradeRes.data.unfilled // always null for a precise slice
-        );
-        if (ch.error) throw new Error(ch.error);
-        trades.push(ch.data); // save the successful swap
-      }
-
-      /* 2b – adjust / purge maker order on the book */
-      if (rest.props.amount === fillAmt) {
-        // fully consumed
-        this.removeOrder(rest.uuid, rest.socket_id);
-      } else {
-        // partially consumed
-        rest.props.amount = safeNumber(rest.props.amount - fillAmt);
-      }
-
-      remaining = safeNumber(remaining - fillAmt);
+                return { data: { trade: newChannelRes.data } };
+            }
+        } catch (error) {
+            return { error: error.message };
+        }
     }
-
-    /* 3️⃣ residual size?  stick it back on the book ------------------ */
-    let residualOrder: TOrder | undefined;
-    if (remaining > 0) {
-      residualOrder = {
-        ...incoming,
-        props: { ...incoming.props, amount: remaining },
-      };
-      saveLog(this.orderbookName, "ORDER", residualOrder);
-      this.orders = [...this.orders, residualOrder];
-      this.updatePlacedOrdersForSocketId(residualOrder.socket_id);
-    }
-
-    return { data: { trades: trades.length ? trades : undefined, order: residualOrder } };
-  } catch (err) {
-    return { error: (err as Error).message };
-  }
-}
-
 
     findByFilter(filter: TFilter) {
         if (!this.props) return false;
