@@ -227,56 +227,94 @@ export class Orderbook {
         }
     }
 
-    async addOrder(order: TOrder, noTrades: boolean = false): Promise<IResult<{ order?: TOrder; trade?: ITradeInfo }>> {
+    async addOrder(order: TOrder, noTrades: boolean = false): Promise<IResult<{ order?: TOrder; trades?: ITradeInfo[] }>> {
         try {
             if (!this.checkCompatible(order)) {
                 throw new Error(`Order mismatch with current orderbook interface or type`);
             }
 
-            const matchRes = this.checkMatch(order);
-            if (matchRes.error || !matchRes.data) throw new Error(`${matchRes.error || "Undefined Error"}`);
+            // Multi-fill: Match all compatible resting orders
+            let remaining = order.props.amount;
+            const trades: ITradeInfo[] = [];
 
-            if (!matchRes.data.match) {
-                saveLog(this.orderbookName, "ORDER", order);
-                this.orders = [...this.orders, order];
-                this.updatePlacedOrdersForSocketId(order.socket_id);
-                return { data: { order } };
-            } else {
-                if (noTrades) return { data: {} };
-                this.lockOrder(matchRes.data.match);
-                updateOrderLog(this.orderbookName, matchRes.data.match.uuid, 'FILLED');
-                const buildTradeRes = buildTrade(order, matchRes.data.match);
-                if (buildTradeRes.error || !buildTradeRes.data) {
-                    throw new Error(`${buildTradeRes.error || "Building Trade Failed. Code 2"}`);
-                }
+            // Find all compatible orders (best price first)
+            const matchingOrders = this.orders
+                .filter(o =>
+                    !o.lock &&
+                    o.type === order.type &&
+                    (o.type === EOrderType.SPOT
+                        ? (o.props as ISpotOrderProps).id_desired === (order.props as ISpotOrderProps).id_for_sale &&
+                          (o.props as ISpotOrderProps).id_for_sale === (order.props as ISpotOrderProps).id_desired
+                        : (o.props as IFuturesOrderProps).contract_id === (order.props as IFuturesOrderProps).contract_id) &&
+                    (order.action === EOrderAction.BUY ? o.action === EOrderAction.SELL : o.action === EOrderAction.BUY) &&
+                    (order.action === EOrderAction.BUY
+                        ? o.props.price <= order.props.price
+                        : o.props.price >= order.props.price)
+                )
+                .sort((a, b) =>
+                    order.action === EOrderAction.BUY
+                        ? a.props.price - b.props.price // buy: fill cheapest first
+                        : b.props.price - a.props.price // sell: fill highest first
+                );
 
-                const newChannelRes = await this.newChannel(buildTradeRes.data.tradeInfo, buildTradeRes.data.unfilled);
-                if (newChannelRes.error || !newChannelRes.data) {
-                    if (matchRes.data.match.socket_id !== newChannelRes.socketId) {
-                        this.lockOrder(matchRes.data.match, false);
-                    } else {
-                        this.removeOrder(matchRes.data.match.uuid, matchRes.data.match.socket_id);
+            for (const match of matchingOrders) {
+                if (remaining <= 0) break;
+
+                // Self-trade guard
+                if (match.socket_id === order.socket_id) continue;
+                if (match.keypair.address === order.keypair.address) continue;
+
+                const fillAmt = Math.min(remaining, match.props.amount);
+
+                // Lock the resting order to prevent double-match
+                this.lockOrder(match);
+                updateOrderLog(this.orderbookName, match.uuid, fillAmt === match.props.amount ? 'FILLED' : 'PT-FILLED');
+
+                // Clone for filled amount
+                const takerSlice = { ...order, props: { ...order.props, amount: fillAmt } };
+                const makerSlice = { ...match, props: { ...match.props, amount: fillAmt } };
+
+                // Build trade and open swap channel
+                const buildTradeRes = buildTrade(takerSlice, makerSlice);
+                if (buildTradeRes.error || !buildTradeRes.data) throw new Error(`[C] ${buildTradeRes.error || "Building Trade Failed. Code 2"}`);
+
+                if (!noTrades) {
+                    const newChannelRes = await this.newChannel(buildTradeRes.data.tradeInfo, buildTradeRes.data.unfilled);
+                    if (newChannelRes.error || !newChannelRes.data) {
+                        // If trade failed, unlock or remove as before
+                        if (match.socket_id !== newChannelRes.socketId) {
+                            this.lockOrder(match, false);
+                        } else {
+                            this.removeOrder(match.uuid, match.socket_id);
+                        }
+                        this.updatePlacedOrdersForSocketId(match.socket_id);
+                        throw new Error(`[D] ${newChannelRes.error || "Undefined Error"}`);
                     }
-                    this.updatePlacedOrdersForSocketId(matchRes.data.match.socket_id);
-                    throw new Error(`${newChannelRes.error || "Undefined Error"}`);
+                    trades.push(newChannelRes.data);
                 }
 
-                if (buildTradeRes.data.unfilled?.uuid === matchRes.data.match.uuid) {
-                    matchRes.data.match.props.amount = buildTradeRes.data.unfilled.props.amount;
-                    this.lockOrder(matchRes.data.match, false);
+                // Remove or adjust filled resting order
+                if (fillAmt === match.props.amount) {
+                    this.removeOrder(match.uuid, match.socket_id);
                 } else {
-                    this.removeOrder(matchRes.data.match.uuid, matchRes.data.match.socket_id);
+                    match.props.amount = safeNumber(match.props.amount - fillAmt);
+                    this.lockOrder(match, false); // unlock the remaining
                 }
-                this.updatePlacedOrdersForSocketId(matchRes.data.match.socket_id);
+                this.updatePlacedOrdersForSocketId(match.socket_id);
 
-                if (buildTradeRes.data.unfilled?.uuid === order.uuid) {
-                    const res = await this.addOrder(buildTradeRes.data.unfilled);
-                    return { data: res.data };
-                }
-                this.updatePlacedOrdersForSocketId(order.socket_id);
-
-                return { data: { trade: newChannelRes.data } };
+                remaining = safeNumber(remaining - fillAmt);
             }
+
+            // If not fully filled, rest the residual order
+            let residualOrder;
+            if (remaining > 0) {
+                residualOrder = { ...order, props: { ...order.props, amount: remaining } };
+                saveLog(this.orderbookName, "ORDER", residualOrder);
+                this.orders = [...this.orders, residualOrder];
+                this.updatePlacedOrdersForSocketId(residualOrder.socket_id);
+            }
+
+            return { data: { trades: trades.length ? trades : undefined, order: residualOrder } };
         } catch (error) {
             return { error: error.message };
         }
