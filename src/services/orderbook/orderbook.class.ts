@@ -227,6 +227,30 @@ export class Orderbook {
         }
     }
 
+    private cloneWithAmount(order: TOrder, amount: number): TOrder {
+        // Type-guard for SPOT
+        if (order.type === EOrderType.SPOT) {
+            const props = order.props as ISpotOrderProps;
+            return {
+                ...order,
+                props: {
+                    ...props,
+                    amount, // Set only amount, keep all others
+                }
+            };
+        } else if (order.type === EOrderType.FUTURES) {
+            const props = order.props as IFuturesOrderProps;
+            return {
+                ...order,
+                props: {
+                    ...props,
+                    amount,
+                }
+            };
+        }
+        throw new Error('Unsupported order type in cloneWithAmount');
+    }
+
     async addOrder(order: TOrder, noTrades: boolean = false): Promise<IResult<{ order?: TOrder; trades?: ITradeInfo[] }>> {
         try {
             if (!this.checkCompatible(order)) {
@@ -271,8 +295,8 @@ export class Orderbook {
                 updateOrderLog(this.orderbookName, match.uuid, fillAmt === match.props.amount ? 'FILLED' : 'PT-FILLED');
 
                 // Clone for filled amount
-                const takerSlice = { ...order, props: { ...order.props, amount: fillAmt } };
-                const makerSlice = { ...match, props: { ...match.props, amount: fillAmt } };
+                const takerSlice = this.cloneWithAmount(order, fillAmt);
+                const makerSlice = this.cloneWithAmount(match, fillAmt);
 
                 // Build trade and open swap channel
                 const buildTradeRes = buildTrade(takerSlice, makerSlice);
