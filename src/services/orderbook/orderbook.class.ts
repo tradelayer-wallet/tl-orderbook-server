@@ -292,7 +292,6 @@ export class Orderbook {
 
                 // Lock the resting order to prevent double-match
                 this.lockOrder(match);
-                updateOrderLog(this.orderbookName, match.uuid, fillAmt === match.props.amount ? 'FILLED' : 'PT-FILLED');
 
                 // Clone for filled amount
                 const takerSlice = this.cloneWithAmount(order, fillAmt);
@@ -320,6 +319,8 @@ export class Orderbook {
                 // Remove or adjust filled resting order
                 if (fillAmt === match.props.amount) {
                     this.removeOrder(match.uuid, match.socket_id);
+
+                updateOrderLog(this.orderbookName, match.uuid, fillAmt === match.props.amount ? 'FILLED' : 'FILLED');
                 } else {
                     match.props.amount = safeNumber(match.props.amount - fillAmt);
                     this.lockOrder(match, false); // unlock the remaining
@@ -332,6 +333,8 @@ export class Orderbook {
             // If not fully filled, rest the residual order
             let residualOrder;
             if (remaining > 0) {
+
+                updateOrderLog(this.orderbookName, match.uuid, 'PT-FILLED');
                 residualOrder = { ...order, props: { ...order.props, amount: remaining } };
                 saveLog(this.orderbookName, "ORDER", residualOrder);
                 this.orders = [...this.orders, residualOrder];
