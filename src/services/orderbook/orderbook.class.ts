@@ -315,7 +315,7 @@ export class Orderbook {
                     } else {
                         match.props.amount = safeNumber(match.props.amount - fillAmt);
                         this.lockOrder(match, false);
-                        updateOrderLog(this.orderbookName, match.uuid, 'PARTIAL');
+                        updateOrderLog(this.orderbookName, match.uuid, 'PT-FILLED');
                     }
                     this.updatePlacedOrdersForSocketId(match.socket_id);
 
