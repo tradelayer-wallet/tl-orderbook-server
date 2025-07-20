@@ -328,19 +328,19 @@ export class Orderbook {
                 this.updatePlacedOrdersForSocketId(match.socket_id);
 
                 remaining = safeNumber(remaining - fillAmt);
+
+                   // If not fully filled, rest the residual order
+                let residualOrder;
+                if (remaining > 0) {
+
+                    updateOrderLog(this.orderbookName, match.uuid, 'PT-FILLED');
+                    residualOrder = { ...order, props: { ...order.props, amount: remaining } };
+                    saveLog(this.orderbookName, "ORDER", residualOrder);
+                    this.orders = [...this.orders, residualOrder];
+                    this.updatePlacedOrdersForSocketId(residualOrder.socket_id);
+                }
             }
-
-            // If not fully filled, rest the residual order
-            let residualOrder;
-            if (remaining > 0) {
-
-                updateOrderLog(this.orderbookName, match.uuid, 'PT-FILLED');
-                residualOrder = { ...order, props: { ...order.props, amount: remaining } };
-                saveLog(this.orderbookName, "ORDER", residualOrder);
-                this.orders = [...this.orders, residualOrder];
-                this.updatePlacedOrdersForSocketId(residualOrder.socket_id);
-            }
-
+            
             return { data: { trades: trades.length ? trades : undefined, order: residualOrder } };
         } catch (error) {
             return { error: error.message };
