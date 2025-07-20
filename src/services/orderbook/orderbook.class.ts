@@ -256,84 +256,83 @@ export class Orderbook {
             noTrades: boolean = false
         ): Promise<IResult<{ order?: TOrder; trades?: ITradeInfo[] }>> {
             try {
-                console.log('adding order '+JSON.stringify(order))
-                if (!this.checkCompatible(order)) {
-                    throw new Error(`Order mismatch with current orderbook interface or type`);
+                console.debug('Starting addOrder', { order });
+
+            if (!this.checkCompatible(order)) {
+                console.warn('Rejected order as incompatible', order, this.props);
+                throw new Error(`Order mismatch with current orderbook interface or type`);
+            }
+
+            let remaining = order.props.amount;
+            const trades: ITradeInfo[] = [];
+            const maxIters = this.orders.length + 1;
+            let iters = 0;
+
+            while (remaining > 0) {
+                if (++iters > maxIters) {
+                    throw new Error('match sweep exceeded expected bounds');
+                }
+                const { data, error } = this.checkMatch(this.cloneWithAmount(order, remaining));
+                console.debug('Check match', { remaining, data, error, orders: this.orders });
+                if (error) throw new Error(error);
+                const match = data.match;
+                if (!match) break;
+
+                // Prevent self-trading
+                if (
+                    match.socket_id === order.socket_id ||
+                    match.keypair.address === order.keypair.address
+                ) {
+                    this.lockOrder(match);
+                    this.lockOrder(match, false);
+                    continue;
                 }
 
-                let remaining = order.props.amount;
-                const trades: ITradeInfo[] = [];
+                const fillAmt = Math.min(remaining, match.props.amount);
+                this.lockOrder(match);
 
-                // Optional: set a max iteration guard for extra safety
-                const maxIters = this.orders.length + 1;
-                let iters = 0;
+                const takerSlice = this.cloneWithAmount(order, fillAmt);
+                const makerSlice = this.cloneWithAmount(match, fillAmt);
 
-                while (remaining > 0) {
-                    if (++iters > maxIters) {
-                        throw new Error('match sweep exceeded expected bounds');
-                    }
+                const buildTradeRes = buildTrade(takerSlice, makerSlice);
+                if (buildTradeRes.error || !buildTradeRes.data)
+                    throw new Error(`[C] ${buildTradeRes.error || "Building Trade Failed. Code 2"}`);
 
-                    // Always re-check best match
-                    const { data, error } = this.checkMatch(this.cloneWithAmount(order, remaining));
-                    console.log('match # '+iters+' '+JSON.stringify(data))
-                    if (error) throw new Error(error);
-                    const match = data.match;
-                    if (!match) break; // No compatible resting orders
-
-                    // Prevent self-trading
-                    if (
-                        match.socket_id === order.socket_id ||
-                        match.keypair.address === order.keypair.address
-                    ) {
-                        this.lockOrder(match);
+                let chanRes;
+                if (!noTrades) {
+                    chanRes = await this.newChannel(buildTradeRes.data.tradeInfo, buildTradeRes.data.unfilled);
+                    if (chanRes.error || !chanRes.data) {
                         this.lockOrder(match, false);
                         continue;
                     }
-
-                    const fillAmt = Math.min(remaining, match.props.amount);
-                    this.lockOrder(match);
-
-                    const takerSlice = this.cloneWithAmount(order, fillAmt);
-                    const makerSlice = this.cloneWithAmount(match, fillAmt);
-
-                    const buildTradeRes = buildTrade(takerSlice, makerSlice);
-                    if (buildTradeRes.error || !buildTradeRes.data)
-                        throw new Error(`[C] ${buildTradeRes.error || "Building Trade Failed. Code 2"}`);
-
-                    let chanRes;
-                    if (!noTrades) {
-                        chanRes = await this.newChannel(buildTradeRes.data.tradeInfo, buildTradeRes.data.unfilled);
-                        if (chanRes.error || !chanRes.data) {
-                            this.lockOrder(match, false);
-                            continue;
-                        }
-                        trades.push(buildTradeRes.data.tradeInfo);
-                    }
-
-                    // Remove or adjust the matched resting order
-                    if (fillAmt === match.props.amount) {
-                        this.removeOrder(match.uuid, match.socket_id);
-                        updateOrderLog(this.orderbookName, match.uuid, 'FILLED');
-                    } else {
-                        match.props.amount = safeNumber(match.props.amount - fillAmt);
-                        this.lockOrder(match, false);
-                        updateOrderLog(this.orderbookName, match.uuid, 'PT-FILLED');
-                    }
-                    this.updatePlacedOrdersForSocketId(match.socket_id);
-
-                    remaining = safeNumber(remaining - fillAmt);
+                    trades.push(buildTradeRes.data.tradeInfo);
                 }
 
-                // Handle any residual (unfilled) order – now type-safe for both spot & futures
-                let residualOrder: TOrder | undefined;
-                if (remaining > 0) {
-                    residualOrder = this.cloneWithAmount(order, remaining);
-                    saveLog(this.orderbookName, "ORDER", residualOrder);
-                    this.orders = [...this.orders, residualOrder];
-                    this.updatePlacedOrdersForSocketId(residualOrder.socket_id);
+                // Remove or adjust the matched resting order
+                if (fillAmt === match.props.amount) {
+                    this.removeOrder(match.uuid, match.socket_id);
+                    updateOrderLog(this.orderbookName, match.uuid, 'FILLED');
+                } else {
+                    match.props.amount = safeNumber(match.props.amount - fillAmt);
+                    this.lockOrder(match, false);
+                    updateOrderLog(this.orderbookName, match.uuid, 'PARTIAL');
                 }
+                this.updatePlacedOrdersForSocketId(match.socket_id);
 
-                return { data: { trades: trades.length ? trades : undefined, order: residualOrder } };
+                remaining = safeNumber(remaining - fillAmt);
+            }
+
+            if (remaining > 0) {
+                console.debug('Adding residual order to book', remaining, order);
+                residualOrder = this.cloneWithAmount(order, remaining);
+                saveLog(this.orderbookName, "ORDER", residualOrder);
+                this.orders = [...this.orders, residualOrder];
+                this.updatePlacedOrdersForSocketId(residualOrder.socket_id);
+            }
+
+            console.debug('addOrder result', { trades, residualOrder: residualOrder });
+            return { data: { trades: trades.length ? trades : undefined, order: residualOrder } };
+
             } catch (error) {
                 return { error: (error as Error).message };
             }
