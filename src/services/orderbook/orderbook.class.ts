@@ -331,6 +331,9 @@ export class Orderbook {
                     this.updatePlacedOrdersForSocketId(residualOrder.socket_id);
                 }
 
+                this.updatePlacedOrdersForSocketId(order.socket_id);
+                this.updatePlacedOrdersForSocketId(match.socket_id);
+
                 return { data: { trades: trades.length ? trades : undefined, order: residualOrder } };
             } catch (error) {
                 return { error: (error as Error).message };
