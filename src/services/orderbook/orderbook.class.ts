@@ -25,6 +25,15 @@ type Agg = {
   weighted: number;       // Σ slice.amount * maker.price
 };
 
+/* ------------------------------------------------------------------
+ *  Small helper so we don’t litter code with console.log everywhere.
+ * ------------------------------------------------------------------ */
+const DBG = (...args: any[]) => {
+  const ts = new Date().toISOString().slice(11, 23);      // HH:MM:SS.mmm
+  console.log(`\x1b[36m[OB DEBUG ${ts}]\x1b[0m`, ...args); // cyan
+};
+
+
 export class Orderbook {
     private _type: EOrderType;
     private _orders: TOrder[] = [];
@@ -262,6 +271,9 @@ async addOrder(
     let remaining        = order.props.amount;
     const touchedSockets = new Set<string>();     // every socket we must refresh
     const bucketByUuid   = new Map<string, Agg>(); // one bucket per maker UUID
+      DBG(`New taker ${order.uuid.slice(0, 6)}…  ${order.action} ${order.props.amount} @ ${order.props.price}`);
+
+
     const pointTrades: ITradeInfo[] = [];         // if you still want per-slice
 
     /* - Matching loop - */
@@ -299,15 +311,18 @@ async addOrder(
 
       // 3️⃣  Book-keeping on the live resting order
       this.lockOrder(match);                      // lock before we mutate
+        DBG(`   ⋆ fill ${fillAmt} vs maker ${maker.uuid.slice(0, 6)}…  (before: ${maker.props.amount})`);
       touchedSockets.add(match.socket_id);
 
       if (fillAmt === match.props.amount) {
         this.removeOrder(match.uuid, match.socket_id);     // fully filled
         updateOrderLog(this.orderbookName, match.uuid, 'FILLED');
+           DBG(`     → maker exhausted and removed`);
       } else {
         match.props.amount = safeNumber(match.props.amount - fillAmt);
         this.lockOrder(match, false);                      // unlock + broadcast
         updateOrderLog(this.orderbookName, match.uuid, 'PT-FILLED');
+          DBG(`     → maker now ${maker.props.amount} left`);
       }
 
       /*  Optional: per-slice channel (legacy behaviour)  */
@@ -338,7 +353,7 @@ async addOrder(
         const makerCombined = this.cloneWithAmount(maker, totalAmt);
 
         const combRes = buildTrade(takerCombined, makerCombined);
-        if (combRes.error) continue;                      // (edge-case recovery)
+        if (combRes.error){ DBG(`! buildTrade failed`, combRes.error), continue;}                      // (edge-case recovery)
 
         const chanRes = await this.newChannel(
           combRes.data.tradeInfo,
@@ -347,6 +362,7 @@ async addOrder(
         if (chanRes.error) continue;                      // failed swap → skip
 
         aggTrades.push(combRes.data.tradeInfo);
+            DBG(`   ↳ opened channel VWAP ${avgPx} for ${bucket.totalAmt}`);
       }
     }
 
@@ -356,6 +372,7 @@ async addOrder(
       residualOrder = this.cloneWithAmount(order, remaining);
       this.orders   = [...this.orders, residualOrder];    // triggers broadcast
       saveLog(this.orderbookName, 'ORDER', residualOrder);
+          DBG(`Residual taker ${remaining} added back to book`);
     }
 
     /* Emit placed-orders refresh to everyone touched */
