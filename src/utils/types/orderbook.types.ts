@@ -14,7 +14,7 @@ export interface IFuturesOrderProps {
     contract_id: number;
     amount: number;
     price: number;
-    levarage: number;
+    initMargin: number;
     collateral: number;
 };
 
