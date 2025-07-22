@@ -60,6 +60,12 @@ export class Orderbook {
         });
     }
 
+    /* Fire-and-forget helper so we don’t have to sprinkle loops everywhere */
+        private pushPlaced = (...socketIds: string[]) => {
+            socketIds.forEach(sid => this.updatePlacedOrdersForSocketId(sid));
+        };
+
+
     set orders(value: TOrder[]) {
         this._orders = value;
         // Send updates to all connected WebSocket clients when order changes
@@ -337,11 +343,13 @@ async addOrder(
         this.removeOrder(match.uuid, match.socket_id);     // fully filled
         updateOrderLog(this.orderbookName, match.uuid, 'FILLED');
            DBG(`     → maker exhausted and removed`);
+             this.pushPlaced(match.socket_id);  
       } else {
         match.props.amount = safeNumber(match.props.amount - fillAmt);
         this.lockOrder(match, false);                      // unlock + broadcast
         updateOrderLog(this.orderbookName, match.uuid, 'PT-FILLED');
           DBG(`     → maker now ${match.props.amount} left`);
+            this.pushPlaced(match.socket_id);  
       }
 
       /*  Optional: per-slice channel (legacy behaviour)  */
@@ -400,7 +408,7 @@ async addOrder(
     touchedSockets.add(order.socket_id);
     for (const sid of touchedSockets)
       this.updatePlacedOrdersForSocketId(sid);
-
+      
     return {
       data: {
         trades : aggTrades.length ? aggTrades : undefined,   // aggregated swaps
