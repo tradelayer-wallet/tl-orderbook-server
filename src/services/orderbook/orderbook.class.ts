@@ -126,6 +126,20 @@ export class Orderbook {
         }
     }
 
+    /** Two orders belong to the same market / contract pair. */
+private sameMarket(a: Agg, b: Agg): boolean {
+  // contract id is the canonical discriminator
+  if (a.props.contract_id !== b.props.contract_id) return false;
+
+  // but keep the old safeguards so we don't mix inverse / spot etc.
+  return (
+    a.type       === b.type &&
+    a.action     === b.action &&              // optional – drop if you really want BUY vs SELL together
+    a.marketName === b.marketName             // your UI key
+  );
+}
+
+
     private addProps(order: TOrder): IResult {
         try {
             if (this.props) {
@@ -311,7 +325,7 @@ async addOrder(
 
       // 3️⃣  Book-keeping on the live resting order
       this.lockOrder(match);                      // lock before we mutate
-        DBG(`   ⋆ fill ${fillAmt} vs maker ${maker.uuid.slice(0, 6)}…  (before: ${maker.props.amount})`);
+        DBG(`   ⋆ fill ${fillAmt} vs maker ${match.uuid.slice(0, 6)}…  (before: ${match.props.amount})`);
       touchedSockets.add(match.socket_id);
 
       if (fillAmt === match.props.amount) {
@@ -353,7 +367,9 @@ async addOrder(
         const makerCombined = this.cloneWithAmount(maker, totalAmt);
 
         const combRes = buildTrade(takerCombined, makerCombined);
-        if (combRes.error){ DBG(`! buildTrade failed`, combRes.error), continue;}                      // (edge-case recovery)
+        if (combRes.error){ 
+        DBG(`! buildTrade failed`; combRes.error); 
+        continue;}                      // (edge-case recovery)
 
         const chanRes = await this.newChannel(
           combRes.data.tradeInfo,
@@ -362,7 +378,7 @@ async addOrder(
         if (chanRes.error) continue;                      // failed swap → skip
 
         aggTrades.push(combRes.data.tradeInfo);
-            DBG(`   ↳ opened channel VWAP ${avgPx} for ${bucket.totalAmt}`);
+            DBG(`   ↳ opened channel VWAP ${vwap} for ${bucket.totalAmt}`);
       }
     }
 
@@ -487,7 +503,7 @@ const buildTrade = (
                 amount: amount,
                 contract_id: buyOrderProps.contract_id,
                 price: price,
-                levarage: buyOrderProps.levarage,
+                initMargin: buyOrderProps.levarage,
                 collateral: buyOrderProps.collateral,
             };
         } else {

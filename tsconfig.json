@@ -11,7 +11,8 @@
     "moduleResolution": "node",
     "types": ["node"],
     "outDir": "./dist",
-    "rootDir": "./src"
+    "rootDir": "./src",
+"downlevelIteration": true
   },
   "include": ["./src/**/*"]
 }
