@@ -126,19 +126,24 @@ export class Orderbook {
         }
     }
 
-    /** Two orders belong to the same market / contract pair. */
-private sameMarket(a: Agg, b: Agg): boolean {
-  // contract id is the canonical discriminator
-  if (a.props.contract_id !== b.props.contract_id) return false;
+  
+/** True when two *orders* belong to the same contract / spot pair. */
+private sameMarket(a: TOrder, b: TOrder): boolean {
+  if (a.type !== b.type) return false;
 
-  // but keep the old safeguards so we don't mix inverse / spot etc.
-  return (
-    a.type       === b.type &&
-    a.action     === b.action &&              // optional – drop if you really want BUY vs SELL together
-    a.marketName === b.marketName             // your UI key
-  );
+  if (a.type === EOrderType.FUTURES) {
+    const ca = (a.props as IFuturesOrderProps).contract_id;
+    const cb = (b.props as IFuturesOrderProps).contract_id;
+    return ca === cb;
+  }
+
+  // SPOT – treat the unordered pair as one market
+  const pa = a.props as ISpotOrderProps;
+  const pb = b.props as ISpotOrderProps;
+  const direct   = pa.id_desired === pb.id_desired && pa.id_for_sale === pb.id_for_sale;
+  const inverted = pa.id_desired === pb.id_for_sale  && pa.id_for_sale  === pb.id_desired;
+  return direct || inverted;
 }
-
 
     private addProps(order: TOrder): IResult {
         try {
@@ -336,7 +341,7 @@ async addOrder(
         match.props.amount = safeNumber(match.props.amount - fillAmt);
         this.lockOrder(match, false);                      // unlock + broadcast
         updateOrderLog(this.orderbookName, match.uuid, 'PT-FILLED');
-          DBG(`     → maker now ${maker.props.amount} left`);
+          DBG(`     → maker now ${match.props.amount} left`);
       }
 
       /*  Optional: per-slice channel (legacy behaviour)  */
@@ -368,7 +373,7 @@ async addOrder(
 
         const combRes = buildTrade(takerCombined, makerCombined);
         if (combRes.error){ 
-        DBG(`! buildTrade failed`; combRes.error); 
+        DBG(`! buildTrade failed`, combRes.error); 
         continue;}                      // (edge-case recovery)
 
         const chanRes = await this.newChannel(
@@ -503,7 +508,7 @@ const buildTrade = (
                 amount: amount,
                 contract_id: buyOrderProps.contract_id,
                 price: price,
-                initMargin: buyOrderProps.levarage,
+                initMargin: buyOrderProps.initMargin,
                 collateral: buyOrderProps.collateral,
             };
         } else {
