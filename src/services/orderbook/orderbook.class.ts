@@ -407,10 +407,10 @@ private sameMarket(a: TOrder, b: TOrder): boolean {
         console.log('replacing trade? '+Boolean(residualOrder.uuid === order.uuid)+' '+residualOrder.props.amount+' '+ order.props.amount+' '+JSON.stringify(residualOrder))
         if (residualOrder.uuid === order.uuid && residualOrder.props.amount < order.props.amount) {
            await this.addOrder(residualOrder, true); // recursion: one step down
-           if(!noTrades){
+           if(noTrades){
                    this.orders = [...this.orders, residualOrder];
            }
-        }else{
+        }else if{
 
             // Otherwise, just add the order to the book (or skip if dust)
             this.orders = [...this.orders, residualOrder];
