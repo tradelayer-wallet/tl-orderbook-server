@@ -401,6 +401,7 @@ let residualOrder: TOrder | undefined = undefined;
 if (remaining > 0) {
   // Always create new order object for remnant
   residualOrder = this.cloneWithAmount(order, remaining);
+  const DUST_LIMIT = (order.type === "FUTURES") ? 1 : 1e-8;
   if (remaining >= DUST_LIMIT) {
     // Only recurse if:
     // - UUID is same (we're still working on this order)
