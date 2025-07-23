@@ -407,9 +407,11 @@ private sameMarket(a: TOrder, b: TOrder): boolean {
         console.log('replacing trade? '+Boolean(residualOrder.uuid === order.uuid)+' '+residualOrder.props.amount+' '+ order.props.amount+' '+JSON.stringify(residualOrder))
         if (residualOrder.uuid === order.uuid && residualOrder.props.amount < order.props.amount) {
            await this.addOrder(residualOrder, noTrades); // recursion: one step down
+        }else{
+            
+            // Otherwise, just add the order to the book (or skip if dust)
+            this.orders = [...this.orders, residualOrder];
         }
-        // Otherwise, just add the order to the book (or skip if dust)
-        //this.orders = [...this.orders, residualOrder];
         saveLog(this.orderbookName, 'ORDER', residualOrder);
         DBG(`Residual taker ${remaining} added back to book`);
       }
