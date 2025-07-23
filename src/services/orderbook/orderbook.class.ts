@@ -397,7 +397,7 @@ async addOrder(
 
    
 let residualOrder: TOrder | undefined = undefined;
-
+DBG('remaining '+remaining)
 if (remaining > 0) {
   // Always create new order object for remnant
   residualOrder = this.cloneWithAmount(order, remaining);
