@@ -406,6 +406,7 @@ if (remaining > 0) {
     // Only recurse if:
     // - UUID is same (we're still working on this order)
     // - amount is reduced (progress made)
+    console.log('replacing trade? '+Boolean(residualOrder.uuid === order.uuid)+' '+'residualOrder.props.amount+' + order.props.amount+' '+JSON.stringify(residualOrder))
     if (residualOrder.uuid === order.uuid && residualOrder.props.amount < order.props.amount) {
       return await this.addOrder(residualOrder, noTrades); // recursion: one step down
     }
@@ -419,7 +420,7 @@ if (remaining > 0) {
     /* Emit placed-orders refresh to everyone touched */
     touchedSockets.add(order.socket_id);
     for (const sid of touchedSockets)
-      this.updatePlacedOrdersForSocketId(sid);
+      this.updatePlacedOrdersForSocketId(sid);1
       
     return {
       data: {
