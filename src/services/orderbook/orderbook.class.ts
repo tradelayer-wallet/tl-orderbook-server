@@ -17,6 +17,7 @@ import { orderbookManager } from ".";
 import { EmitEvents } from "../socket/events";
 import { readdirSync, readFileSync } from "fs";
 import { Websocket } from 'hyper-express'; // Import Websocket type
+import { orderbookManager } from ".";
 
 type Agg = {
   maker: TOrder;          // live reference
@@ -346,7 +347,8 @@ async addOrder(
              this.pushPlaced(match.socket_id);  
       } else {
         match.props.amount = safeNumber(match.props.amount - fillAmt);
-        this.lockOrder(match, false);                      // unlock + broadcast
+        this.lockOrder(match, false);      // unlock + broadcast
+        orderbookManager.updateOrder(match);
         updateOrderLog(this.orderbookName, match.uuid, 'PT-FILLED');
           DBG(`     → maker now ${match.props.amount} left`);
             this.pushPlaced(match.socket_id);  
@@ -400,6 +402,7 @@ async addOrder(
     if (remaining > 0) {
       residualOrder = this.cloneWithAmount(order, remaining);
       this.orders   = [...this.orders, residualOrder];    // triggers broadcast
+      orderbookManager.registerOrder(residualOrder); 
       saveLog(this.orderbookName, 'ORDER', residualOrder);
           DBG(`Residual taker ${remaining} added back to book`);
     }
@@ -408,7 +411,7 @@ async addOrder(
     touchedSockets.add(order.socket_id);
     for (const sid of touchedSockets)
       this.updatePlacedOrdersForSocketId(sid);
-      
+
     return {
       data: {
         trades : aggTrades.length ? aggTrades : undefined,   // aggregated swaps
@@ -477,6 +480,7 @@ async addOrder(
 
             // Remove the order
             this.orders = this.orders.filter(o => o !== orderForRemove);
+            orderbookManager.unregisterOrder(orderForRemove);
             this.broadcastSnapshot();   // <- broadcast after removal
 
             return { data: `Order with uuid ${uuid} was removed!` };
