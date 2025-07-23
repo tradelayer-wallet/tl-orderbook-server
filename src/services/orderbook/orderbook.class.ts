@@ -395,19 +395,25 @@ async addOrder(
       }
     }
 
-    /* Residual taker order - goes onto the book */
-    let residualOrder: TOrder | undefined;
-    if (remaining > 0) {
-      residualOrder = this.cloneWithAmount(order, remaining);
-      this.orders   = [...this.orders, residualOrder];    // triggers broadcast
-      saveLog(this.orderbookName, 'ORDER', residualOrder);
-          DBG(`Residual taker ${remaining} added back to book`);
-          const DUST_LIMIT = (order.type === "FUTURES") ? 1 : 1e-8;
-        if (combRes.data.unfilled?.uuid === order.uuid&&remaining >= DUST_LIMIT){
-                const res = await this.addOrder(combRes.data.unfilled);
-                return { data: res.data };
-        }
+   
+let residualOrder: TOrder | undefined = undefined;
+
+if (remaining > 0) {
+  // Always create new order object for remnant
+  residualOrder = this.cloneWithAmount(order, remaining);
+  if (remaining >= DUST_LIMIT) {
+    // Only recurse if:
+    // - UUID is same (we're still working on this order)
+    // - amount is reduced (progress made)
+    if (residualOrder.uuid === order.uuid && residualOrder.props.amount < order.props.amount) {
+      return await this.addOrder(residualOrder, noTrades); // recursion: one step down
     }
+    // Otherwise, just add the order to the book (or skip if dust)
+    this.orders = [...this.orders, residualOrder];
+    saveLog(this.orderbookName, 'ORDER', residualOrder);
+    DBG(`Residual taker ${remaining} added back to book`);
+  }
+}
 
     /* Emit placed-orders refresh to everyone touched */
     touchedSockets.add(order.socket_id);
