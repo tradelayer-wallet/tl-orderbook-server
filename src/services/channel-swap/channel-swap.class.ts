@@ -14,12 +14,40 @@ export class SwapEvent {
 
 const swapEventName = 'swap';
 
+
+// ---- Deduplication singletons ---- //
+const activeSwaps = new Map<string, ChannelSwap>();
+const completedSteps = new Set<string>();
+
+function getTradeUUID(tradeInfo: ITradeInfo): string {
+  // You can customize how you generate your UUID
+  // Prefer explicit tradeInfo.uuid if present, else buyer.uuid-seller.uuid
+  return tradeInfo.uuid ||
+    (tradeInfo.buyer?.uuid && tradeInfo.seller?.uuid
+      ? `${tradeInfo.buyer.uuid}-${tradeInfo.seller.uuid}`
+      : `${tradeInfo.buyer?.socketId || ''}-${tradeInfo.seller?.socketId || ''}`);
+}
+
+function shouldProcessStep(tradeUUID: string, socketId: string, eventName: string): boolean {
+  const key = `${tradeUUID}:${socketId}:${eventName}`;
+  if (completedSteps.has(key)) return false;
+  completedSteps.add(key);
+  return true;
+}
+
+function cleanUpStepsForTrade(tradeUUID: string) {
+  for (const key of completedSteps) {
+    if (key.startsWith(`${tradeUUID}:`)) completedSteps.delete(key);
+  }
+}
+
 export class ChannelSwap {
   private ready!: (v: IResultChannelSwap) => void;
   private readonly buyerId: string;
   private readonly clientMgr: SocketEventManager;
   private readonly dealerMgr: SocketEventManager;
   private closed = false;
+  private tradeUUID: string;
 
   constructor(
     private client: Websocket,
@@ -27,6 +55,16 @@ export class ChannelSwap {
     private tradeInfo: ITradeInfo,
     private unfilled: TOrder
   ) {
+
+    this.tradeUUID = getTradeUUID(tradeInfo);
+
+    // --- DEDUPLICATION GUARD ---
+    if (activeSwaps.has(this.tradeUUID)) {
+      console.log(`[SwapGuard] Swap already active for ${this.tradeUUID}, skipping duplicate.`);
+      // No-op, or could throw or return early if instantiated directly.
+      return;
+    }
+    activeSwaps.set(this.tradeUUID, this);
     // Wrap each HyperExpress socket with our event manager
     this.clientMgr = new SocketEventManager(client);
     this.dealerMgr = new SocketEventManager(dealer);
@@ -34,6 +72,7 @@ export class ChannelSwap {
 
     this.openChannel();
   }
+
 
   /** resolves when BUYER:STEP6 or TERMINATE_TRADE received */
   onReady(): Promise<IResultChannelSwap> {
@@ -70,6 +109,10 @@ export class ChannelSwap {
   this.clientMgr.on(clientSwapEvt, (raw: any) => {
     console.log('client pipe swap '+JSON.stringify(raw))
     const eventName = raw.eventName ?? 'UNKNOWN_STEP';
+     if (!shouldProcessStep(this.tradeUUID, (this.client as any).id, eventName)) {
+        console.log(`[SwapGuard] client step ${eventName} already handled for ${this.tradeUUID}`);
+        return;
+      }
     const payload = new SwapEvent(eventName, (this.client as any).id, raw.data ?? raw);
     console.log('[Relay] client → dealer', clientSwapEvt, JSON.stringify(payload));
     this.dealerMgr.emit(clientSwapEvt, payload);
@@ -78,6 +121,10 @@ export class ChannelSwap {
   this.dealerMgr.on(dealerSwapEvt, (raw: any) => {
     console.log('dealer pipe swap '+JSON.stringify(raw))
     const eventName = raw.eventName ?? 'UNKNOWN_STEP';
+    if (!shouldProcessStep(this.tradeUUID, (this.dealer as any).id, eventName)) {
+        console.log(`[SwapGuard] dealer step ${eventName} already handled for ${this.tradeUUID}`);
+        return;
+      }
     const payload = new SwapEvent(eventName, (this.dealer as any).id, raw.data ?? raw);
     console.log('[Relay] dealer → client', dealerSwapEvt, JSON.stringify(payload));
     this.clientMgr.emit(dealerSwapEvt, payload);
@@ -90,6 +137,12 @@ export class ChannelSwap {
     const handler: EventHandler = (swap: SwapEvent) => {
       const { eventName, socketId, data } = swap;
       console.log('[Monitor] swap event:', JSON.stringify(swap));
+
+       // Use step guard even here for full deduplication
+      if (!shouldProcessStep(this.tradeUUID, socketId, eventName)) {
+        console.log(`[SwapGuard] terminal step ${eventName} already handled for ${this.tradeUUID}`);
+        return;
+      }
 
       if (eventName === 'BUYER:STEP6') {
         this.ready?.({ data: { txid: data } });
@@ -112,5 +165,7 @@ export class ChannelSwap {
     this.closed = true;
     this.clientMgr.dispose();
     this.dealerMgr.dispose();
+    activeSwaps.delete(this.tradeUUID);
+    cleanUpStepsForTrade(this.tradeUUID);
   }
 }
