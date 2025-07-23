@@ -360,6 +360,7 @@ async addOrder(
       }
 
       remaining = safeNumber(remaining - fillAmt);
+      DBG('remaining reduced by fill amt '+remaining +' '+fillAmt)
     } // end matching loop
 
     /* - One channel per maker bucket (VWAP price)- */
