@@ -20,12 +20,7 @@ const activeSwaps = new Map<string, ChannelSwap>();
 const completedSteps = new Set<string>();
 
 function getTradeUUID(tradeInfo: ITradeInfo): string {
-  // You can customize how you generate your UUID
-  // Prefer explicit tradeInfo.uuid if present, else buyer.uuid-seller.uuid
-  return tradeInfo.uuid ||
-    (tradeInfo.buyer?.uuid && tradeInfo.seller?.uuid
-      ? `${tradeInfo.buyer.uuid}-${tradeInfo.seller.uuid}`
-      : `${tradeInfo.buyer?.socketId || ''}-${tradeInfo.seller?.socketId || ''}`);
+  return `${tradeInfo.buyer.uuid}-${tradeInfo.seller.uuid}`
 }
 
 function shouldProcessStep(tradeUUID: string, socketId: string, eventName: string): boolean {
