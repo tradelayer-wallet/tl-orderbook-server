@@ -389,8 +389,6 @@ private sameMarket(a: TOrder, b: TOrder): boolean {
           combRes.data.tradeInfo,
           combRes.data.unfilled
         );
-        if (chanRes.error) continue;                      // failed swap → skip
-
         aggTrades.push(combRes.data.tradeInfo);
             DBG(`   ↳ opened channel VWAP ${vwap} for ${bucket.totalAmt}`);
       }
