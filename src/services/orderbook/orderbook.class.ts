@@ -409,7 +409,7 @@ private sameMarket(a: TOrder, b: TOrder): boolean {
            await this.addOrder(residualOrder, noTrades); // recursion: one step down
         }
         // Otherwise, just add the order to the book (or skip if dust)
-        this.orders = [...this.orders, residualOrder];
+        //this.orders = [...this.orders, residualOrder];
         saveLog(this.orderbookName, 'ORDER', residualOrder);
         DBG(`Residual taker ${remaining} added back to book`);
       }
