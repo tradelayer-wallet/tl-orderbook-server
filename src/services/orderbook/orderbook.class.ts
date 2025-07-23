@@ -402,6 +402,11 @@ async addOrder(
       this.orders   = [...this.orders, residualOrder];    // triggers broadcast
       saveLog(this.orderbookName, 'ORDER', residualOrder);
           DBG(`Residual taker ${remaining} added back to book`);
+          const DUST_LIMIT = (order.type === "FUTURES") ? 1 : 1e-8;
+        if (remaining >= DUST_LIMIT) {
+           const res = await this.addOrder(buildTradeRes.data.unfilled);
+           return { data: res.data };
+        }
     }
 
     /* Emit placed-orders refresh to everyone touched */
