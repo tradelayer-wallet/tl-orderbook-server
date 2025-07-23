@@ -284,13 +284,13 @@ private sameMarket(a: TOrder, b: TOrder): boolean {
     }
 
       
-async addOrder(
-  order: TOrder,
-  noTrades = false
-): Promise<IResult<{ order?: TOrder; trades?: ITradeInfo[] }>> {
-  try {
-    if (!this.checkCompatible(order))
-      throw new Error('Order mismatch with order-book');
+    async addOrder(
+      order: TOrder,
+      noTrades = false
+    ): Promise<IResult<{ order?: TOrder; trades?: ITradeInfo[] }>> {
+      try {
+        if (!this.checkCompatible(order))
+          throw new Error('Order mismatch with order-book');
 
     /* -State we accumulate *during* the sweep - */
     let remaining        = order.props.amount;
@@ -385,7 +385,7 @@ async addOrder(
         DBG(`! buildTrade failed`, combRes.error); 
         continue;}                      // (edge-case recovery)
         console.log('built trade about to make channel '+JSON.stringify(combRes.data.tradeInfo))
-        const chanRes = await this.newChannel(
+        const chanRes = this.newChannel(
           combRes.data.tradeInfo,
           combRes.data.unfilled
         );
@@ -395,7 +395,6 @@ async addOrder(
             DBG(`   ↳ opened channel VWAP ${vwap} for ${bucket.totalAmt}`);
       }
     }
-
        
     let residualOrder: TOrder | undefined = undefined;
     DBG('remaining '+remaining)
@@ -409,7 +408,7 @@ async addOrder(
         // - amount is reduced (progress made)
         console.log('replacing trade? '+Boolean(residualOrder.uuid === order.uuid)+' '+residualOrder.props.amount+' '+ order.props.amount+' '+JSON.stringify(residualOrder))
         if (residualOrder.uuid === order.uuid && residualOrder.props.amount < order.props.amount) {
-          return await this.addOrder(residualOrder, noTrades); // recursion: one step down
+           await this.addOrder(residualOrder, noTrades); // recursion: one step down
         }
         // Otherwise, just add the order to the book (or skip if dust)
         this.orders = [...this.orders, residualOrder];
