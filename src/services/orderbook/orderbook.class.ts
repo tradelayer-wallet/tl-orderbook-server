@@ -404,8 +404,7 @@ async addOrder(
           DBG(`Residual taker ${remaining} added back to book`);
           const DUST_LIMIT = (order.type === "FUTURES") ? 1 : 1e-8;
         if (remaining >= DUST_LIMIT) {
-           const res = await this.addOrder(buildTradeRes.data.unfilled);
-           return { data: res.data };
+           residualOrder = await this.addOrder(residualOrder);
         }
     }
 
@@ -516,7 +515,7 @@ const buildTrade = (
 
         let tradeProps: any;
         if (buyOrder.type === EOrderType.FUTURES) {
-              const makerProps = old_order.props as IFuturesOrderProps;
+              const buyOrderProps = old_order.props as IFuturesOrderProps;
             tradeProps = {
                 amount: amount,
                 contract_id: buyOrderProps.contract_id,
