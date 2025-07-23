@@ -534,10 +534,12 @@ const buildTrade = (
             buyer: {
                 socketId: buyOrder.socket_id,
                 keypair: buyOrder.keypair,
+                uuid: buyOrder.uuid
             },
             seller: {
                 socketId: sellOrder.socket_id,
                 keypair: sellOrder.keypair,
+                uuid: sellOrder.uuid
             },
             taker: new_order.socket_id,
             maker: old_order.socket_id,

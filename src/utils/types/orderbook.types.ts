@@ -67,13 +67,14 @@ export interface IHistoryTrade extends ITradeInfo {
 interface ITradeClinetInfo {
     socketId: string;
     keypair: IKeyPair;
+    uuid?: string
 };
 
 interface IFuturesTradeProps {
     amount: number;
     contract_id: number;
     price: number;
-    levarage: number;
+    initMargin: number;
     collateral: number;
 };
 
