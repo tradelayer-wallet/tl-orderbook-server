@@ -383,7 +383,7 @@ async addOrder(
         if (combRes.error){ 
         DBG(`! buildTrade failed`, combRes.error); 
         continue;}                      // (edge-case recovery)
-
+        console.log('built trade about to make channel '+JSON.stringify(combRes.data.tradeInfo))
         const chanRes = await this.newChannel(
           combRes.data.tradeInfo,
           combRes.data.unfilled
