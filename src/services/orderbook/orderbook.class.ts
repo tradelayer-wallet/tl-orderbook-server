@@ -410,7 +410,7 @@ private sameMarket(a: TOrder, b: TOrder): boolean {
            if(noTrades){
                    this.orders = [...this.orders, residualOrder];
            }
-        }else if{
+        }else{
 
             // Otherwise, just add the order to the book (or skip if dust)
             this.orders = [...this.orders, residualOrder];
