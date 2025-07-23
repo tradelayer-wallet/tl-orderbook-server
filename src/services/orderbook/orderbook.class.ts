@@ -403,8 +403,8 @@ async addOrder(
       saveLog(this.orderbookName, 'ORDER', residualOrder);
           DBG(`Residual taker ${remaining} added back to book`);
           const DUST_LIMIT = (order.type === "FUTURES") ? 1 : 1e-8;
-        if (buildTradeRes.data.unfilled?.uuid === order.uuid&&remaining >= DUST_LIMIT){
-                const res = await this.addOrder(buildTradeRes.data.unfilled);
+        if (combRes.data.unfilled?.uuid === order.uuid&&remaining >= DUST_LIMIT){
+                const res = await this.addOrder(combRes.data.unfilled);
                 return { data: res.data };
         }
     }
