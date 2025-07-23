@@ -495,7 +495,7 @@ const buildTrade = (
         const ordersArray = [new_order, old_order];
         const buyOrder = ordersArray.find(t => t.action === EOrderAction.BUY);
         const sellOrder = ordersArray.find(t => t.action === EOrderAction.SELL);
-
+        console.log('building trade '+JSON.stringify(buyOrder)+' seller '+JSON.stringify(sellOrder))
         if (!buyOrder || !sellOrder) throw new Error("Building Trade Failed. Code 1");
         const newOrderAmount = new_order.props.amount;
         const oldOrderAmount = old_order.props.amount;
