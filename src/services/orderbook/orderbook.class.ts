@@ -516,7 +516,7 @@ const buildTrade = (
 
         let tradeProps: any;
         if (buyOrder.type === EOrderType.FUTURES) {
-            const buyOrderProps = buyOrder.props as IFuturesOrderProps;
+              const makerProps = old_order.props as IFuturesOrderProps;
             tradeProps = {
                 amount: amount,
                 contract_id: buyOrderProps.contract_id,
