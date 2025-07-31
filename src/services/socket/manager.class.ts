@@ -16,20 +16,19 @@ interface IClientSession {
 export class SocketManager {
     private _liveSessions: Map<string, HyperExpress.Websocket> = new Map();
 
-   constructor(private servers: HyperExpress.Server[]) {
-       
+  constructor(private servers: HyperExpress.Server[]) {
     this.servers.forEach((srv) => {
-           srv.ws('/', (ws) => {
-          this.handleOpen(ws);
-          ws.on('message', (m) => this.handleMessage(ws, m));
-          ws.on('close',   ()  => this.handleClose(ws));
-        });
-        srv.ws('/ws', (ws) => {
-          this.handleOpen(ws);
-          ws.on('message', (m) => this.handleMessage(ws, m));
-          ws.on('close',   ()  => this.handleClose(ws));
-        });
-    }
+      srv.ws('/', (ws) => {
+        this.handleOpen(ws);
+        ws.on('message', (m) => this.handleMessage(ws, m));
+        ws.on('close',   ()  => this.handleClose(ws));
+      });
+      srv.ws('/ws', (ws) => {
+        this.handleOpen(ws);
+        ws.on('message', (m) => this.handleMessage(ws, m));
+        ws.on('close',   ()  => this.handleClose(ws));
+      });
+    }); // <-- THIS closes the forEach
 
     console.log('SocketManager ready on', this.servers.length, 'server(s)');
   }
