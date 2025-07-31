@@ -38,22 +38,6 @@ export class SocketManager {
         return this._liveSessions.get(socketId);
     }
 
-    private initService() {
-        this.app.ws('/ws', (ws) => {
-            this.handleOpen(ws);
-
-            ws.on('message', (message) => {
-                this.handleMessage(ws, message);
-            });
-
-            ws.on('close', () => {
-                this.handleClose(ws);
-            });
-        });
-
-        console.log('Socket Service Initialized with HyperExpress');
-    }
-
     private handleOpen(ws: HyperExpress.Websocket) {
         const id = this.generateUniqueId();
         (ws as any).id = id;
