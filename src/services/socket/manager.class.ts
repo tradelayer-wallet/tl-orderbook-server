@@ -16,11 +16,18 @@ interface IClientSession {
 export class SocketManager {
     private _liveSessions: Map<string, HyperExpress.Websocket> = new Map();
 
-    constructor(private app: HyperExpress.Server) {
-        console.log('SocketManager constructing');
-        this.initService();
-    }
-
+   constructor(private servers: HyperExpress.Server[]) {
+    this.servers.forEach(srv => {
+      srv.ws('/ws', (ws) => {
+        this.handleOpen(ws);
+        ws.on('message', (msg) => this.handleMessage(ws, msg));
+        ws.on('close',   ()   => this.handleClose(ws));
+      });
+      attach('/');     // ← root path, matches wss://ws.layerwallet.com
+      attach('/ws');   // ← optional, keeps backward-compat with ws://IP:9191/ws
+    });
+    console.log('SocketManager ready on', this.servers.length, 'server(s)');
+  }
     public getSocketById(socketId: string): HyperExpress.Websocket | undefined {
         return this._liveSessions.get(socketId);
     }

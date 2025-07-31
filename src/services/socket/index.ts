@@ -4,9 +4,11 @@ import { SocketManager } from './manager.class';
 const app = new HyperExpress.Server();
 
 export let socketManager: SocketManager;
-
-export function initSocketService(server: HyperExpress.Server) {
-    // Initialize SocketManager with the HyperExpress server
-    socketManager = new SocketManager(server);
-    console.log('Socket Service Initialized');
+/**
+ * Initialise sockets on one *or many* HyperExpress servers.
+ */
+export function initSocketService(servers: HyperExpress.Server | HyperExpress.Server[]) {
+  const list = Array.isArray(servers) ? servers : [servers];
+  socketManager = new SocketManager(list);
+  console.log('Socket service initialised on', list.length, 'listener(s)');
 }
