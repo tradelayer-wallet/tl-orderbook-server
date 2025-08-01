@@ -4,7 +4,7 @@ import { SocketManager } from './manager.class';
 let socketManager: SocketManager | undefined;
 
 export function initSocketService(server: HyperExpress.Server) {
-    socketManager = new SocketManager();   // ← Pass the server!
+    socketManager = new SocketManager(server);   // ← Pass the server!
     console.log('Socket Service Initialized');
     return socketManager;
 }
