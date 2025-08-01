@@ -21,11 +21,6 @@ initSocketService(server);
 initOrderbookService();
 initMarketsService();
 
-server.ws('/ws', (ws) => {
-  ws.on('message', msg => { /* handle it */ });
-  ws.on('close', () => { /* cleanup */ });
-});
-
 server.listen(WSS_PORT, '0.0.0.0').then(() => {
   console.log(`[WSS] listening on wss://yourdomain.com/ws`);
 });
