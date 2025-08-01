@@ -22,7 +22,8 @@ export class SocketManager {
 
         // Initial orderbook snapshot, history, etc.
         const ordersSnapshot = orderbookManager.orderbooks
-            .flatMap(ob => ob.orders)
+            .map(ob => ob.orders)
+            .reduce((a, b) => a.concat(b), [])
             .filter(o => !o.lock);
 
         const historySnapshot = orderbookManager.getOrdersHistory();
@@ -34,6 +35,10 @@ export class SocketManager {
         }));
         ws.send(JSON.stringify({ event: 'connected', id }));
         console.log(`[SM] OPEN ${id}, live=${this._liveSessions.size}`);
+    }
+
+    public getSocketById(id: string): HyperExpress.Websocket | undefined {
+    return this._liveSessions.get(id);
     }
 
     private handleClose(ws: HyperExpress.Websocket) {

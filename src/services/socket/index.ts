@@ -7,6 +7,6 @@ export let socketManager: SocketManager;
 
 export function initSocketService(server: HyperExpress.Server) {
     // Initialize SocketManager with the HyperExpress server
-    socketManager = new SocketManager(server);
+    socketManager = new SocketManager();
     console.log('Socket Service Initialized');
 }
