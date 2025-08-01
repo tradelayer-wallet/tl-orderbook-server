@@ -18,6 +18,10 @@ const wssServer = new HyperExpress.Server({
 // 1. Create HyperExpress server for WS (desktop/NPM)
 const wsServer = new HyperExpress.Server();
 
+
+// -------- ONE SocketManager for ALL servers --------
+const socketManager = new SocketManager();
+
 // Attach orderbook/market REST (OPTIONAL) -- can skip if you only want REST on one
 [wsServer, wssServer].forEach((srv) => {
   handleRoutes(srv);
@@ -26,9 +30,6 @@ const wsServer = new HyperExpress.Server();
 // Initialize shared core services ONCE
 initOrderbookService();
 initMarketsService();
-
-// -------- ONE SocketManager for ALL servers --------
-const socketManager = new SocketManager();
 
 // Attach the same SocketManager to both servers
 [wsServer, wssServer].forEach((srv) => {
