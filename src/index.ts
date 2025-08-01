@@ -1,7 +1,7 @@
 import HyperExpress from 'hyper-express';
 import * as fs from 'fs';
 import { handleRoutes } from './routes/routes';
-import { SocketManager } from './services/socket/manager.class'; // Import directly!
+import { socketManager } from './services/socket/manager.class'; // Import directly!
 import { initOrderbookService } from './services/orderbook';
 import { initMarketsService } from './services/markets';
 
@@ -26,9 +26,6 @@ const wsServer = new HyperExpress.Server();
 // Initialize shared core services ONCE
 initOrderbookService();
 initMarketsService();
-
-// -------- ONE SocketManager for ALL servers --------
-const socketManager = new SocketManager();
 
 // Attach the same SocketManager to both servers
 [wsServer, wssServer].forEach((srv) => {
