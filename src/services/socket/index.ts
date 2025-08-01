@@ -1,15 +1,12 @@
 import HyperExpress from 'hyper-express';
 import { SocketManager } from './manager.class';
 
-let socketManager: SocketManager | undefined;
+const app = new HyperExpress.Server();
+
+export let socketManager: SocketManager;
 
 export function initSocketService(server: HyperExpress.Server) {
-    socketManager = new SocketManager(server);   // ← Pass the server!
+    // Initialize SocketManager with the HyperExpress server
+    socketManager = new SocketManager();
     console.log('Socket Service Initialized');
-    return socketManager;
-}
-
-export function getSocketManager() {
-    if (!socketManager) throw new Error('SocketManager not initialized');
-    return socketManager;
 }
