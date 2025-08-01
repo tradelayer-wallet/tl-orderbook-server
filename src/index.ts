@@ -3,23 +3,23 @@ import HyperExpress from 'hyper-express';
 import Fastify, { FastifyInstance } from 'fastify';
 import { Server as IOServer } from 'socket.io';
 import WebSocket from 'ws';
-import middie from '@fastify/middie';
 
 import { handleRoutes } from './routes/routes';
+import { envConfig } from './config/env.config';
 import { initOrderbookService } from './services/orderbook';
 import { initMarketsService } from './services/markets';
 
 /* ========= ENV / PORTS =========
-   Bots/desktop connect directly to HyperExpress :3001
-   Web hits Fastify on 443 (TLS) OR 3002 (behind NGINX)
+   Bots/desktop connect directly to HyperExpress :3002
+   Web hits Fastify on 443 (TLS) OR 3001 (behind NGINX)
 ================================= */
-const HEX_WS_PORT = parseInt(process.env.OB_WS_PORT || '3001', 10);
+const HEX_WS_PORT = parseInt(process.env.OB_WS_PORT || '3002', 10);
 
 // Fastify mode:
 // - TLS on 443 when OB_TLS=1 (Node serves HTTPS itself)
 // - HTTP on OB_HTTP_PORT (default 3002) when OB_TLS=0 (behind NGINX)
 const TLS_ENABLED = process.env.OB_TLS === '1';
-const FASTIFY_HTTP_PORT = parseInt(process.env.OB_HTTP_PORT || '3002', 10);
+const FASTIFY_HTTP_PORT = parseInt(process.env.OB_HTTP_PORT || '3001', 10);
 const FASTIFY_HTTPS_PORT = parseInt(process.env.OB_HTTPS_PORT || '443', 10);
 const TLS_KEY = process.env.OB_TLS_KEY_FILE || '/home/ubuntu/ssl/privkey.pem';
 const TLS_CERT = process.env.OB_TLS_CERT_FILE || '/home/ubuntu/ssl/fullchain.pem';
@@ -31,19 +31,21 @@ initMarketsService();
 /* ========= HYPEREXPRESS: native WS for NPM/bots/desktop ========= */
 const hex = new HyperExpress.Server();
 
+// attach native WS handlers on both "/" and "/ws"
 function attachNativeWs(app: HyperExpress.Server) {
   const onConn = (ws: HyperExpress.Websocket) => {
-    // TODO: connect to your orderbook manager here
+    // TODO: wire to your orderbook manager
     ws.on('message', (raw) => {
       // handle inbound messages
     });
-    ws.on('close', () => { /* cleanup */ });
+    ws.on('close', () => {
+      // cleanup
+    });
   };
-
-  // Web can use '/', desktop/raw can use '/ws'
-  app.ws('/',  (ws) => onConn(ws));
+  app.ws('/', (ws) => onConn(ws));
   app.ws('/ws', (ws) => onConn(ws));
 
+  // (optional) health check
   app.get('/healthz', (req, res) => res.send('ok'));
 }
 
@@ -63,7 +65,10 @@ function makeFastify(): FastifyInstance {
   if (TLS_ENABLED) {
     return Fastify({
       logger: true,
-      https: { key: fs.readFileSync(TLS_KEY), cert: fs.readFileSync(TLS_CERT) }
+      https: {
+        key: fs.readFileSync(TLS_KEY),
+        cert: fs.readFileSync(TLS_CERT),
+      },
     });
   }
   return Fastify({ logger: true });
@@ -71,29 +76,11 @@ function makeFastify(): FastifyInstance {
 
 const fastify = makeFastify();
 
-async function setupFastify() {
-  // Enable app.use(...) style middleware if your routes use it
-  await fastify.register(middie);
+// REST routes (your existing ones)
+handleRoutes(fastify as any);
 
-  // Register REST routes AFTER middie
-  handleRoutes(fastify as any);
-
-  // Health
-  fastify.get('/healthz', async () => 'ok');
-
-  // Start Fastify
-  if (TLS_ENABLED) {
-    await fastify.listen({ port: FASTIFY_HTTPS_PORT, host: '0.0.0.0' });
-    fastify.log.info(`[Fastify] HTTPS on :${FASTIFY_HTTPS_PORT}`);
-  } else {
-    await fastify.listen({ port: FASTIFY_HTTP_PORT, host: '0.0.0.0' });
-    fastify.log.info(`[Fastify] HTTP on :${FASTIFY_HTTP_PORT} (behind NGINX)`);
-  }
-
-  // Socket.IO relay (after listen so app.server exists)
-  attachSocketIO(fastify);
-  fastify.log.info('[Fastify] Socket.IO path /socket.io/');
-}
+// (optional) health
+fastify.get('/healthz', async () => 'ok');
 
 // Socket.IO relay attaches to Fastify's underlying server
 function attachSocketIO(app: FastifyInstance) {
@@ -153,8 +140,20 @@ function attachSocketIO(app: FastifyInstance) {
   });
 }
 
-// boot fastify
-setupFastify().catch((err) => {
-  fastify.log.error(err);
-  process.exit(1);
-});
+/* start Fastify then attach Socket.IO */
+(async () => {
+  try {
+    if (TLS_ENABLED) {
+      await fastify.listen({ port: FASTIFY_HTTPS_PORT, host: '0.0.0.0' });
+      fastify.log.info(`[Fastify] HTTPS on :${FASTIFY_HTTPS_PORT}`);
+    } else {
+      await fastify.listen({ port: FASTIFY_HTTP_PORT, host: '0.0.0.0' });
+      fastify.log.info(`[Fastify] HTTP on :${FASTIFY_HTTP_PORT} (behind NGINX)`);
+    }
+    attachSocketIO(fastify);
+    fastify.log.info('[Fastify] Socket.IO path /socket.io/');
+  } catch (err: any) {
+    fastify.log.error(err);
+    process.exit(1);
+  }
+})();
