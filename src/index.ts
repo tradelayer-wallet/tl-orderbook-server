@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import Fastify from 'fastify';
 import HyperExpress from 'hyper-express';
 import fastifyExpress from 'fastify-express';
+
 import { handleRoutes } from './routes/routes';
 import { envConfig } from './config/env.config';
 import { initOrderbookService } from './services/orderbook';
@@ -10,9 +11,9 @@ import { initMarketsService } from './services/markets';
 import { initSocketService } from './services/socket';
 
 // ---------- Ports ----------
-const HTTPS_PORT = 443; // web over TLS
-const FASTIFY_HTTP_PORT = Number(process.env.HTTP_PORT ?? envConfig.SERVER_PORT ?? 3001); // web HTTP (if you use it)
-const WS_PORT = Number(process.env.WS_PORT ?? 3002); // raw WS for NPM/desktop
+const HTTPS_PORT = 443; // Web over TLS
+const FASTIFY_HTTP_PORT = Number(process.env.HTTP_PORT ?? envConfig.SERVER_PORT ?? 3001); // Web HTTP (optional)
+const WS_PORT = Number(process.env.WS_PORT ?? 3002); // Raw WS for NPM/desktop
 
 // ---------- TLS for Fastify ----------
 const SECURE_OPTIONS = {
@@ -20,35 +21,45 @@ const SECURE_OPTIONS = {
   cert: fs.readFileSync('/home/ubuntu/ssl/fullchain.pem'),
 };
 
+// ===== HyperExpress (raw WS only for NPM/desktop) =====
+const wsServer = new HyperExpress.Server();
+wsServer.get('/healthz', (req, res) => res.send('ok'));
+
+// Core services (singletons)
+initOrderbookService();
+initMarketsService();
+
+// Attach SocketManager on HyperExpress; it binds '/' and '/ws'
+initSocketService([wsServer]);
+
+// Start HyperExpress first
+wsServer
+  .listen(WS_PORT, '0.0.0.0')
+  .then(() => console.log(`[WS] listening on ws://0.0.0.0:${WS_PORT}/ws (and /)`))
+  .catch((e) => {
+    console.error('[WS] failed:', e?.message || e);
+    process.exit(1);
+  });
+
 // ===== Fastify (web: HTTPS + optional HTTP) =====
 const serverHTTPS = Fastify({ logger: true, https: SECURE_OPTIONS });
 const serverHTTP  = Fastify({ logger: true });
 
-// ===== HyperExpress (raw WS only for NPM/desktop) =====
-const hex = new HyperExpress.Server();
-hex.get('/healthz', (req, res) => res.send('ok'));
-
-// Your SocketManager constructor attaches BOTH '/' and '/ws' to each server passed in.
-// We only pass the HyperExpress server so it owns the raw WS endpoints.
-initOrderbookService();
-initMarketsService();
-initSocketService([hex]);
-
-// ===== Start everything =====
 (async () => {
   try {
+    // Register middleware plugin BEFORE routes (handleRoutes uses app.use)
+    await serverHTTPS.register(fastifyExpress);
+    await serverHTTP.register(fastifyExpress);
 
-  // Register middleware plugin FIRST
-  await serverHTTPS.register(fastifyExpress);
-  await serverHTTP.register(fastifyExpress);
+    // Register your existing routes on both Fastify instances
+    handleRoutes(serverHTTPS as any);
+    handleRoutes(serverHTTP  as any);
 
-  // Now it is safe to use handleRoutes() which calls app.use(...)
-  handleRoutes(serverHTTPS as any);
-  handleRoutes(serverHTTP  as any);
+    // Health (optional)
+    serverHTTPS.get('/healthz', async () => 'ok');
+    serverHTTP.get('/healthz', async () => 'ok');
 
-    await hex.listen(WS_PORT, '0.0.0.0');
-    console.log(`[HyperExpress] WS: ws://0.0.0.0:${WS_PORT}/ws and /`);
-
+    // Start Fastify listeners
     await serverHTTPS.listen({ port: HTTPS_PORT, host: '0.0.0.0' });
     serverHTTPS.log.info(`HTTPS :${HTTPS_PORT}`);
 
