@@ -2,7 +2,7 @@
 import * as fs from 'fs';
 import Fastify from 'fastify';
 import HyperExpress from 'hyper-express';
-
+import fastifyExpress from 'fastify-express';
 import { handleRoutes } from './routes/routes';
 import { envConfig } from './config/env.config';
 import { initOrderbookService } from './services/orderbook';
@@ -46,6 +46,15 @@ initSocketService([hex]);
 // ===== Start everything =====
 (async () => {
   try {
+
+  // Register middleware plugin FIRST
+  await serverHTTPS.register(fastifyExpress);
+  await serverHTTP.register(fastifyExpress);
+
+  // Now it is safe to use handleRoutes() which calls app.use(...)
+  handleRoutes(serverHTTPS as any);
+  handleRoutes(serverHTTP  as any);
+  	
     await hex.listen(WS_PORT, '0.0.0.0');
     console.log(`[HyperExpress] WS: ws://0.0.0.0:${WS_PORT}/ws and /`);
 
