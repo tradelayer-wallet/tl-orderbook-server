@@ -10,15 +10,16 @@ const WS_PORT   = 3001;  // ws:// for desktop/NPM
 const WSS_PORT  = 443;   // wss:// for web
 
 // SSL options for HTTPS/WSS
-const SECURE_OPTIONS = {
-  key: fs.readFileSync('/home/ubuntu/ssl/privkey.pem'),
-  cert: fs.readFileSync('/home/ubuntu/ssl/fullchain.pem'),
-};
+const wssServer = new HyperExpress.Server({
+  key_file_name: '/home/ubuntu/ssl/privkey.pem',
+  cert_file_name: '/home/ubuntu/ssl/fullchain.pem',
+});
+
 
 // 1. Create HyperExpress server for WS (desktop/NPM)
 const wsServer = new HyperExpress.Server();
 // 2. Create HyperExpress server for WSS (web)
-const wssServer = new HyperExpress.Server(SECURE_OPTIONS);
+const wssServer = new HyperExpress.Server(wssServer);
 
 // Attach orderbook, market, socket services to BOTH servers
 [wsServer, wssServer].forEach((srv) => {
