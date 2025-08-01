@@ -1,7 +1,7 @@
 // logs.route.ts
 import HyperExpress from 'hyper-express';
 import { readFileSync, readdirSync } from "fs";
-import { socketManager } from '../services/socket'; // Updated import
+import { getSocketManager } from '../services/socket'; // Updated import
 import moment from 'moment';
 
 const logsRouter = new HyperExpress.Router();
