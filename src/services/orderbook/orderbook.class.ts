@@ -10,7 +10,7 @@ import {
 } from "../../utils/types/orderbook.types";
 import { IResult, IResultChannelSwap } from "../../utils/types/mix.types";
 import { safeNumber, saveLog, updateOrderLog } from "../../utils/pure/mix.pure";
-import { getSocketManager } from "../socket"; // Updated import
+import { getSocketManager() } from "../socket"; // Updated import
 import { ChannelSwap } from "../channel-swap/channel-swap.class";
 import { TFilter } from "../../utils/types/markets.types";
 import { orderbookManager } from ".";
@@ -53,7 +53,7 @@ export class Orderbook {
 
     // New helper: broadcast full snapshot filtered to unlocked orders
     private broadcastSnapshot() {
-        getSocketManager.broadcastToAll({
+        getSocketManager().broadcastToAll({
             event: EmitEvents.ORDERBOOK_DATA,
             orders: this._orders.filter(o => !o.lock),
             history: this._historyTrades,
@@ -178,8 +178,8 @@ private sameMarket(a: TOrder, b: TOrder): boolean {
         try {
             const buyerSocketId = tradeInfo.buyer.socketId;
             const sellerSocketId = tradeInfo.seller.socketId;
-            const buyerSocket = getSocketManager.getSocketById(buyerSocketId) as Websocket;
-            const sellerSocket = getSocketManager.getSocketById(sellerSocketId) as Websocket;
+            const buyerSocket = getSocketManager().getSocketById(buyerSocketId) as Websocket;
+            const sellerSocket = getSocketManager().getSocketById(sellerSocketId) as Websocket;
 
             if (!buyerSocket || !sellerSocket) {
                 throw new Error("One of the sockets is not available");
@@ -216,7 +216,7 @@ private sameMarket(a: TOrder, b: TOrder): boolean {
     updatePlacedOrdersForSocketId(socketid: string) {
         const openedOrders = orderbookManager.getOrdersBySocketId(socketid);
         const orderHistory = orderbookManager.getOrdersHistory();
-        const socketObj = getSocketManager.getSocketById(socketid) as Websocket;
+        const socketObj = getSocketManager().getSocketById(socketid) as Websocket;
         if (socketObj) {
             socketObj.send(JSON.stringify({ event: EmitEvents.PLACED_ORDERS, openedOrders, orderHistory }));
         }
