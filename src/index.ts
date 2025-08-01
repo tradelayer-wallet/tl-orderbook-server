@@ -1,7 +1,7 @@
 import HyperExpress from 'hyper-express';
 import * as fs from 'fs';
 import { handleRoutes } from './routes/routes';
-import { initSocketService } from './services/socket';
+import { SocketManager } from './services/socket/manager.class'; // Import directly!
 import { initOrderbookService } from './services/orderbook';
 import { initMarketsService } from './services/markets';
 
@@ -15,27 +15,36 @@ const wssServer = new HyperExpress.Server({
   cert_file_name: '/home/ubuntu/ssl/fullchain.pem',
 });
 
-
 // 1. Create HyperExpress server for WS (desktop/NPM)
 const wsServer = new HyperExpress.Server();
-// 2. Create HyperExpress server for WSS (web)
 
-// Attach orderbook, market, socket services to BOTH servers
+// Attach orderbook/market REST (OPTIONAL) -- can skip if you only want REST on one
 [wsServer, wssServer].forEach((srv) => {
-  handleRoutes(srv); // If you want REST API also on both, otherwise skip
-  initSocketService(srv); // Only register socket service ONCE per server!
+  handleRoutes(srv);
 });
 
-// Init shared services
+// Initialize shared core services ONCE
 initOrderbookService();
 initMarketsService();
 
-// Listen on WS (no SSL)
+// -------- ONE SocketManager for ALL servers --------
+const socketManager = new SocketManager();
+
+// Attach the same SocketManager to both servers
+[wsServer, wssServer].forEach((srv) => {
+  // Attach both / and /ws for legacy/flex clients
+  srv.ws('/',  ws => socketManager.handleOpen(ws));
+  srv.ws('/ws', ws => socketManager.handleOpen(ws));
+});
+
+console.log('[Init] SocketManager attached to all listeners');
+
+// ---- Start WS (no SSL) ----
 wsServer.listen(WS_PORT, '0.0.0.0')
   .then(() => console.log(`[WS] listening on ws://0.0.0.0:${WS_PORT}/ws (and /)`))
   .catch((e) => { console.error('[WS] failed:', e?.message || e); process.exit(1); });
 
-// Listen on WSS (with SSL)
+// ---- Start WSS (with SSL) ----
 wssServer.listen(WSS_PORT, '0.0.0.0')
   .then(() => console.log(`[WSS] listening on wss://0.0.0.0:${WSS_PORT}/ws (and /)`))
   .catch((e) => { console.error('[WSS] failed:', e?.message || e); process.exit(1); });
