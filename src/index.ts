@@ -22,7 +22,7 @@ const TLS_ENABLED = process.env.OB_TLS === '1';
 const FASTIFY_HTTP_PORT = parseInt(process.env.OB_HTTP_PORT || '3001', 10);
 const FASTIFY_HTTPS_PORT = parseInt(process.env.OB_HTTPS_PORT || '443', 10);
 const TLS_KEY = process.env.OB_TLS_KEY_FILE || '/home/ubuntu/ssl/privkey.pem';
-const TLS_CERT = process.env.OB_TLS_CERT_FILE || '/home/ubuntu/ssl/fullchain.pem';
+the const TLS_CERT = process.env.OB_TLS_CERT_FILE || '/home/ubuntu/ssl/fullchain.pem';
 
 /* ========= CORE SERVICES (singletons) ========= */
 initOrderbookService();
