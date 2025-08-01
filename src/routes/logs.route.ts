@@ -8,7 +8,7 @@ const logsRouter = new HyperExpress.Router();
 
 logsRouter.get('/sessions', async (req, res) => {
     try {
-        const sessions = socketManager.liveSessions;
+        const sessions = getSocketManager().liveSessions;
         const count = sessions.length;
         res.json({ data: { sessions, count } });
     } catch (error) {
