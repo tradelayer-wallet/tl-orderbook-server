@@ -10,7 +10,7 @@ import {
 } from "../../utils/types/orderbook.types";
 import { IResult, IResultChannelSwap } from "../../utils/types/mix.types";
 import { safeNumber, saveLog, updateOrderLog } from "../../utils/pure/mix.pure";
-import { getSocketManager} from "../socket"; // Updated import
+import { getSocketManager() } from "../socket"; // Updated import
 import { ChannelSwap } from "../channel-swap/channel-swap.class";
 import { TFilter } from "../../utils/types/markets.types";
 import { orderbookManager } from ".";
