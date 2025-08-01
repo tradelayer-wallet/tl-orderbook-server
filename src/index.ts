@@ -8,7 +8,7 @@ import { initSocketService } from './services/socket';
 import { initOrderbookService } from './services/orderbook';
 import { initMarketsService }   from './services/markets';
 
-const HTTP_PORT  = process.env.HTTP_PORT ? parseInt(process.env.HTTP_PORT) : 9191;
+const HTTP_PORT  = process.env.HTTP_PORT ? parseInt(process.env.HTTP_PORT) : 3001;
 const HTTPS_PORT = process.env.HTTPS_PORT ? parseInt(process.env.HTTPS_PORT) : 443;
 
 
