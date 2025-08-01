@@ -19,7 +19,6 @@ const wssServer = new HyperExpress.Server({
 // 1. Create HyperExpress server for WS (desktop/NPM)
 const wsServer = new HyperExpress.Server();
 // 2. Create HyperExpress server for WSS (web)
-const wssServer = new HyperExpress.Server(wssServer);
 
 // Attach orderbook, market, socket services to BOTH servers
 [wsServer, wssServer].forEach((srv) => {
