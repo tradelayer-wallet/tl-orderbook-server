@@ -6,10 +6,7 @@ import { initSocketService } from './services/socket';
 import { initOrderbookService } from './services/orderbook';
 import { initMarketsService } from './services/markets';
 
-const PORT = envConfig.SERVER_PORT || 3010;
-
-// Initialize HyperExpress server
-const server = new HyperExpress.Server();
+const PORT = envConfig.SERVER_PORT || 3001;
 
 // Initialize services with the server instance
 handleRoutes(server);
@@ -17,12 +14,18 @@ initSocketService(server);
 initOrderbookService();
 initMarketsService();
 
-// Start the HyperExpress server
-server.listen(PORT, '0.0.0.0')
-    .then(() => {
-        console.log(`Server Started: http://localhost:${PORT}`);
-    })
-    .catch((error) => {
-        console.error('Error starting server:', error);
-        process.exit(1);
-    });
+
+const WSS_PORT = 443; // or whatever, but 443 is the browser default for WSS
+const server = new HyperExpress.Server({
+  key_file_name: '/home/ubuntu/ssl/privkey.pem',
+  cert_file_name: '/home/ubuntu/ssl/fullchain.pem',
+});
+
+server.ws('/ws', (ws) => {
+  ws.on('message', msg => { /* handle it */ });
+  ws.on('close', () => { /* cleanup */ });
+});
+
+server.listen(WSS_PORT, '0.0.0.0').then(() => {
+  console.log(`[WSS] listening on wss://yourdomain.com/ws`);
+});
