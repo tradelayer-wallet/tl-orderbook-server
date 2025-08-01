@@ -3,7 +3,7 @@ import HyperExpress from 'hyper-express';
 import Fastify, { FastifyInstance } from 'fastify';
 import { Server as IOServer } from 'socket.io';
 import WebSocket from 'ws';
-import fastifyMiddie from 'fastify-middie';
+import fastifyExpress from 'fastify-express';
 import { handleRoutes } from './routes/routes';
 import { initOrderbookService } from './services/orderbook';
 import { initMarketsService } from './services/markets';
@@ -72,8 +72,8 @@ const fastify = makeFastify();
 
 async function setupFastify() {
   // Enable app.use(...) style middleware if your routes use it
-  await fastify.register(middie);
-
+  await fastify.register(fastifyExpress);
+  
   // Register REST routes AFTER middie
   handleRoutes(fastify as any);
 
