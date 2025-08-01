@@ -1,7 +1,7 @@
 import HyperExpress from 'hyper-express';
 import * as fs from 'fs';
 import { handleRoutes } from './routes/routes';
-import { socketManager } from './services/socket/manager.class'; // Import directly!
+import { socketManager } from './services/socket/'; // Import directly!
 import { initOrderbookService } from './services/orderbook';
 import { initMarketsService } from './services/markets';
 
