@@ -24,15 +24,6 @@ const SECURE_OPTIONS = {
 const serverHTTPS = Fastify({ logger: true, https: SECURE_OPTIONS });
 const serverHTTP  = Fastify({ logger: true });
 
-// If your Fastify routes were working before with handleRoutes(), keep calling it,
-// but cast to any to satisfy TS because handleRoutes is typed for HyperExpress.
-handleRoutes(serverHTTPS as any);
-handleRoutes(serverHTTP  as any);
-
-// Minimal health routes (optional)
-serverHTTPS.get('/healthz', async () => 'ok');
-serverHTTP.get('/healthz', async () => 'ok');
-
 // ===== HyperExpress (raw WS only for NPM/desktop) =====
 const hex = new HyperExpress.Server();
 hex.get('/healthz', (req, res) => res.send('ok'));
@@ -54,7 +45,7 @@ initSocketService([hex]);
   // Now it is safe to use handleRoutes() which calls app.use(...)
   handleRoutes(serverHTTPS as any);
   handleRoutes(serverHTTP  as any);
-  	
+
     await hex.listen(WS_PORT, '0.0.0.0');
     console.log(`[HyperExpress] WS: ws://0.0.0.0:${WS_PORT}/ws and /`);
 
