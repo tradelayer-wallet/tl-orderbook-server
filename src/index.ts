@@ -3,7 +3,8 @@ import HyperExpress from 'hyper-express';
 import Fastify, { FastifyInstance } from 'fastify';
 import { Server as IOServer } from 'socket.io';
 import WebSocket from 'ws';
-import fastifyMiddie from 'fastify-middie';
+import middie from '@fastify/middie';
+
 import { handleRoutes } from './routes/routes';
 import { initOrderbookService } from './services/orderbook';
 import { initMarketsService } from './services/markets';
