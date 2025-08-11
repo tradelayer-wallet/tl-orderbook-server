@@ -17,6 +17,8 @@ export class MarketsManager {
             const BTC = createToken('BTC', 'BTC',0)
             const USDT = createToken('USDT', 'USDT',6)
             const sBTC = createToken('sBTC', 'BTC','s-1-6')
+            const TLTC = createToken('TLTC', 'TLTC',0)
+            const TBILLt = createToken('TBILLt', 'TBILLt',5)
 
             const ltcMarkets: IMarket[] = [
                 createMarket(LTC, TBILL, false),
@@ -44,17 +46,19 @@ export class MarketsManager {
 
             if(network=="LTC"){
                 const ltcMarketType = createMarketType('LTC', ltcMarkets, MARKET_ICONS.LTC, false);
+                const result: IMarketType[] = [ltcMarketType];
             }
 
             if(network=="LTCTEST"){
                 const tltcMarketType = createMarketType('TLTC', tltcMarkets, MARKET_ICONS.LTC, false);
+                const result: IMarketType[] = [tltcMarketType];
             }
 
             if(network=="BTC"){
                 const btcMarketType = createMarketType('BTC', btcMarkets, MARKET_ICONS.BTC, false);
+                nst result: IMarketType[] = [btcMarketType];
             }
             
-            const result: IMarketType[] = [ltcMarketType];
             return { data: result };
         }
         catch (error) {
@@ -92,16 +96,18 @@ export class MarketsManager {
                 const ltcMarketType = createMarketType('LTC', ltcContracts, MARKET_ICONS.LTC, false);
 
             const result: IMarketType[] = [ltcMarketType, usdMarketType];
+            
+            return { data: result };
             }
             
             if(network=="BTC"){
                 const btcMarketType = createMarketType('BTC', btcContracts,MARKET_ICONS.BTC,false)
 
             const result: IMarketType[] = [btcMarketType, usdMarketType];
-            }
-           
-
+            
             return { data: result };
+            }
+        
         }
         catch (error) {
             return { error: error.message };
