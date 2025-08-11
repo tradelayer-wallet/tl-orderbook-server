@@ -19,7 +19,7 @@ export class MarketsManager {
             const sBTC = createToken('sBTC', 'BTC','s-1-6')
             const TLTC = createToken('TLTC', 'TLTC',0)
             const TBILLt = createToken('TBILLt', 'TBILLt',5)
-            const TLt = createToken('TLt', 'TLt',1)
+            const tTL = createToken('TLt', 'TLt',1)
             const sLTCt = createToken('sLTCt', 'sLTCt','s-1-5')
 
             const ltcMarkets: IMarket[] = [
