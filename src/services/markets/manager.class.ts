@@ -34,7 +34,7 @@ export class MarketsManager {
                 createMarket(TLTC, TBILLt, false),
                 createMarket(tTL, LTC, false),
                 createMarket(sLTCt, LTC, false),
-                createMarket(TLt, TBILLt, false),
+                createMarket(tTL, TBILLt, false),
                 createMarket(sLTCt, TBILLt, false)
             ];
 
