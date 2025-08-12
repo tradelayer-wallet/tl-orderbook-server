@@ -22,6 +22,6 @@ export const MARKET_ICONS = {
     LTC: 'https://bitcoin-capital.bg/wp-content/uploads/2019/07/1920px-LTC-400-min-300x300.png',
     USD: 'https://cdn0.iconfinder.com/data/icons/mobile-device/512/dollar-usd-round-keyboard-money-usa-latin-2-512.png',
     ALL: 'https://cdn.discordapp.com/attachments/749975407838888058/817037799739490344/ALLFancyLogo.png',
-    BTC: 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/9a/BTC_Logo.svg/2000px-BTC_Logo.svg.png',
+    BTC: 'https://upload.wikimedia.org/wikipedia/commons/4/46/Bitcoin.svg',
     DOGE: 'https://logos-download.com/wp-content/uploads/2018/04/DogeCoin_logo_cercle-700x700.png',
 };
