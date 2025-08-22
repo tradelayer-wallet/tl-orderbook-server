@@ -39,7 +39,7 @@ export class MarketsManager {
             const USDT = createToken('USDT', 'Tether USD', 5);
             const TL = createToken('TL', 'TradeLayer Native Metacoin', 1);
             const BTCoracle = createToken('BTC', 'Bitcoin Oracle', 1);
-            const LTCoracle = createToken('LTC', 'Litecoin Oracle, 2)
+            const LTCoracle = createToken('LTC', 'Litecoin Oracle', 2)
 
             const usdContracts: IContract[] = [
                 createContract(TL, USDT, 4, 'TL/TBILL', TBILL, false),
