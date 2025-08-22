@@ -11,7 +11,7 @@ export class MarketsManager {
     getAvailableSpotMarkets(): IResult<IMarketType[]> {
         try {
             const LTC = createToken('LTC', 'LTC', 0);
-            const TBILL = createToken('TBILL', 'TBILL', 5);
+            const USDT = createToken('USDT', 'Tether USD', 5);
             const TL = createToken('TL', 'TL', 1);
             const sLTC = createToken('sLTC', 'sLTC', 's-1-5');
 
@@ -36,14 +36,15 @@ export class MarketsManager {
     getAvailableFuturesMarkets(): IResult<IMarketType[]> {
         try {
             const LTC = createToken('LTC', 'Litecoin', 0);
-            const TBILL = createToken('TBILL', 'US Treasury Bill', 5);
+            const USDT = createToken('USDT', 'Tether USD', 5);
             const TL = createToken('TL', 'TradeLayer Native Metacoin', 1);
             const BTCoracle = createToken('BTC', 'Bitcoin Oracle', 1);
+            const LTCoracle = createToken('LTC', 'Litecoin Oracle, 2)
 
             const usdContracts: IContract[] = [
-                createContract(TL, TBILL, 4, 'TL/TBILL', TBILL, false),
-                createContract(LTC, TBILL, 5, 'LTC/TBILL', TBILL, false),
-                createContract(BTCoracle, TBILL, 2, 'BTC/USD', TBILL, false)
+                createContract(TL, USDT, 4, 'TL/TBILL', TBILL, false),
+                createContract(LTC, USDT, 5, 'LTC/TBILL', TBILL, false),
+                createContract(BTCoracle, USDT, 2, 'BTC/USD', TBILL, false)
             ];
 
             const ltcContracts: IContract[] = [
