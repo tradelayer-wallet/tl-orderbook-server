@@ -92,6 +92,28 @@ export class Orderbook {
         return this._historyTrades;
     }
 
+    // Add anywhere in the class (private helper)
+private normalizeSpotPrice(base: TOrder, other: TOrder, otherPrice: number): number {
+  if (base.type !== EOrderType.SPOT) return otherPrice;
+
+  const bp = base.props as ISpotOrderProps;
+  const op = other.props as ISpotOrderProps;
+
+  // same orientation
+  if (bp.id_desired === op.id_desired && bp.id_for_sale === op.id_for_sale) {
+    return otherPrice;
+  }
+
+  // inverted orientation -> take reciprocal
+  if (bp.id_desired === op.id_for_sale && bp.id_for_sale === op.id_desired) {
+    return otherPrice === 0 ? Number.POSITIVE_INFINITY : safeNumber(1 / otherPrice);
+  }
+
+  // not the same market (defensive)
+  return otherPrice;
+}
+
+
     private addExistingTradesHistory() {
         try {
             const data: IHistoryTrade[] = [];
@@ -222,26 +244,33 @@ private sameMarket(a: TOrder, b: TOrder): boolean {
         }
     }
 
-    private checkMatch(order: TOrder): IResult<{ match: TOrder | null }> {
+private checkMatch(order: TOrder): IResult<{ match: TOrder | null }> {
   try {
     const isBuy = order.action === EOrderAction.BUY;
-    const price  = order.props.price;
+    const price = order.props.price;
 
     const compatible = this.orders.filter(o => {
       if (o.lock) return false;
       if (o.action === order.action) return false;
       if (!this.sameMarket(o, order)) return false;
-      if (isBuy ? o.props.price > price : o.props.price < price) return false;
+
+      // ⬇️ CHANGED: compare using taker-basis normalized maker price
+      const norm = this.normalizeSpotPrice(order, o, o.props.price);
+      if (isBuy ? norm > price : norm < price) return false;
+
       return true;
     });
 
-    compatible.sort((a,b) => {
+    // ⬇️ CHANGED: sort using normalized prices on taker basis
+    compatible.sort((a, b) => {
+      const pa = this.normalizeSpotPrice(order, a, a.props.price);
+      const pb = this.normalizeSpotPrice(order, b, b.props.price);
       if (isBuy) {
-        if (a.props.price !== b.props.price) return a.props.price - b.props.price; // best ask
+        if (pa !== pb) return pa - pb;   // best ask first
       } else {
-        if (a.props.price !== b.props.price) return b.props.price - a.props.price; // best bid
+        if (pa !== pb) return pb - pa;   // best bid first
       }
-      return a.timestamp - b.timestamp; // time priority if present
+      return a.timestamp - b.timestamp;   // FIFO
     });
 
     const best = compatible[0];
@@ -399,7 +428,7 @@ private sameMarket(a: TOrder, b: TOrder): boolean {
     if (remaining > 0) {
       // Always create new order object for remnant
       residualOrder = this.cloneWithAmount(order, remaining);
-      const DUST_LIMIT = (order.type === "FUTURES") ? 1 : 1e-8;
+      const DUST_LIMIT = (order.type === EOrderType.FUTURES) ? 1 : 1e-8;
       if (remaining >= DUST_LIMIT) {
         // Only recurse if:
         // - UUID is same (we're still working on this order)
@@ -423,7 +452,7 @@ private sameMarket(a: TOrder, b: TOrder): boolean {
     /* Emit placed-orders refresh to everyone touched */
     touchedSockets.add(order.socket_id);
     for (const sid of touchedSockets)
-      this.updatePlacedOrdersForSocketId(sid);1
+      this.updatePlacedOrdersForSocketId(sid);
       
     return {
       data: {
@@ -523,7 +552,7 @@ const buildTrade = (
                 : null) as TOrder;
 
         const amount = Math.min(newOrderAmount, oldOrderAmount);
-        const price = old_order.props.price;
+        let price = old_order.props.price;
 
         let tradeProps: any;
         if (buyOrder.type === EOrderType.FUTURES) {
@@ -535,15 +564,31 @@ const buildTrade = (
                 initMargin: buyOrderProps.initMargin,
                 collateral: buyOrderProps.collateral,
             };
-        } else {
-            const buyOrderProps = buyOrder.props as ISpotOrderProps;
-            tradeProps = {
-                propIdDesired: buyOrderProps.id_desired,
-                propIdForSale: buyOrderProps.id_for_sale,
-                amountDesired: amount,
-                amountForSale: safeNumber(amount * price),
-            };
-        }
+        }else{
+
+         // SPOT – normalize maker price to BUYER basis
+            const bp = buyOrder.props as ISpotOrderProps;
+            const mp = old_order.props as ISpotOrderProps;
+
+            if (bp.id_desired === mp.id_desired && bp.id_for_sale === mp.id_for_sale) {
+              // same orientation -> keep price as posted
+              price = old_order.props.price;
+            } else if (bp.id_desired === mp.id_for_sale && bp.id_for_sale === mp.id_desired) {
+               // inverted orientation -> reciprocal
+               price = old_order.props.price === 0
+                 ? Number.POSITIVE_INFINITY
+                 : safeNumber(1 / old_order.props.price);
+             } else {
+               throw new Error("Building Trade Failed. Code 2 (mismatched market)");
+             }
+ 
+             const buyOrderProps = buyOrder.props as ISpotOrderProps;
+             tradeProps = {
+                 propIdDesired: buyOrderProps.id_desired,
+                 propIdForSale: buyOrderProps.id_for_sale,
+                 amountDesired: amount,
+                 amountForSale: safeNumber(amount * price),
+             };
 
         const tradeInfo: ITradeInfo = {
             type: new_order.type,
