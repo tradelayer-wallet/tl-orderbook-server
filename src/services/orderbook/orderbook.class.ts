@@ -589,6 +589,7 @@ const buildTrade = (
                  amountDesired: amount,
                  amountForSale: safeNumber(amount * price),
              };
+        }
 
         const tradeInfo: ITradeInfo = {
             type: new_order.type,
