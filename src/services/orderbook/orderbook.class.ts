@@ -523,7 +523,7 @@ const buildTrade = (
                 : null) as TOrder;
 
         const amount = Math.min(newOrderAmount, oldOrderAmount);
-        const price = old_order.props.price;
+        let price = old_order.props.price;
 
         let tradeProps: any;
         if (buyOrder.type === EOrderType.FUTURES) {
