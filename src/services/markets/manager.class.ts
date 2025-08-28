@@ -78,7 +78,8 @@ export class MarketsManager {
             const TL = createToken('TL', 'TradeLayer Native Metacoin', 1);
             const BTCoracle = createToken('BTC', 'Bitcoin Oracle', 1);
             const BTC = createToken('BTC', 'BTC',0)
-
+            const LTCoracle = createTokent('LTC', 'Litecoin Oracle', 2)
+            const sLTC = createToken('sLTC', 'Synth LTC', 's1-1')
 
             const usdContracts: IContract[] = [
                 createContract(TL, TBILL, 4, 'TL/TBILL', TBILL, false),
@@ -94,7 +95,7 @@ export class MarketsManager {
                 createContract(TL, BTC, 1, 'TL/BTC', TL, false)
             ]
 
-             const usdMarketType = createMarketType('USD', usdContracts, MARKET_ICONS.USD, true);
+             const usdMarketType = createMarketType('USD', usdContracts, MARKET_ICONS.USD, false);
 
             if(network=="LTC"||network=="LTCTEST"){
                 const ltcMarketType = createMarketType('LTC', ltcContracts, MARKET_ICONS.LTC, false);
