@@ -78,7 +78,7 @@ export class MarketsManager {
             const TL = createToken('TL', 'TradeLayer Native Metacoin', 1);
             const BTCoracle = createToken('BTC', 'Bitcoin Oracle', 1);
             const BTC = createToken('BTC', 'BTC',0)
-            const LTCoracle = createTokent('LTC', 'Litecoin Oracle', 2)
+            const LTCoracle = createToken('LTC', 'Litecoin Oracle', 2)
             const sLTC = createToken('sLTC', 'Synth LTC', 's1-1')
 
             const usdContracts: IContract[] = [
