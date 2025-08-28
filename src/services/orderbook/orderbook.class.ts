@@ -53,6 +53,7 @@ export class Orderbook {
 
     // New helper: broadcast full snapshot filtered to unlocked orders
     private broadcastSnapshot() {
+      console.log('broadcasting update ')
         socketManager.broadcastToAll({
             event: EmitEvents.ORDERBOOK_DATA,
             orders: this._orders.filter(o => !o.lock),
