@@ -421,7 +421,7 @@ private checkMatch(order: TOrder): IResult<{ match: TOrder | null }> {
         const takerCombined = { ...order };
         takerCombined.props = { ...order.props, amount: totalAmt };
 
-        const vwap  = safeNumber(weighted / totalAmt);
+        const vwap      = safeNumber(weighted / totalAmt);
         takerCombined.props.price = vwap;
 
         // Clone maker so amounts line up
@@ -448,14 +448,6 @@ private checkMatch(order: TOrder): IResult<{ match: TOrder | null }> {
       residualOrder = this.cloneWithAmount(order, remaining);
       const DUST_LIMIT = (order.type === EOrderType.FUTURES) ? 1 : 1e-8;
       if (remaining >= DUST_LIMIT) {
-        if (this.type === EOrderType.SPOT) {
-          const rp = (residualOrder.props as any).price;
-          const np = this.normalizeSpotPrice(this as any, residualOrder as any, rp);
-          residualOrder = {
-            ...residualOrder,
-            props: { ...(residualOrder.props as any), price: np }
-          };
-        }
         // Only recurse if:
         // - UUID is same (we're still working on this order)
         // - amount is reduced (progress made)
