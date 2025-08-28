@@ -535,31 +535,6 @@ const buildTrade = (
                 initMargin: buyOrderProps.initMargin,
                 collateral: buyOrderProps.collateral,
             };
-        }else{
-
-         // SPOT – normalize maker price to BUYER basis
-            const bp = buyOrder.props as ISpotOrderProps;
-            const mp = old_order.props as ISpotOrderProps;
-
-            if (bp.id_desired === mp.id_desired && bp.id_for_sale === mp.id_for_sale) {
-              // same orientation -> keep price as posted
-              price = old_order.props.price;
-            } else if (bp.id_desired === mp.id_for_sale && bp.id_for_sale === mp.id_desired) {
-               // inverted orientation -> reciprocal
-               price = old_order.props.price === 0
-                 ? Number.POSITIVE_INFINITY
-                 : safeNumber(1 / old_order.props.price);
-             } else {
-               throw new Error("Building Trade Failed. Code 2 (mismatched market)");
-             }
- 
-             const buyOrderProps = buyOrder.props as ISpotOrderProps;
-             tradeProps = {
-                 propIdDesired: buyOrderProps.id_desired,
-                 propIdForSale: buyOrderProps.id_for_sale,
-                 amountDesired: amount,
-                 amountForSale: safeNumber(amount * price),
-             };
         } else {
             const buyOrderProps = buyOrder.props as ISpotOrderProps;
             tradeProps = {
