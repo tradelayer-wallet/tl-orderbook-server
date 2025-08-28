@@ -53,28 +53,12 @@ export class Orderbook {
 
     // New helper: broadcast full snapshot filtered to unlocked orders
     private broadcastSnapshot() {
-          const unlocked = this._orders.filter(o => !o.lock);
-
-          // ✅ Normalize spot prices to this orderbook’s basis before sending to UI
-          let normalized = unlocked;
-          if (this.type === EOrderType.SPOT && 'id_desired' in this.props && 'id_for_sale' in this.props) {
-              const base = this as any; // we only need .type and .props
-              normalized = unlocked.map(o => {
-                  const p = (o.props as any).price;
-                  const np = this.normalizeSpotPrice(base, o as any, p);
-                  return { 
-                      ...o, 
-                      props: { ...(o.props as any), price: np }
-                  };
-              });
-          }
-
-          socketManager.broadcastToAll({
-              event: EmitEvents.ORDERBOOK_DATA,
-              orders: normalized,
-              history: this._historyTrades,
-          });
-      }
+        socketManager.broadcastToAll({
+            event: EmitEvents.ORDERBOOK_DATA,
+            orders: this._orders.filter(o => !o.lock),
+            history: this._historyTrades,
+        });
+    }
 
     /* Fire-and-forget helper so we don’t have to sprinkle loops everywhere */
         private pushPlaced = (...socketIds: string[]) => {
@@ -377,10 +361,8 @@ private checkMatch(order: TOrder): IResult<{ match: TOrder | null }> {
       const takerSlice = this.cloneWithAmount(order, fillAmt);
       bucket.takerSlices.push(takerSlice);
       bucket.totalAmt += fillAmt;
-      const normPrice = (order.type === EOrderType.SPOT)
-        ? this.normalizeSpotPrice(order, match, match.props.price)
-        : match.props.price;
-       bucket.weighted += fillAmt * normPrice;
+      bucket.weighted += fillAmt * match.props.price;
+
       // 3️⃣  Book-keeping on the live resting order
       this.lockOrder(match);                      // lock before we mutate
         DBG(`   ⋆ fill ${fillAmt} vs maker ${match.uuid.slice(0, 6)}…  (before: ${match.props.amount})`);
