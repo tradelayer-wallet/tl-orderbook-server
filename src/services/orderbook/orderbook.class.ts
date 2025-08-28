@@ -222,8 +222,8 @@ private sameMarket(a: TOrder, b: TOrder): boolean {
         }
     }
 
-    private checkMatch(order: TOrder): IResult<{ match: TOrder | null }> {
-  try {
+   private checkMatch(order: TOrder, skip?: Set<string>): IResult<{ match: TOrder | null }> {
+    try {
     const isBuy = order.action === EOrderAction.BUY;
     const price  = order.props.price;
 
@@ -231,6 +231,7 @@ private sameMarket(a: TOrder, b: TOrder): boolean {
       if (o.lock) return false;
       if (o.action === order.action) return false;
       if (!this.sameMarket(o, order)) return false;
+      if (skip && skip.has(o.uuid)) return false; 
       if (isBuy ? o.props.price > price : o.props.price < price) return false;
       return true;
     });
@@ -303,21 +304,28 @@ private sameMarket(a: TOrder, b: TOrder): boolean {
 
     /* - Matching loop - */
     const maxIters = this.orders.length + 1;
+    const skip = new Set<string>(); 
     for (let iter = 0; remaining > 0 && iter < maxIters; iter++) {
 
       // 1️⃣  search best maker for *current* residual
       const { data, error } =
-        this.checkMatch(this.cloneWithAmount(order, remaining));
+        this.checkMatch(this.cloneWithAmount(order, remaining), skip);
       if (error) throw new Error(error);
       const match = data.match;
       if (!match) break;                          // book exhausted
 
-      // 2️⃣  self-trade guard
-      if (
-        match.socket_id === order.socket_id ||
-        match.keypair.address === order.keypair.address
-      ) {
-        this.lockOrder(match); this.lockOrder(match, false);
+      // 2️⃣  self-trade: bump the *older* resting maker, keep taker alive
+      if (match.socket_id === order.socket_id || match.keypair.address === order.keypair.address) {
+        // Deprioritize maker in FIFO: push its timestamp behind the taker
+        // (use max to avoid going backwards on clock skew)
+        const now = Date.now();
+        match.timestamp = Math.max(match.timestamp + 1, order.timestamp + 1, now);
+        // Avoid re-selecting it in this sweep
+        skip.add(match.uuid);
+        // Broadcast (optional)
+        this.broadcastSnapshot();
+        // Try again this iteration (don’t penalize the loop counter)
+        iter--;
         continue;
       }
 
@@ -535,31 +543,6 @@ const buildTrade = (
                 initMargin: buyOrderProps.initMargin,
                 collateral: buyOrderProps.collateral,
             };
-        }else{
-
-         // SPOT – normalize maker price to BUYER basis
-            const bp = buyOrder.props as ISpotOrderProps;
-            const mp = old_order.props as ISpotOrderProps;
-
-            if (bp.id_desired === mp.id_desired && bp.id_for_sale === mp.id_for_sale) {
-              // same orientation -> keep price as posted
-              price = old_order.props.price;
-            } else if (bp.id_desired === mp.id_for_sale && bp.id_for_sale === mp.id_desired) {
-               // inverted orientation -> reciprocal
-               price = old_order.props.price === 0
-                 ? Number.POSITIVE_INFINITY
-                 : safeNumber(1 / old_order.props.price);
-             } else {
-               throw new Error("Building Trade Failed. Code 2 (mismatched market)");
-             }
- 
-             const buyOrderProps = buyOrder.props as ISpotOrderProps;
-             tradeProps = {
-                 propIdDesired: buyOrderProps.id_desired,
-                 propIdForSale: buyOrderProps.id_for_sale,
-                 amountDesired: amount,
-                 amountForSale: safeNumber(amount * price),
-             };
         } else {
             const buyOrderProps = buyOrder.props as ISpotOrderProps;
             tradeProps = {
