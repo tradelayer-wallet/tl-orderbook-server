@@ -73,7 +73,7 @@ export class MarketsManager {
     getAvailableFuturesMarkets(network:string): IResult<IMarketType[]> {
         try {
             const LTC = createToken('LTC', 'Litecoin', 0);
-            const USDT = createToken('USDT', 'US Treasury Bill', 5);
+            const TBILL = createToken('TBILL', 'US Treasury Bill', 5);
             const TL = createToken('TL', 'TradeLayer Native Metacoin', 1);
             const BTCoracle = createToken('BTC', 'Bitcoin Oracle', 1);
             const BTC = createToken('BTC', 'BTC',0)
@@ -81,10 +81,10 @@ export class MarketsManager {
             const sLTC = createToken('sLTC', 'Synth LTC', 's1-1')
 
             const usdContracts: IContract[] = [
-            createContract(LTC, USDT, 5, 'LTC/USDT', USDT, false),
-                createContract(TL, USDT, 4, 'TL/USDT', USDT, false),
+            createContract(LTC, TBILL, 5, 'LTC/USDT', USDT, false),
+                createContract(TL, TBILL, 4, 'TL/USDT', USDT, false),
                 
-                createContract(BTCoracle, USDT, 2, 'BTC/USD', USDT, false)
+                createContract(BTCoracle, TBILL, 2, 'BTC/USD', USDT, false)
             ];
 
             const ltcContracts: IContract[] = [
@@ -100,7 +100,7 @@ export class MarketsManager {
             if(network=="LTC"||network=="LTCTEST"){
                 const ltcMarketType = createMarketType('LTC', ltcContracts, MARKET_ICONS.LTC, false);
 
-            const result: IMarketType[] = [ltcMarketType, usdMarketType];
+            const result: IMarketType[] = [usdMarketType, ltcMarketType];
             
             return { data: result };
             }
