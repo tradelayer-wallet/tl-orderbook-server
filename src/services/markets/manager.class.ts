@@ -13,14 +13,13 @@ export class MarketsManager {
             const LTC = createToken('LTC', 'LTC', 0);
             const USDT = createToken('USDT', 'USDT', 5);
             const TL = createToken('TL', 'TL', 1);
-            const sLTC = createToken('sLTC', 'sLTC', 's-1-5');
+            const sLTC = createToken('sLTC', 'sLTC', 's1-5');
             const BTC = createToken('BTC', 'BTC',0)
-            const USDT = createToken('USDT', 'USDT',6)
-            const sBTC = createToken('sBTC', 'BTC','s-1-6')
+            const sBTC = createToken('sBTC', 'BTC','s1-6')
             const TLTC = createToken('TLTC', 'TLTC',0)
             const USDTt = createToken('USDTt', 'USDTt',5)
             const tTL = createToken('TLt', 'TLt',1)
-            const sLTCt = createToken('sLTCt', 'sLTCt','s-1-5')
+            const sLTCt = createToken('sLTCt', 'sLTCt','s1-5')
 
             const ltcMarkets: IMarket[] = [
                 createMarket(LTC, USDT, false),
