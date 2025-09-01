@@ -92,6 +92,12 @@ export class SocketManager {
             return;
         }
 
+        if (data?.type === 'FUTURES' && data?.props) {
+            if (data.props.contractId && !data.props.contract_id) {
+                data.props.contract_id = data.props.contractId;
+                delete data.props.contractId;
+            }
+        }
         // (Add your spot/futures logic here, as in your version...)
 
         const id = (ws as any).id;
@@ -111,12 +117,19 @@ export class SocketManager {
         }
     }
 
-    private handleUpdateOrderbook(ws: HyperExpress.Websocket, data: any) {
-        const filter = data.filter;
-        const orderbook = orderbookManager.orderbooks.find(e => e.findByFilter(filter));
-        const orders = orderbook ? orderbook.orders.filter(o => !o.lock) : [];
-        const history = orderbook ? orderbook.historyTrades.filter(o => o.txid) : [];
-        ws.send(JSON.stringify({ event: EmitEvents.ORDERBOOK_DATA, orders, history }));
+    handleUpdateOrderbook(socket, data) {
+        const filter = data?.filter ?? data;   // accept {filter:{...}} or direct filter
+        if (!filter) {
+          return socket.emit(EmitEvents.ORDERBOOK_DATA, { orders: [], history: [] });
+        }
+        const ob = this.orderbooks.find(o => o.findByFilter(filter));
+        if (!ob) {
+          return socket.emit(EmitEvents.ORDERBOOK_DATA, { orders: [], history: [] });
+        }
+        socket.emit(EmitEvents.ORDERBOOK_DATA, {
+          orders: ob.orders.filter(o => !o.lock),
+          history: ob.historyTrades,
+        });
     }
 
     private handleManyOrders(ws: HyperExpress.Websocket, data: any) {

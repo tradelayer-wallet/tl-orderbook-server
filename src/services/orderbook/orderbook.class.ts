@@ -438,10 +438,10 @@ private sameMarket(a: TOrder, b: TOrder): boolean {
   }
 }
 
-    findByFilter(filter: TFilter) {
+    findByFilter(filter: TFilter| undefined) {
         if (!this.props) return false;
         if (filter.type !== this.type) return false;
-
+        if (!filter) return false;
         if (filter.type === EOrderType.SPOT && 'id_desired' in this.props) {
             const spotProps = this.props as ISpotOrderProps;
             const checkA = filter.first_token === spotProps.id_desired && filter.second_token === spotProps.id_for_sale;
