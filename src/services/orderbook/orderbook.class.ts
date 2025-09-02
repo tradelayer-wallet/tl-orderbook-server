@@ -53,6 +53,35 @@ export class Orderbook {
 
     // New helper: broadcast full snapshot filtered to unlocked orders
     private broadcastSnapshot() {
+
+
+    // New: build a param’d snapshot for this *single* orderbook
+    public snapshot(opts?: { depth?: number; side?: 'bids'|'asks'|'both'; includeTrades?: boolean }) {
+      const depth = Math.max(0, Number(opts?.depth ?? 50));
+      const side  = (opts?.side ?? 'both') as 'bids'|'asks'|'both';
+      const unlocked = this._orders.filter(o => !o.lock);
+      const bidsAll = unlocked.filter(o => o.action === EOrderAction.BUY)
+                              .sort((a,b) => b.props.price - a.props.price);
+      const asksAll = unlocked.filter(o => o.action === EOrderAction.SELL)
+                              .sort((a,b) => a.props.price - b.props.price);
+      const bids = (side === 'asks') ? [] : bidsAll.slice(0, depth);
+      const asks = (side === 'bids') ? [] : asksAll.slice(0, depth);
+      const trades = opts?.includeTrades ? this._historyTrades : [];
+      return { bids, asks, trades, lastTs: Date.now() };
+    }
+
+    const marketKey = this.orderbookName; // e.g., "futures-<id>" or "spot_<a>_<b>"
+        if (!marketKey) return;
+        // Market-scoped emit
+        socketManager.broadcastToMarket(marketKey, {
+            event: EmitEvents.ORDERBOOK_DATA,
+            marketKey,
+            orders: this._orders.filter(o => !o.lock),
+            history: this._historyTrades,
+        });
+        // (Optional) temporary compatibility:
+        // socketManager.broadcastToAll({ event: EmitEvents.ORDERBOOK_DATA, marketKey, orders: this._orders.filter(o => !o.lock), history: this._historyTrades });
+
       console.log('broadcasting update ')
         socketManager.broadcastToAll({
             event: EmitEvents.ORDERBOOK_DATA,

@@ -12,6 +12,10 @@ export class OrderbookManager {
         console.log(`Orderbook Service Initialized`);
     }
 
+    getByName(name: string): Orderbook | null {
+        return this.orderbooks.find(ob => ob.orderbookName === name) ?? null;
+    }
+
     private newOrderbook(firstOrder: TOrder): IResult<{ order?: any, trade?: any }> {
         try {
             const orderbook = new Orderbook(firstOrder);
