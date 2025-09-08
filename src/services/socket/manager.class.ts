@@ -188,7 +188,7 @@ export class SocketManager {
         if (!filter) {
           return socket.emit(EmitEvents.ORDERBOOK_DATA, { orders: [], history: [] });
         }
-        const ob = this.orderbooks.find(o => o.findByFilter(filter));
+		const ob = orderbookManager.orderbooks.find(o => o.findByFilter(filter));
         if (!ob) {
           return socket.emit(EmitEvents.ORDERBOOK_DATA, { orders: [], history: [] });
         }
