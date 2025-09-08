@@ -39,12 +39,14 @@ export class Orderbook {
     private _orders: TOrder[] = [];
     private _historyTrades: IHistoryTrade[] = [];
     private props: ISpotOrderProps | IFuturesOrderProps = null;
+    private orderbookName: string = ''
 
     constructor(firstOrder: TOrder) {
         this._type = firstOrder.type;
         this.addProps(firstOrder);
         this.addOrder(firstOrder);
         this.addExistingTradesHistory();
+        this.orderbookName = orderbookName()
     }
 
     public get orderbookName(): string {
