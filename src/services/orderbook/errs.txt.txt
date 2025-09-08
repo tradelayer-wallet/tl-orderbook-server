@@ -1,0 +1,4179 @@
+
+PS C:\Users\patri\tl-orderbook-server> npm run build
+
+> tl-orderbook-server@1.0.0 build
+> tsc
+
+src/services/orderbook/manager.class.ts:16:46 - error TS2339: Property 'orderbookName' does not exist on type 'Orderbook'.
+
+16         return this.orderbooks.find(ob => ob.orderbookName === name) ?? null;
+                                                ~~~~~~~~~~~~~
+
+src/services/orderbook/manager.class.ts:23:23 - error TS2339: Property 'updatePlacedOrdersForSocketId' does not exist on type 'Orderbook'.
+
+23             orderbook.updatePlacedOrdersForSocketId(firstOrder.socket_id);
+                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+src/services/orderbook/manager.class.ts:24:47 - error TS2339: Property 'orders' does not exist on type 'Orderbook'.
+
+24             return { data: { order: orderbook.orders[0] } };
+                                                 ~~~~~~
+
+src/services/orderbook/manager.class.ts:33:71 - error TS2339: Property 'checkCompatible' does not exist on type 'Orderbook'.
+
+33                 const existingOrderbook = this.orderbooks.find(b => b.checkCompatible(order));
+                                                                         ~~~~~~~~~~~~~~~
+
+src/services/orderbook/manager.class.ts:35:47 - error TS2339: Property 'addOrder' does not exist on type 'Orderbook'.
+
+35                     ? await existingOrderbook.addOrder(order, noTrades)
+                                                 ~~~~~~~~
+
+src/services/orderbook/manager.class.ts:45:59 - error TS2339: Property 'orders' does not exist on type 'Orderbook'.
+
+45             const orderbook = this.orderbooks.find(b => b.orders.find(o => o.uuid === uuid));
+                                                             ~~~~~~
+
+src/services/orderbook/manager.class.ts:49:37 - error TS2339: Property 'orders' does not exist on type 'Orderbook'.
+
+49             const order = orderbook.orders.find(q => q.uuid === uuid);
+                                       ~~~~~~
+
+src/services/orderbook/manager.class.ts:53:35 - error TS2339: Property 'removeOrder' does not exist on type 'Orderbook'.
+
+53             const res = orderbook.removeOrder(uuid, socket_id);
+                                     ~~~~~~~~~~~
+
+src/services/orderbook/manager.class.ts:54:38 - error TS2339: Property 'orderbookName' does not exist on type 'Orderbook'.
+
+54             updateOrderLog(orderbook.orderbookName,order.uuid, "CANCELED");
+                                        ~~~~~~~~~~~~~
+
+src/services/orderbook/manager.class.ts:64:16 - error TS2339: Property 'orders' does not exist on type 'Orderbook'.
+
+64             ob.orders.forEach(o => {
+                  ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:44:10 - error TS2339: Property 'addProps' does not exist on type 'Orderbook'.
+
+44     this.addProps(firstOrder);
+            ~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:45:10 - error TS2339: Property 'addOrder' does not exist on type 'Orderbook'.
+
+45     this.addOrder(firstOrder);
+            ~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:46:10 - error TS2339: Property 'addExistingTradesHistory' does not exist on type 'Orderbook'.
+
+46     this.addExistingTradesHistory();
+            ~~~~~~~~~~~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:54:28 - error TS2339: Property 'orderbookName' does not exist on type 'Orderbook'.
+
+54     const marketKey = this.orderbookName;
+                              ~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:88:28 - error TS2339: Property 'orderbookName' does not exist on type 'Orderbook'.
+
+88     const marketKey = this.orderbookName; // e.g., "futures-<id>" or "spot_<a>_<b>"
+                              ~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:89:13 - error TS1003: Identifier expected.
+
+89         if (!marketKey) return;
+               ~
+
+src/services/orderbook/orderbook.class.ts:89:25 - error TS1144: '{' or ';' expected.
+
+89         if (!marketKey) return;
+                           ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:91:9 - error TS1434: Unexpected keyword or identifier.
+
+91         socketManager.broadcastToMarket(marketKey, {
+           ~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:91:22 - error TS1068: Unexpected token. A constructor, method, accessor, or property was expected.
+
+91         socketManager.broadcastToMarket(marketKey, {
+                        ~
+
+src/services/orderbook/orderbook.class.ts:91:41 - error TS2300: Duplicate identifier 'marketKey'.
+
+91         socketManager.broadcastToMarket(marketKey, {
+                                           ~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:92:30 - error TS1005: ',' expected.
+
+92             event: EmitEvents.ORDERBOOK_DATA,
+                                ~
+
+src/services/orderbook/orderbook.class.ts:93:13 - error TS2300: Duplicate identifier 'marketKey'.
+
+93             marketKey,
+               ~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:94:20 - error TS2300: Duplicate identifier '(Missing)'.
+
+94             orders: this._orders.filter(o => !o.lock),
+
+
+src/services/orderbook/orderbook.class.ts:94:21 - error TS1359: Identifier expected. 'this' is a reserved word that cannot be used here.
+
+94             orders: this._orders.filter(o => !o.lock),
+                       ~~~~
+
+src/services/orderbook/orderbook.class.ts:94:25 - error TS2300: Duplicate identifier '(Missing)'.
+
+94             orders: this._orders.filter(o => !o.lock),
+
+
+src/services/orderbook/orderbook.class.ts:94:25 - error TS1005: ':' expected.
+
+94             orders: this._orders.filter(o => !o.lock),
+                           ~
+
+src/services/orderbook/orderbook.class.ts:94:33 - error TS1005: ',' expected.
+
+94             orders: this._orders.filter(o => !o.lock),
+                                   ~
+
+src/services/orderbook/orderbook.class.ts:94:40 - error TS1005: ',' expected.
+
+94             orders: this._orders.filter(o => !o.lock),
+                                          ~
+
+src/services/orderbook/orderbook.class.ts:94:40 - error TS2695: Left side of comma operator is unused and has no side effects.
+
+94             orders: this._orders.filter(o => !o.lock),
+                                          ~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:95:20 - error TS1005: ';' expected.
+
+95             history: this._historyTrades,
+                      ~
+
+src/services/orderbook/orderbook.class.ts:95:22 - error TS2532: Object is possibly 'undefined'.
+
+95             history: this._historyTrades,
+                        ~~~~
+
+src/services/orderbook/orderbook.class.ts:96:9 - error TS1109: Expression expected.
+
+96         });
+           ~
+
+src/services/orderbook/orderbook.class.ts:96:10 - error TS1128: Declaration or statement expected.
+
+96         });
+            ~
+
+src/services/orderbook/orderbook.class.ts:103:21 - error TS2532: Object is possibly 'undefined'.
+
+103             orders: this._orders.filter(o => !o.lock),
+                        ~~~~
+
+src/services/orderbook/orderbook.class.ts:104:22 - error TS2532: Object is possibly 'undefined'.
+
+104             history: this._historyTrades,
+                         ~~~~
+
+src/services/orderbook/orderbook.class.ts:106:5 - error TS1128: Declaration or statement expected.
+
+106     }
+        ~
+
+src/services/orderbook/orderbook.class.ts:109:9 - error TS1128: Declaration or statement expected.
+
+109         private pushPlaced = (...socketIds: string[]) => {
+            ~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:109:17 - error TS2304: Cannot find name 'pushPlaced'.
+
+109         private pushPlaced = (...socketIds: string[]) => {
+                    ~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:110:38 - error TS2532: Object is possibly 'undefined'.
+
+110             socketIds.forEach(sid => this.updatePlacedOrdersForSocketId(sid));
+                                         ~~~~
+
+src/services/orderbook/orderbook.class.ts:114:5 - error TS1434: Unexpected keyword or identifier.
+
+114     set orders(value: TOrder[]) {
+        ~~~
+
+src/services/orderbook/orderbook.class.ts:114:5 - error TS2552: Cannot find name 'set'. Did you mean 'Set'?
+
+114     set orders(value: TOrder[]) {
+        ~~~
+
+  node_modules/typescript/lib/lib.es2015.collection.d.ts:71:13
+    71 declare var Set: SetConstructor;
+                   ~~~
+    'Set' is declared here.
+
+src/services/orderbook/orderbook.class.ts:114:9 - error TS2304: Cannot find name 'orders'.
+
+114     set orders(value: TOrder[]) {
+            ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:114:16 - error TS2304: Cannot find name 'value'.
+
+114     set orders(value: TOrder[]) {
+                   ~~~~~
+
+src/services/orderbook/orderbook.class.ts:114:21 - error TS1005: ',' expected.
+
+114     set orders(value: TOrder[]) {
+                        ~
+
+src/services/orderbook/orderbook.class.ts:114:23 - error TS2693: 'TOrder' only refers to a type, but is being used as a value here.
+
+114     set orders(value: TOrder[]) {
+                          ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:114:30 - error TS1011: An element access expression should take an argument.
+
+114     set orders(value: TOrder[]) {
+
+
+src/services/orderbook/orderbook.class.ts:114:33 - error TS1005: ';' expected.
+
+114     set orders(value: TOrder[]) {
+                                    ~
+
+src/services/orderbook/orderbook.class.ts:115:9 - error TS2532: Object is possibly 'undefined'.
+
+115         this._orders = value;
+            ~~~~
+
+src/services/orderbook/orderbook.class.ts:115:24 - error TS2304: Cannot find name 'value'.
+
+115         this._orders = value;
+                           ~~~~~
+
+src/services/orderbook/orderbook.class.ts:117:9 - error TS2532: Object is possibly 'undefined'.
+
+117         this.broadcastSnapshot();
+            ~~~~
+
+src/services/orderbook/orderbook.class.ts:120:5 - error TS1434: Unexpected keyword or identifier.
+
+120     get orderbookName() {
+        ~~~
+
+src/services/orderbook/orderbook.class.ts:120:5 - error TS2304: Cannot find name 'get'.
+
+120     get orderbookName() {
+        ~~~
+
+src/services/orderbook/orderbook.class.ts:120:9 - error TS2304: Cannot find name 'orderbookName'.
+
+120     get orderbookName() {
+            ~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:120:25 - error TS1005: ';' expected.
+
+120     get orderbookName() {
+                            ~
+
+src/services/orderbook/orderbook.class.ts:121:13 - error TS2532: Object is possibly 'undefined'.
+
+121         if (this.type === EOrderType.SPOT && 'id_desired' in this.props) {
+                ~~~~
+
+src/services/orderbook/orderbook.class.ts:121:62 - error TS2532: Object is possibly 'undefined'.
+
+121         if (this.type === EOrderType.SPOT && 'id_desired' in this.props) {
+                                                                 ~~~~
+
+src/services/orderbook/orderbook.class.ts:122:31 - error TS2532: Object is possibly 'undefined'.
+
+122             const spotProps = this.props as ISpotOrderProps;
+                                  ~~~~
+
+src/services/orderbook/orderbook.class.ts:124:20 - error TS2532: Object is possibly 'undefined'.
+
+124         } else if (this.type === EOrderType.FUTURES && 'contract_id' in this.props) {
+                       ~~~~
+
+src/services/orderbook/orderbook.class.ts:124:73 - error TS2532: Object is possibly 'undefined'.
+
+124         } else if (this.type === EOrderType.FUTURES && 'contract_id' in this.props) {
+                                                                            ~~~~
+
+src/services/orderbook/orderbook.class.ts:125:34 - error TS2532: Object is possibly 'undefined'.
+
+125             const futuresProps = this.props as IFuturesOrderProps;
+                                     ~~~~
+
+src/services/orderbook/orderbook.class.ts:132:5 - error TS1434: Unexpected keyword or identifier.
+
+132     get orders(): TOrder[] {
+        ~~~
+
+src/services/orderbook/orderbook.class.ts:132:5 - error TS2304: Cannot find name 'get'.
+
+132     get orders(): TOrder[] {
+        ~~~
+
+src/services/orderbook/orderbook.class.ts:132:9 - error TS2304: Cannot find name 'orders'.
+
+132     get orders(): TOrder[] {
+            ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:132:17 - error TS1005: ';' expected.
+
+132     get orders(): TOrder[] {
+                    ~
+
+src/services/orderbook/orderbook.class.ts:132:19 - error TS2693: 'TOrder' only refers to a type, but is being used as a value here.
+
+132     get orders(): TOrder[] {
+                      ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:132:26 - error TS1011: An element access expression should take an argument.
+
+132     get orders(): TOrder[] {
+
+
+src/services/orderbook/orderbook.class.ts:132:28 - error TS1005: ';' expected.
+
+132     get orders(): TOrder[] {
+                               ~
+
+src/services/orderbook/orderbook.class.ts:136:5 - error TS1434: Unexpected keyword or identifier.
+
+136     get historyTrades() {
+        ~~~
+
+src/services/orderbook/orderbook.class.ts:136:5 - error TS2304: Cannot find name 'get'.
+
+136     get historyTrades() {
+        ~~~
+
+src/services/orderbook/orderbook.class.ts:136:9 - error TS2304: Cannot find name 'historyTrades'.
+
+136     get historyTrades() {
+            ~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:136:25 - error TS1005: ';' expected.
+
+136     get historyTrades() {
+                            ~
+
+src/services/orderbook/orderbook.class.ts:140:5 - error TS1128: Declaration or statement expected.
+
+140     private addExistingTradesHistory() {
+        ~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:140:13 - error TS2304: Cannot find name 'addExistingTradesHistory'.
+
+140     private addExistingTradesHistory() {
+                ~~~~~~~~~~~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:140:40 - error TS1005: ';' expected.
+
+140     private addExistingTradesHistory() {
+                                           ~
+
+src/services/orderbook/orderbook.class.ts:146:17 - error TS2532: Object is possibly 'undefined'.
+
+146             if (this.type === EOrderType.SPOT && 'id_desired' in this.props && 'id_for_sale' in this.props) {
+                    ~~~~
+
+src/services/orderbook/orderbook.class.ts:146:66 - error TS2532: Object is possibly 'undefined'.
+
+146             if (this.type === EOrderType.SPOT && 'id_desired' in this.props && 'id_for_sale' in this.props) {
+                                                                     ~~~~
+
+src/services/orderbook/orderbook.class.ts:146:97 - error TS2532: Object is possibly 'undefined'.
+
+146             if (this.type === EOrderType.SPOT && 'id_desired' in this.props && 'id_for_sale' in this.props) {
+                                                                                                    ~~~~
+
+src/services/orderbook/orderbook.class.ts:147:35 - error TS2532: Object is possibly 'undefined'.
+
+147                 const spotProps = this.props as ISpotOrderProps;
+                                      ~~~~
+
+src/services/orderbook/orderbook.class.ts:152:24 - error TS2532: Object is possibly 'undefined'.
+
+152             } else if (this.type === EOrderType.FUTURES && 'contract_id' in this.props) {
+                           ~~~~
+
+src/services/orderbook/orderbook.class.ts:152:77 - error TS2532: Object is possibly 'undefined'.
+
+152             } else if (this.type === EOrderType.FUTURES && 'contract_id' in this.props) {
+                                                                                ~~~~
+
+src/services/orderbook/orderbook.class.ts:153:38 - error TS2532: Object is possibly 'undefined'.
+
+153                 const futuresProps = this.props as IFuturesOrderProps;
+                                         ~~~~
+
+src/services/orderbook/orderbook.class.ts:171:13 - error TS2532: Object is possibly 'undefined'.
+
+171             this._historyTrades = data.slice(0, 2000);
+                ~~~~
+
+src/services/orderbook/orderbook.class.ts:173:13 - error TS2532: Object is possibly 'undefined'.
+
+173             this.broadcastSnapshot();
+                ~~~~
+
+src/services/orderbook/orderbook.class.ts:182:1 - error TS1128: Declaration or statement expected.
+
+182 private sameMarket(a: TOrder, b: TOrder): boolean {
+    ~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:182:9 - error TS2304: Cannot find name 'sameMarket'.
+
+182 private sameMarket(a: TOrder, b: TOrder): boolean {
+            ~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:182:20 - error TS2304: Cannot find name 'a'.
+
+182 private sameMarket(a: TOrder, b: TOrder): boolean {
+                       ~
+
+src/services/orderbook/orderbook.class.ts:182:21 - error TS1005: ',' expected.
+
+182 private sameMarket(a: TOrder, b: TOrder): boolean {
+                        ~
+
+src/services/orderbook/orderbook.class.ts:182:23 - error TS2693: 'TOrder' only refers to a type, but is being used as a value here.
+
+182 private sameMarket(a: TOrder, b: TOrder): boolean {
+                          ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:182:31 - error TS2304: Cannot find name 'b'.
+
+182 private sameMarket(a: TOrder, b: TOrder): boolean {
+                                  ~
+
+src/services/orderbook/orderbook.class.ts:182:32 - error TS1005: ',' expected.
+
+182 private sameMarket(a: TOrder, b: TOrder): boolean {
+                                   ~
+
+src/services/orderbook/orderbook.class.ts:182:34 - error TS2693: 'TOrder' only refers to a type, but is being used as a value here.
+
+182 private sameMarket(a: TOrder, b: TOrder): boolean {
+                                     ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:182:41 - error TS1005: ';' expected.
+
+182 private sameMarket(a: TOrder, b: TOrder): boolean {
+                                            ~
+
+src/services/orderbook/orderbook.class.ts:182:43 - error TS1434: Unexpected keyword or identifier.
+
+182 private sameMarket(a: TOrder, b: TOrder): boolean {
+                                              ~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:182:43 - error TS2693: 'boolean' only refers to a type, but is being used as a value here.
+
+182 private sameMarket(a: TOrder, b: TOrder): boolean {
+                                              ~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:183:7 - error TS2304: Cannot find name 'a'.
+
+183   if (a.type !== b.type) return false;
+          ~
+
+src/services/orderbook/orderbook.class.ts:183:18 - error TS2304: Cannot find name 'b'.
+
+183   if (a.type !== b.type) return false;
+                     ~
+
+src/services/orderbook/orderbook.class.ts:185:7 - error TS2304: Cannot find name 'a'.
+
+185   if (a.type === EOrderType.FUTURES) {
+          ~
+
+src/services/orderbook/orderbook.class.ts:186:17 - error TS2304: Cannot find name 'a'.
+
+186     const ca = (a.props as IFuturesOrderProps).contract_id;
+                    ~
+
+src/services/orderbook/orderbook.class.ts:187:17 - error TS2304: Cannot find name 'b'.
+
+187     const cb = (b.props as IFuturesOrderProps).contract_id;
+                    ~
+
+src/services/orderbook/orderbook.class.ts:192:14 - error TS2304: Cannot find name 'a'.
+
+192   const pa = a.props as ISpotOrderProps;
+                 ~
+
+src/services/orderbook/orderbook.class.ts:193:14 - error TS2304: Cannot find name 'b'.
+
+193   const pb = b.props as ISpotOrderProps;
+                 ~
+
+src/services/orderbook/orderbook.class.ts:199:5 - error TS1128: Declaration or statement expected.
+
+199     private addProps(order: TOrder): IResult {
+        ~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:199:13 - error TS2304: Cannot find name 'addProps'.
+
+199     private addProps(order: TOrder): IResult {
+                ~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:199:22 - error TS2304: Cannot find name 'order'.
+
+199     private addProps(order: TOrder): IResult {
+                         ~~~~~
+
+src/services/orderbook/orderbook.class.ts:199:27 - error TS1005: ',' expected.
+
+199     private addProps(order: TOrder): IResult {
+                              ~
+
+src/services/orderbook/orderbook.class.ts:199:29 - error TS2693: 'TOrder' only refers to a type, but is being used as a value here.
+
+199     private addProps(order: TOrder): IResult {
+                                ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:199:36 - error TS1005: ';' expected.
+
+199     private addProps(order: TOrder): IResult {
+                                       ~
+
+src/services/orderbook/orderbook.class.ts:199:38 - error TS1434: Unexpected keyword or identifier.
+
+199     private addProps(order: TOrder): IResult {
+                                         ~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:199:38 - error TS2693: 'IResult' only refers to a type, but is being used as a value here.
+
+199     private addProps(order: TOrder): IResult {
+                                         ~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:201:17 - error TS2532: Object is possibly 'undefined'.
+
+201             if (this.props) {
+                    ~~~~
+
+src/services/orderbook/orderbook.class.ts:205:30 - error TS2304: Cannot find name 'order'.
+
+205             const { type } = order;
+                                 ~~~~~
+
+src/services/orderbook/orderbook.class.ts:207:53 - error TS2304: Cannot find name 'order'.
+
+207                 const { id_desired, id_for_sale } = order.props as ISpotOrderProps;
+                                                        ~~~~~
+
+src/services/orderbook/orderbook.class.ts:208:17 - error TS2532: Object is possibly 'undefined'.
+
+208                 this.props = { id_desired, id_for_sale } as ISpotOrderProps;
+                    ~~~~
+
+src/services/orderbook/orderbook.class.ts:212:41 - error TS2304: Cannot find name 'order'.
+
+212                 const { contract_id } = order.props as IFuturesOrderProps;
+                                            ~~~~~
+
+src/services/orderbook/orderbook.class.ts:213:17 - error TS2532: Object is possibly 'undefined'.
+
+213                 this.props = { contract_id } as IFuturesOrderProps;
+                    ~~~~
+
+src/services/orderbook/orderbook.class.ts:222:5 - error TS1128: Declaration or statement expected.
+
+222     private async newChannel(tradeInfo: ITradeInfo, unfilled: TOrder): Promise<IResultChannelSwap> {
+        ~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:222:13 - error TS1434: Unexpected keyword or identifier.
+
+222     private async newChannel(tradeInfo: ITradeInfo, unfilled: TOrder): Promise<IResultChannelSwap> {
+                ~~~~~
+
+src/services/orderbook/orderbook.class.ts:222:13 - error TS2304: Cannot find name 'async'.
+
+222     private async newChannel(tradeInfo: ITradeInfo, unfilled: TOrder): Promise<IResultChannelSwap> {
+                ~~~~~
+
+src/services/orderbook/orderbook.class.ts:222:19 - error TS2304: Cannot find name 'newChannel'.
+
+222     private async newChannel(tradeInfo: ITradeInfo, unfilled: TOrder): Promise<IResultChannelSwap> {
+                      ~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:222:30 - error TS2304: Cannot find name 'tradeInfo'.
+
+222     private async newChannel(tradeInfo: ITradeInfo, unfilled: TOrder): Promise<IResultChannelSwap> {
+                                 ~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:222:39 - error TS1005: ',' expected.
+
+222     private async newChannel(tradeInfo: ITradeInfo, unfilled: TOrder): Promise<IResultChannelSwap> {
+                                          ~
+
+src/services/orderbook/orderbook.class.ts:222:41 - error TS2693: 'ITradeInfo' only refers to a type, but is being used as a value here.
+
+222     private async newChannel(tradeInfo: ITradeInfo, unfilled: TOrder): Promise<IResultChannelSwap> {
+                                            ~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:222:53 - error TS2304: Cannot find name 'unfilled'.
+
+222     private async newChannel(tradeInfo: ITradeInfo, unfilled: TOrder): Promise<IResultChannelSwap> {
+                                                        ~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:222:61 - error TS1005: ',' expected.
+
+222     private async newChannel(tradeInfo: ITradeInfo, unfilled: TOrder): Promise<IResultChannelSwap> {
+                                                                ~
+
+src/services/orderbook/orderbook.class.ts:222:63 - error TS2693: 'TOrder' only refers to a type, but is being used as a value here.
+
+222     private async newChannel(tradeInfo: ITradeInfo, unfilled: TOrder): Promise<IResultChannelSwap> {
+                                                                  ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:222:70 - error TS1005: ';' expected.
+
+222     private async newChannel(tradeInfo: ITradeInfo, unfilled: TOrder): Promise<IResultChannelSwap> {
+                                                                         ~
+
+src/services/orderbook/orderbook.class.ts:222:72 - error TS2365: Operator '>' cannot be applied to types 'boolean' and '{ try: boolean | { const: Websocket<unknown>; if(: any, buyerSocket: any): any; }; }'.
+
+222     private async newChannel(tradeInfo: ITradeInfo, unfilled: TOrder): Promise<IResultChannelSwap> {
+                                                                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+223         try {
+    ~~~~~~~~~~~~~
+...
+228
+
+229             if (!buyerSocket || !sellerSocket) {
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:222:80 - error TS2693: 'IResultChannelSwap' only refers to a type, but is being used as a value here.
+
+222     private async newChannel(tradeInfo: ITradeInfo, unfilled: TOrder): Promise<IResultChannelSwap> {
+                                                                                   ~~~~~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:223:13 - error TS1005: ':' expected.
+
+223         try {
+                ~
+
+src/services/orderbook/orderbook.class.ts:224:19 - error TS1005: ':' expected.
+
+224             const buyerSocketId = tradeInfo.buyer.socketId;
+                      ~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:224:19 - error TS2304: Cannot find name 'buyerSocketId'.
+
+224             const buyerSocketId = tradeInfo.buyer.socketId;
+                      ~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:224:35 - error TS2304: Cannot find name 'tradeInfo'.
+
+224             const buyerSocketId = tradeInfo.buyer.socketId;
+                                      ~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:224:59 - error TS1005: ',' expected.
+
+224             const buyerSocketId = tradeInfo.buyer.socketId;
+                                                              ~
+
+src/services/orderbook/orderbook.class.ts:225:19 - error TS1005: ':' expected.
+
+225             const sellerSocketId = tradeInfo.seller.socketId;
+                      ~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:225:19 - error TS2304: Cannot find name 'sellerSocketId'.
+
+225             const sellerSocketId = tradeInfo.seller.socketId;
+                      ~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:225:36 - error TS2304: Cannot find name 'tradeInfo'.
+
+225             const sellerSocketId = tradeInfo.seller.socketId;
+                                       ~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:225:61 - error TS1005: ',' expected.
+
+225             const sellerSocketId = tradeInfo.seller.socketId;
+                                                                ~
+
+src/services/orderbook/orderbook.class.ts:226:19 - error TS1005: ':' expected.
+
+226             const buyerSocket = socketManager.getSocketById(buyerSocketId) as Websocket;
+                      ~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:226:19 - error TS2304: Cannot find name 'buyerSocket'.
+
+226             const buyerSocket = socketManager.getSocketById(buyerSocketId) as Websocket;
+                      ~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:226:61 - error TS2304: Cannot find name 'buyerSocketId'.
+
+226             const buyerSocket = socketManager.getSocketById(buyerSocketId) as Websocket;
+                                                                ~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:226:88 - error TS1005: ',' expected.
+
+226             const buyerSocket = socketManager.getSocketById(buyerSocketId) as Websocket;
+                                                                                           ~
+
+src/services/orderbook/orderbook.class.ts:227:19 - error TS1005: ':' expected.
+
+227             const sellerSocket = socketManager.getSocketById(sellerSocketId) as Websocket;
+                      ~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:227:19 - error TS2304: Cannot find name 'sellerSocket'.
+
+227             const sellerSocket = socketManager.getSocketById(sellerSocketId) as Websocket;
+                      ~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:227:62 - error TS2304: Cannot find name 'sellerSocketId'.
+
+227             const sellerSocket = socketManager.getSocketById(sellerSocketId) as Websocket;
+                                                                 ~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:227:90 - error TS1005: ',' expected.
+
+227             const sellerSocket = socketManager.getSocketById(sellerSocketId) as Websocket;
+                                                                                             ~
+
+src/services/orderbook/orderbook.class.ts:229:17 - error TS1003: Identifier expected.
+
+229             if (!buyerSocket || !sellerSocket) {
+                    ~
+
+src/services/orderbook/orderbook.class.ts:229:30 - error TS1005: ',' expected.
+
+229             if (!buyerSocket || !sellerSocket) {
+                                 ~~
+
+  src/services/orderbook/orderbook.class.ts:223:13
+    223         try {
+                    ~
+    The parser expected to find a '}' to match the '{' token here.
+
+src/services/orderbook/orderbook.class.ts:229:34 - error TS2304: Cannot find name 'sellerSocket'.
+
+229             if (!buyerSocket || !sellerSocket) {
+                                     ~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:229:46 - error TS1005: ',' expected.
+
+229             if (!buyerSocket || !sellerSocket) {
+                                                 ~
+
+src/services/orderbook/orderbook.class.ts:229:48 - error TS1136: Property assignment expected.
+
+229             if (!buyerSocket || !sellerSocket) {
+                                                   ~
+
+src/services/orderbook/orderbook.class.ts:233:45 - error TS2304: Cannot find name 'buyerSocket'.
+
+233             const channel = new ChannelSwap(buyerSocket, sellerSocket, tradeInfo, unfilled);
+                                                ~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:233:58 - error TS2304: Cannot find name 'sellerSocket'.
+
+233             const channel = new ChannelSwap(buyerSocket, sellerSocket, tradeInfo, unfilled);
+                                                             ~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:233:72 - error TS2304: Cannot find name 'tradeInfo'.
+
+233             const channel = new ChannelSwap(buyerSocket, sellerSocket, tradeInfo, unfilled);
+                                                                           ~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:233:83 - error TS2304: Cannot find name 'unfilled'.
+
+233             const channel = new ChannelSwap(buyerSocket, sellerSocket, tradeInfo, unfilled);
+                                                                                      ~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:240:20 - error TS2304: Cannot find name 'tradeInfo'.
+
+240                 ...tradeInfo,
+                       ~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:242:13 - error TS2532: Object is possibly 'undefined'.
+
+242             this.saveToHistory(historyTrade);
+                ~~~~
+
+src/services/orderbook/orderbook.class.ts:244:9 - error TS1128: Declaration or statement expected.
+
+244         } catch (error) {
+            ~
+
+src/services/orderbook/orderbook.class.ts:244:11 - error TS1005: 'try' expected.
+
+244         } catch (error) {
+              ~~~~~
+
+src/services/orderbook/orderbook.class.ts:247:5 - error TS1128: Declaration or statement expected.
+
+247     }
+        ~
+
+src/services/orderbook/orderbook.class.ts:250:5 - error TS1128: Declaration or statement expected.
+
+250     private lockOrder(order: TOrder, lock: boolean = true) {
+        ~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:250:13 - error TS2304: Cannot find name 'lockOrder'.
+
+250     private lockOrder(order: TOrder, lock: boolean = true) {
+                ~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:250:23 - error TS2304: Cannot find name 'order'.
+
+250     private lockOrder(order: TOrder, lock: boolean = true) {
+                          ~~~~~
+
+src/services/orderbook/orderbook.class.ts:250:28 - error TS1005: ',' expected.
+
+250     private lockOrder(order: TOrder, lock: boolean = true) {
+                               ~
+
+src/services/orderbook/orderbook.class.ts:250:30 - error TS2693: 'TOrder' only refers to a type, but is being used as a value here.
+
+250     private lockOrder(order: TOrder, lock: boolean = true) {
+                                 ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:250:38 - error TS2304: Cannot find name 'lock'.
+
+250     private lockOrder(order: TOrder, lock: boolean = true) {
+                                         ~~~~
+
+src/services/orderbook/orderbook.class.ts:250:42 - error TS1005: ',' expected.
+
+250     private lockOrder(order: TOrder, lock: boolean = true) {
+                                             ~
+
+src/services/orderbook/orderbook.class.ts:250:44 - error TS2693: 'boolean' only refers to a type, but is being used as a value here.
+
+250     private lockOrder(order: TOrder, lock: boolean = true) {
+                                               ~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:250:60 - error TS1005: ';' expected.
+
+250     private lockOrder(order: TOrder, lock: boolean = true) {
+                                                               ~
+
+src/services/orderbook/orderbook.class.ts:251:9 - error TS2304: Cannot find name 'order'.
+
+251         order.lock = lock;
+            ~~~~~
+
+src/services/orderbook/orderbook.class.ts:251:22 - error TS2304: Cannot find name 'lock'.
+
+251         order.lock = lock;
+                         ~~~~
+
+src/services/orderbook/orderbook.class.ts:252:9 - error TS2532: Object is possibly 'undefined'.
+
+252         this.broadcastSnapshot();
+            ~~~~
+
+src/services/orderbook/orderbook.class.ts:255:5 - error TS1128: Declaration or statement expected.
+
+255     private saveToHistory(historyTrade: IHistoryTrade) {
+        ~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:255:13 - error TS2304: Cannot find name 'saveToHistory'.
+
+255     private saveToHistory(historyTrade: IHistoryTrade) {
+                ~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:255:39 - error TS1005: ',' expected.
+
+255     private saveToHistory(historyTrade: IHistoryTrade) {
+                                          ~
+
+src/services/orderbook/orderbook.class.ts:255:41 - error TS2693: 'IHistoryTrade' only refers to a type, but is being used as a value here.
+
+255     private saveToHistory(historyTrade: IHistoryTrade) {
+                                            ~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:255:56 - error TS1005: ';' expected.
+
+255     private saveToHistory(historyTrade: IHistoryTrade) {
+                                                           ~
+
+src/services/orderbook/orderbook.class.ts:256:9 - error TS2532: Object is possibly 'undefined'.
+
+256         this._historyTrades = [historyTrade, ...this.historyTrades.slice(0, 1999)];
+            ~~~~
+
+src/services/orderbook/orderbook.class.ts:256:49 - error TS2532: Object is possibly 'undefined'.
+
+256         this._historyTrades = [historyTrade, ...this.historyTrades.slice(0, 1999)];
+                                                    ~~~~
+
+src/services/orderbook/orderbook.class.ts:257:17 - error TS2532: Object is possibly 'undefined'.
+
+257         saveLog(this.orderbookName, "TRADE", historyTrade);
+                    ~~~~
+
+src/services/orderbook/orderbook.class.ts:258:9 - error TS2532: Object is possibly 'undefined'.
+
+258         this.broadcastSnapshot();
+            ~~~~
+
+src/services/orderbook/orderbook.class.ts:261:5 - error TS2304: Cannot find name 'updatePlacedOrdersForSocketId'.
+
+261     updatePlacedOrdersForSocketId(socketid: string) {
+        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:261:35 - error TS2304: Cannot find name 'socketid'.
+
+261     updatePlacedOrdersForSocketId(socketid: string) {
+                                      ~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:261:43 - error TS1005: ',' expected.
+
+261     updatePlacedOrdersForSocketId(socketid: string) {
+                                              ~
+
+src/services/orderbook/orderbook.class.ts:261:45 - error TS2693: 'string' only refers to a type, but is being used as a value here.
+
+261     updatePlacedOrdersForSocketId(socketid: string) {
+                                                ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:261:53 - error TS1005: ';' expected.
+
+261     updatePlacedOrdersForSocketId(socketid: string) {
+                                                        ~
+
+src/services/orderbook/orderbook.class.ts:262:67 - error TS2304: Cannot find name 'socketid'.
+
+262         const openedOrders = orderbookManager.getOrdersBySocketId(socketid);
+                                                                      ~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:264:55 - error TS2304: Cannot find name 'socketid'.
+
+264         const socketObj = socketManager.getSocketById(socketid) as Websocket;
+                                                          ~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:270:5 - error TS1128: Declaration or statement expected.
+
+270     private checkMatch(order: TOrder): IResult<{ match: TOrder | null }> {
+        ~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:270:13 - error TS2304: Cannot find name 'checkMatch'.
+
+270     private checkMatch(order: TOrder): IResult<{ match: TOrder | null }> {
+                ~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:270:24 - error TS2304: Cannot find name 'order'.
+
+270     private checkMatch(order: TOrder): IResult<{ match: TOrder | null }> {
+                           ~~~~~
+
+src/services/orderbook/orderbook.class.ts:270:29 - error TS1005: ',' expected.
+
+270     private checkMatch(order: TOrder): IResult<{ match: TOrder | null }> {
+                                ~
+
+src/services/orderbook/orderbook.class.ts:270:31 - error TS2693: 'TOrder' only refers to a type, but is being used as a value here.
+
+270     private checkMatch(order: TOrder): IResult<{ match: TOrder | null }> {
+                                  ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:270:38 - error TS1005: ';' expected.
+
+270     private checkMatch(order: TOrder): IResult<{ match: TOrder | null }> {
+                                         ~
+
+src/services/orderbook/orderbook.class.ts:270:40 - error TS2693: 'IResult' only refers to a type, but is being used as a value here.
+
+270     private checkMatch(order: TOrder): IResult<{ match: TOrder | null }> {
+                                           ~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:270:40 - error TS2365: Operator '>' cannot be applied to types 'boolean' and '{ try: { const: any; compatible: any; "": boolean; if(: any, best: any): any; if(best: any): any; if(best: any): any; return: { data: { match: any; }; }; throw: Error; }; catch(err: any): { error: string; }; }'.
+
+270     private checkMatch(order: TOrder): IResult<{ match: TOrder | null }> {
+                                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+271   try {
+    ~~~~~~~
+...
+303   }
+    ~~~
+304 }
+    ~
+
+src/services/orderbook/orderbook.class.ts:270:57 - error TS2693: 'TOrder' only refers to a type, but is being used as a value here.
+
+270     private checkMatch(order: TOrder): IResult<{ match: TOrder | null }> {
+                                                            ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:270:66 - error TS2531: Object is possibly 'null'.
+
+270     private checkMatch(order: TOrder): IResult<{ match: TOrder | null }> {
+                                                                     ~~~~
+
+src/services/orderbook/orderbook.class.ts:271:7 - error TS1005: ':' expected.
+
+271   try {
+          ~
+
+src/services/orderbook/orderbook.class.ts:272:11 - error TS1005: ':' expected.
+
+272     const isBuy = order.action === EOrderAction.BUY;
+              ~~~~~
+
+src/services/orderbook/orderbook.class.ts:272:11 - error TS2304: Cannot find name 'isBuy'.
+
+272     const isBuy = order.action === EOrderAction.BUY;
+              ~~~~~
+
+src/services/orderbook/orderbook.class.ts:272:19 - error TS2304: Cannot find name 'order'.
+
+272     const isBuy = order.action === EOrderAction.BUY;
+                      ~~~~~
+
+src/services/orderbook/orderbook.class.ts:272:52 - error TS1005: ',' expected.
+
+272     const isBuy = order.action === EOrderAction.BUY;
+                                                       ~
+
+src/services/orderbook/orderbook.class.ts:273:11 - error TS1005: ':' expected.
+
+273     const price  = order.props.price;
+              ~~~~~
+
+src/services/orderbook/orderbook.class.ts:273:11 - error TS2304: Cannot find name 'price'.
+
+273     const price  = order.props.price;
+              ~~~~~
+
+src/services/orderbook/orderbook.class.ts:273:20 - error TS2304: Cannot find name 'order'.
+
+273     const price  = order.props.price;
+                       ~~~~~
+
+src/services/orderbook/orderbook.class.ts:273:37 - error TS1005: ',' expected.
+
+273     const price  = order.props.price;
+                                        ~
+
+src/services/orderbook/orderbook.class.ts:275:11 - error TS1005: ':' expected.
+
+275     const compatible = this.orders.filter(o => {
+              ~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:275:11 - error TS2304: Cannot find name 'compatible'.
+
+275     const compatible = this.orders.filter(o => {
+              ~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:275:24 - error TS2532: Object is possibly 'undefined'.
+
+275     const compatible = this.orders.filter(o => {
+                           ~~~~
+
+src/services/orderbook/orderbook.class.ts:277:24 - error TS2304: Cannot find name 'order'.
+
+277       if (o.action === order.action) return false;
+                           ~~~~~
+
+src/services/orderbook/orderbook.class.ts:278:12 - error TS2532: Object is possibly 'undefined'.
+
+278       if (!this.sameMarket(o, order)) return false;
+               ~~~~
+
+src/services/orderbook/orderbook.class.ts:278:31 - error TS2304: Cannot find name 'order'.
+
+278       if (!this.sameMarket(o, order)) return false;
+                                  ~~~~~
+
+src/services/orderbook/orderbook.class.ts:279:11 - error TS2304: Cannot find name 'isBuy'.
+
+279       if (isBuy ? o.props.price > price : o.props.price < price) return false;
+              ~~~~~
+
+src/services/orderbook/orderbook.class.ts:279:35 - error TS2304: Cannot find name 'price'.
+
+279       if (isBuy ? o.props.price > price : o.props.price < price) return false;
+                                      ~~~~~
+
+src/services/orderbook/orderbook.class.ts:279:59 - error TS2304: Cannot find name 'price'.
+
+279       if (isBuy ? o.props.price > price : o.props.price < price) return false;
+                                                              ~~~~~
+
+src/services/orderbook/orderbook.class.ts:281:7 - error TS1005: ',' expected.
+
+281     });
+          ~
+
+src/services/orderbook/orderbook.class.ts:283:5 - error TS18004: No value exists in scope for the shorthand property 'compatible'. Either declare one or provide an initializer.
+
+283     compatible.sort((a,b) => {
+        ~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:283:15 - error TS1005: ',' expected.
+
+283     compatible.sort((a,b) => {
+                  ~
+
+src/services/orderbook/orderbook.class.ts:284:11 - error TS2304: Cannot find name 'isBuy'.
+
+284       if (isBuy) {
+              ~~~~~
+
+src/services/orderbook/orderbook.class.ts:290:7 - error TS1005: ',' expected.
+
+290     });
+          ~
+
+src/services/orderbook/orderbook.class.ts:292:11 - error TS1005: ':' expected.
+
+292     const best = compatible[0];
+              ~~~~
+
+src/services/orderbook/orderbook.class.ts:292:11 - error TS2304: Cannot find name 'best'.
+
+292     const best = compatible[0];
+              ~~~~
+
+src/services/orderbook/orderbook.class.ts:292:18 - error TS2304: Cannot find name 'compatible'.
+
+292     const best = compatible[0];
+                     ~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:292:31 - error TS1005: ',' expected.
+
+292     const best = compatible[0];
+                                  ~
+
+src/services/orderbook/orderbook.class.ts:293:9 - error TS1003: Identifier expected.
+
+293     if (!best) return { data: { match: null } };
+            ~
+
+src/services/orderbook/orderbook.class.ts:293:16 - error TS1005: '{' expected.
+
+293     if (!best) return { data: { match: null } };
+                   ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:293:23 - error TS1005: ':' expected.
+
+293     if (!best) return { data: { match: null } };
+                          ~
+
+src/services/orderbook/orderbook.class.ts:293:48 - error TS1005: ',' expected.
+
+293     if (!best) return { data: { match: null } };
+                                                   ~
+
+src/services/orderbook/orderbook.class.ts:295:13 - error TS1005: ',' expected.
+
+295     if (best.socket_id === order.socket_id)
+                ~
+
+src/services/orderbook/orderbook.class.ts:295:28 - error TS2304: Cannot find name 'order'.
+
+295     if (best.socket_id === order.socket_id)
+                               ~~~~~
+
+src/services/orderbook/orderbook.class.ts:295:43 - error TS1005: ',' expected.
+
+295     if (best.socket_id === order.socket_id)
+                                              ~
+
+src/services/orderbook/orderbook.class.ts:296:13 - error TS1005: ':' expected.
+
+296       throw new Error('Self-trade (socket)');
+                ~~~
+
+src/services/orderbook/orderbook.class.ts:296:45 - error TS1005: ',' expected.
+
+296       throw new Error('Self-trade (socket)');
+                                                ~
+
+src/services/orderbook/orderbook.class.ts:297:13 - error TS1005: ',' expected.
+
+297     if (best.keypair.address === order.keypair.address)
+                ~
+
+src/services/orderbook/orderbook.class.ts:297:34 - error TS2304: Cannot find name 'order'.
+
+297     if (best.keypair.address === order.keypair.address)
+                                     ~~~~~
+
+src/services/orderbook/orderbook.class.ts:297:55 - error TS1005: ',' expected.
+
+297     if (best.keypair.address === order.keypair.address)
+                                                          ~
+
+src/services/orderbook/orderbook.class.ts:298:13 - error TS1005: ':' expected.
+
+298       throw new Error('Self-trade (address)');
+                ~~~
+
+src/services/orderbook/orderbook.class.ts:298:46 - error TS1005: ',' expected.
+
+298       throw new Error('Self-trade (address)');
+                                                 ~
+
+src/services/orderbook/orderbook.class.ts:300:12 - error TS1005: ':' expected.
+
+300     return { data: { match: best } };
+               ~
+
+src/services/orderbook/orderbook.class.ts:300:29 - error TS2304: Cannot find name 'best'.
+
+300     return { data: { match: best } };
+                                ~~~~
+
+src/services/orderbook/orderbook.class.ts:300:37 - error TS1005: ',' expected.
+
+300     return { data: { match: best } };
+                                        ~
+
+src/services/orderbook/orderbook.class.ts:301:5 - error TS1005: ',' expected.
+
+301   } catch (err) {
+        ~~~~~
+
+src/services/orderbook/orderbook.class.ts:307:5 - error TS1128: Declaration or statement expected.
+
+307     private cloneWithAmount(order: TOrder, amount: number): TOrder {
+        ~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:307:13 - error TS2304: Cannot find name 'cloneWithAmount'.
+
+307     private cloneWithAmount(order: TOrder, amount: number): TOrder {
+                ~~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:307:29 - error TS2304: Cannot find name 'order'.
+
+307     private cloneWithAmount(order: TOrder, amount: number): TOrder {
+                                ~~~~~
+
+src/services/orderbook/orderbook.class.ts:307:34 - error TS1005: ',' expected.
+
+307     private cloneWithAmount(order: TOrder, amount: number): TOrder {
+                                     ~
+
+src/services/orderbook/orderbook.class.ts:307:36 - error TS2693: 'TOrder' only refers to a type, but is being used as a value here.
+
+307     private cloneWithAmount(order: TOrder, amount: number): TOrder {
+                                       ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:307:44 - error TS2304: Cannot find name 'amount'.
+
+307     private cloneWithAmount(order: TOrder, amount: number): TOrder {
+                                               ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:307:50 - error TS1005: ',' expected.
+
+307     private cloneWithAmount(order: TOrder, amount: number): TOrder {
+                                                     ~
+
+src/services/orderbook/orderbook.class.ts:307:52 - error TS2693: 'number' only refers to a type, but is being used as a value here.
+
+307     private cloneWithAmount(order: TOrder, amount: number): TOrder {
+                                                       ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:307:59 - error TS1005: ';' expected.
+
+307     private cloneWithAmount(order: TOrder, amount: number): TOrder {
+                                                              ~
+
+src/services/orderbook/orderbook.class.ts:307:61 - error TS1434: Unexpected keyword or identifier.
+
+307     private cloneWithAmount(order: TOrder, amount: number): TOrder {
+                                                                ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:307:61 - error TS2693: 'TOrder' only refers to a type, but is being used as a value here.
+
+307     private cloneWithAmount(order: TOrder, amount: number): TOrder {
+                                                                ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:309:13 - error TS2304: Cannot find name 'order'.
+
+309         if (order.type === EOrderType.SPOT) {
+                ~~~~~
+
+src/services/orderbook/orderbook.class.ts:310:27 - error TS2304: Cannot find name 'order'.
+
+310             const props = order.props as ISpotOrderProps;
+                              ~~~~~
+
+src/services/orderbook/orderbook.class.ts:318:20 - error TS2304: Cannot find name 'order'.
+
+318         } else if (order.type === EOrderType.FUTURES) {
+                       ~~~~~
+
+src/services/orderbook/orderbook.class.ts:319:27 - error TS2304: Cannot find name 'order'.
+
+319             const props = order.props as IFuturesOrderProps;
+                              ~~~~~
+
+src/services/orderbook/orderbook.class.ts:332:5 - error TS1434: Unexpected keyword or identifier.
+
+332     async addOrder(
+        ~~~~~
+
+src/services/orderbook/orderbook.class.ts:332:5 - error TS2304: Cannot find name 'async'.
+
+332     async addOrder(
+        ~~~~~
+
+src/services/orderbook/orderbook.class.ts:332:11 - error TS2304: Cannot find name 'addOrder'.
+
+332     async addOrder(
+              ~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:333:7 - error TS2304: Cannot find name 'order'.
+
+333       order: TOrder,
+          ~~~~~
+
+src/services/orderbook/orderbook.class.ts:333:12 - error TS1005: ',' expected.
+
+333       order: TOrder,
+               ~
+
+src/services/orderbook/orderbook.class.ts:333:14 - error TS2693: 'TOrder' only refers to a type, but is being used as a value here.
+
+333       order: TOrder,
+                 ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:334:7 - error TS2304: Cannot find name 'noTrades'.
+
+334       noTrades = false
+          ~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:335:6 - error TS1005: ';' expected.
+
+335     ): Promise<IResult<{ order?: TOrder; trades?: ITradeInfo[] }>> {
+         ~
+
+src/services/orderbook/orderbook.class.ts:335:8 - error TS2365: Operator '<' cannot be applied to types 'boolean' and 'number'.
+
+335     ): Promise<IResult<{ order?: TOrder; trades?: ITradeInfo[] }>> {
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+336       try {
+    ~~~~~~~~~~~
+...
+343     const bucketByUuid   = new Map<string, Agg>(); // one bucket per maker UUID
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+344       DBG(`New taker ${order.uuid.slice(0, 6)}…  ${order.action} ${order.props.amount} @ ${order.props.price}`);
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:335:16 - error TS2693: 'IResult' only refers to a type, but is being used as a value here.
+
+335     ): Promise<IResult<{ order?: TOrder; trades?: ITradeInfo[] }>> {
+                   ~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:335:24 - error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+
+335     ): Promise<IResult<{ order?: TOrder; trades?: ITradeInfo[] }>> {
+                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:335:34 - error TS2693: 'TOrder' only refers to a type, but is being used as a value here.
+
+335     ): Promise<IResult<{ order?: TOrder; trades?: ITradeInfo[] }>> {
+                                     ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:335:40 - error TS1005: ',' expected.
+
+335     ): Promise<IResult<{ order?: TOrder; trades?: ITradeInfo[] }>> {
+                                           ~
+
+src/services/orderbook/orderbook.class.ts:335:51 - error TS2693: 'ITradeInfo' only refers to a type, but is being used as a value here.
+
+335     ): Promise<IResult<{ order?: TOrder; trades?: ITradeInfo[] }>> {
+                                                      ~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:335:62 - error TS1011: An element access expression should take an argument.
+
+335     ): Promise<IResult<{ order?: TOrder; trades?: ITradeInfo[] }>> {
+
+
+src/services/orderbook/orderbook.class.ts:335:68 - error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+
+335     ): Promise<IResult<{ order?: TOrder; trades?: ITradeInfo[] }>> {
+                                                                       ~
+336       try {
+    ~~~~~~~~~~~
+...
+343     const bucketByUuid   = new Map<string, Agg>(); // one bucket per maker UUID
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+344       DBG(`New taker ${order.uuid.slice(0, 6)}…  ${order.action} ${order.props.amount} @ ${order.props.price}`);
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:336:11 - error TS1005: ':' expected.
+
+336       try {
+              ~
+
+src/services/orderbook/orderbook.class.ts:337:13 - error TS1003: Identifier expected.
+
+337         if (!this.checkCompatible(order))
+                ~
+
+src/services/orderbook/orderbook.class.ts:337:14 - error TS2680: A 'this' parameter must be the first parameter.
+
+337         if (!this.checkCompatible(order))
+                 ~~~~
+
+src/services/orderbook/orderbook.class.ts:337:18 - error TS1005: ',' expected.
+
+337         if (!this.checkCompatible(order))
+                     ~
+
+src/services/orderbook/orderbook.class.ts:337:35 - error TS2304: Cannot find name 'order'.
+
+337         if (!this.checkCompatible(order))
+                                      ~~~~~
+
+src/services/orderbook/orderbook.class.ts:337:41 - error TS1005: ',' expected.
+
+337         if (!this.checkCompatible(order))
+                                            ~
+
+src/services/orderbook/orderbook.class.ts:338:17 - error TS1005: ':' expected.
+
+338           throw new Error('Order mismatch with order-book');
+                    ~~~
+
+src/services/orderbook/orderbook.class.ts:338:60 - error TS1005: ',' expected.
+
+338           throw new Error('Order mismatch with order-book');
+                                                               ~
+
+src/services/orderbook/orderbook.class.ts:341:5 - error TS18004: No value exists in scope for the shorthand property 'let'. Either declare one or provide an initializer.
+
+341     let remaining        = order.props.amount;
+        ~~~
+
+src/services/orderbook/orderbook.class.ts:341:9 - error TS1005: ',' expected.
+
+341     let remaining        = order.props.amount;
+            ~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:341:28 - error TS2304: Cannot find name 'order'.
+
+341     let remaining        = order.props.amount;
+                               ~~~~~
+
+src/services/orderbook/orderbook.class.ts:341:46 - error TS1005: ',' expected.
+
+341     let remaining        = order.props.amount;
+                                                 ~
+
+src/services/orderbook/orderbook.class.ts:342:11 - error TS1005: ':' expected.
+
+342     const touchedSockets = new Set<string>();     // every socket we must refresh
+              ~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:342:11 - error TS2304: Cannot find name 'touchedSockets'.
+
+342     const touchedSockets = new Set<string>();     // every socket we must refresh
+              ~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:342:45 - error TS1005: ',' expected.
+
+342     const touchedSockets = new Set<string>();     // every socket we must refresh
+                                                ~
+
+src/services/orderbook/orderbook.class.ts:343:11 - error TS1005: ':' expected.
+
+343     const bucketByUuid   = new Map<string, Agg>(); // one bucket per maker UUID
+              ~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:343:11 - error TS2304: Cannot find name 'bucketByUuid'.
+
+343     const bucketByUuid   = new Map<string, Agg>(); // one bucket per maker UUID
+              ~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:343:50 - error TS1005: ',' expected.
+
+343     const bucketByUuid   = new Map<string, Agg>(); // one bucket per maker UUID
+                                                     ~
+
+src/services/orderbook/orderbook.class.ts:344:11 - error TS1003: Identifier expected.
+
+344       DBG(`New taker ${order.uuid.slice(0, 6)}…  ${order.action} ${order.props.amount} @ ${order.props.price}`);
+              ~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:344:29 - error TS1005: ',' expected.
+
+344       DBG(`New taker ${order.uuid.slice(0, 6)}…  ${order.action} ${order.props.amount} @ ${order.props.price}`);
+                                ~
+
+src/services/orderbook/orderbook.class.ts:344:47 - error TS1127: Invalid character.
+
+344       DBG(`New taker ${order.uuid.slice(0, 6)}…  ${order.action} ${order.props.amount} @ ${order.props.price}`);
+                                                  ~
+
+src/services/orderbook/orderbook.class.ts:344:50 - error TS2592: Cannot find name '$'. Do you need to install type definitions for jQuery? Try `npm i --save-dev @types/jquery` and then add 'jquery' to the types field in your tsconfig.
+
+344       DBG(`New taker ${order.uuid.slice(0, 6)}…  ${order.action} ${order.props.amount} @ ${order.props.price}`);
+                                                     ~
+
+src/services/orderbook/orderbook.class.ts:344:51 - error TS1005: ',' expected.
+
+344       DBG(`New taker ${order.uuid.slice(0, 6)}…  ${order.action} ${order.props.amount} @ ${order.props.price}`);
+                                                      ~
+
+  src/services/orderbook/orderbook.class.ts:335:68
+    335     ): Promise<IResult<{ order?: TOrder; trades?: ITradeInfo[] }>> {
+                                                                           ~
+    The parser expected to find a '}' to match the '{' token here.
+
+src/services/orderbook/orderbook.class.ts:344:52 - error TS2304: Cannot find name 'order'.
+
+344       DBG(`New taker ${order.uuid.slice(0, 6)}…  ${order.action} ${order.props.amount} @ ${order.props.price}`);
+                                                       ~~~~~
+
+src/services/orderbook/orderbook.class.ts:344:66 - error TS1434: Unexpected keyword or identifier.
+
+344       DBG(`New taker ${order.uuid.slice(0, 6)}…  ${order.action} ${order.props.amount} @ ${order.props.price}`);
+                                                                     ~
+
+src/services/orderbook/orderbook.class.ts:344:66 - error TS2592: Cannot find name '$'. Do you need to install type definitions for jQuery? Try `npm i --save-dev @types/jquery` and then add 'jquery' to the types field in your tsconfig.
+
+344       DBG(`New taker ${order.uuid.slice(0, 6)}…  ${order.action} ${order.props.amount} @ ${order.props.price}`);
+                                                                     ~
+
+src/services/orderbook/orderbook.class.ts:344:68 - error TS2304: Cannot find name 'order'.
+
+344       DBG(`New taker ${order.uuid.slice(0, 6)}…  ${order.action} ${order.props.amount} @ ${order.props.price}`);
+                                                                       ~~~~~
+
+src/services/orderbook/orderbook.class.ts:344:91 - error TS1146: Declaration expected.
+
+344       DBG(`New taker ${order.uuid.slice(0, 6)}…  ${order.action} ${order.props.amount} @ ${order.props.price}`);
+
+
+src/services/orderbook/orderbook.class.ts:344:92 - error TS2304: Cannot find name 'order'.
+
+344       DBG(`New taker ${order.uuid.slice(0, 6)}…  ${order.action} ${order.props.amount} @ ${order.props.price}`);
+                                                                                               ~~~~~
+
+src/services/orderbook/orderbook.class.ts:384:17 - error TS1127: Invalid character.
+
+384         DBG(`   ⋆ fill ${fillAmt} vs maker ${match.uuid.slice(0, 6)}…  (before: ${match.props.amount})`);
+                    ~
+
+src/services/orderbook/orderbook.class.ts:384:19 - error TS1434: Unexpected keyword or identifier.
+
+384         DBG(`   ⋆ fill ${fillAmt} vs maker ${match.uuid.slice(0, 6)}…  (before: ${match.props.amount})`);
+                      ~~~~
+
+src/services/orderbook/orderbook.class.ts:384:19 - error TS2304: Cannot find name 'fill'.
+
+384         DBG(`   ⋆ fill ${fillAmt} vs maker ${match.uuid.slice(0, 6)}…  (before: ${match.props.amount})`);
+                      ~~~~
+
+src/services/orderbook/orderbook.class.ts:384:24 - error TS1434: Unexpected keyword or identifier.
+
+384         DBG(`   ⋆ fill ${fillAmt} vs maker ${match.uuid.slice(0, 6)}…  (before: ${match.props.amount})`);
+                           ~
+
+src/services/orderbook/orderbook.class.ts:384:24 - error TS2592: Cannot find name '$'. Do you need to install type definitions for jQuery? Try `npm i --save-dev @types/jquery` and then add 'jquery' to the types field in your tsconfig.
+
+384         DBG(`   ⋆ fill ${fillAmt} vs maker ${match.uuid.slice(0, 6)}…  (before: ${match.props.amount})`);
+                           ~
+
+src/services/orderbook/orderbook.class.ts:384:26 - error TS2304: Cannot find name 'fillAmt'.
+
+384         DBG(`   ⋆ fill ${fillAmt} vs maker ${match.uuid.slice(0, 6)}…  (before: ${match.props.amount})`);
+                             ~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:384:35 - error TS1434: Unexpected keyword or identifier.
+
+384         DBG(`   ⋆ fill ${fillAmt} vs maker ${match.uuid.slice(0, 6)}…  (before: ${match.props.amount})`);
+                                      ~~
+
+src/services/orderbook/orderbook.class.ts:384:35 - error TS2304: Cannot find name 'vs'.
+
+384         DBG(`   ⋆ fill ${fillAmt} vs maker ${match.uuid.slice(0, 6)}…  (before: ${match.props.amount})`);
+                                      ~~
+
+src/services/orderbook/orderbook.class.ts:384:38 - error TS1434: Unexpected keyword or identifier.
+
+384         DBG(`   ⋆ fill ${fillAmt} vs maker ${match.uuid.slice(0, 6)}…  (before: ${match.props.amount})`);
+                                         ~~~~~
+
+src/services/orderbook/orderbook.class.ts:384:38 - error TS2304: Cannot find name 'maker'.
+
+384         DBG(`   ⋆ fill ${fillAmt} vs maker ${match.uuid.slice(0, 6)}…  (before: ${match.props.amount})`);
+                                         ~~~~~
+
+src/services/orderbook/orderbook.class.ts:384:44 - error TS1434: Unexpected keyword or identifier.
+
+384         DBG(`   ⋆ fill ${fillAmt} vs maker ${match.uuid.slice(0, 6)}…  (before: ${match.props.amount})`);
+                                               ~
+
+src/services/orderbook/orderbook.class.ts:384:44 - error TS2592: Cannot find name '$'. Do you need to install type definitions for jQuery? Try `npm i --save-dev @types/jquery` and then add 'jquery' to the types field in your tsconfig.
+
+384         DBG(`   ⋆ fill ${fillAmt} vs maker ${match.uuid.slice(0, 6)}…  (before: ${match.props.amount})`);
+                                               ~
+
+src/services/orderbook/orderbook.class.ts:384:46 - error TS2304: Cannot find name 'match'.
+
+384         DBG(`   ⋆ fill ${fillAmt} vs maker ${match.uuid.slice(0, 6)}…  (before: ${match.props.amount})`);
+                                                 ~~~~~
+
+src/services/orderbook/orderbook.class.ts:384:69 - error TS1127: Invalid character.
+
+384         DBG(`   ⋆ fill ${fillAmt} vs maker ${match.uuid.slice(0, 6)}…  (before: ${match.props.amount})`);
+                                                                        ~
+
+src/services/orderbook/orderbook.class.ts:384:81 - error TS2592: Cannot find name '$'. Do you need to install type definitions for jQuery? Try `npm i --save-dev @types/jquery` and then add 'jquery' to the types field in your tsconfig.
+
+384         DBG(`   ⋆ fill ${fillAmt} vs maker ${match.uuid.slice(0, 6)}…  (before: ${match.props.amount})`);
+                                                                                    ~
+
+src/services/orderbook/orderbook.class.ts:384:82 - error TS1005: ',' expected.
+
+384         DBG(`   ⋆ fill ${fillAmt} vs maker ${match.uuid.slice(0, 6)}…  (before: ${match.props.amount})`);
+                                                                                     ~
+
+src/services/orderbook/orderbook.class.ts:384:88 - error TS1005: ',' expected.
+
+384         DBG(`   ⋆ fill ${fillAmt} vs maker ${match.uuid.slice(0, 6)}…  (before: ${match.props.amount})`);
+                                                                                           ~
+
+src/services/orderbook/orderbook.class.ts:384:94 - error TS1005: ',' expected.
+
+384         DBG(`   ⋆ fill ${fillAmt} vs maker ${match.uuid.slice(0, 6)}…  (before: ${match.props.amount})`);
+                                                                                                 ~
+
+src/services/orderbook/orderbook.class.ts:384:103 - error TS1005: '=>' expected.
+
+384         DBG(`   ⋆ fill ${fillAmt} vs maker ${match.uuid.slice(0, 6)}…  (before: ${match.props.amount})`);
+                                                                                                          ~~~
+385       touchedSockets.add(match.socket_id);
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+...
+389         updateOrderLog(this.orderbookName, match.uuid, 'FILLED');
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+390            DBG(`     → maker exhausted and removed`);
+    ~~~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:390:22 - error TS1127: Invalid character.
+
+390            DBG(`     → maker exhausted and removed`);
+                         ~
+
+src/services/orderbook/orderbook.class.ts:390:24 - error TS1434: Unexpected keyword or identifier.
+
+390            DBG(`     → maker exhausted and removed`);
+                           ~~~~~
+
+src/services/orderbook/orderbook.class.ts:390:24 - error TS2304: Cannot find name 'maker'.
+
+390            DBG(`     → maker exhausted and removed`);
+                           ~~~~~
+
+src/services/orderbook/orderbook.class.ts:390:30 - error TS1434: Unexpected keyword or identifier.
+
+390            DBG(`     → maker exhausted and removed`);
+                                 ~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:390:30 - error TS2304: Cannot find name 'exhausted'.
+
+390            DBG(`     → maker exhausted and removed`);
+                                 ~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:390:40 - error TS1434: Unexpected keyword or identifier.
+
+390            DBG(`     → maker exhausted and removed`);
+                                           ~~~
+
+src/services/orderbook/orderbook.class.ts:390:40 - error TS2304: Cannot find name 'and'.
+
+390            DBG(`     → maker exhausted and removed`);
+                                           ~~~
+
+src/services/orderbook/orderbook.class.ts:390:44 - error TS2304: Cannot find name 'removed'.
+
+390            DBG(`     → maker exhausted and removed`);
+                                               ~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:390:51 - error TS1443: Module declaration names may only use ' or " quoted strings.
+
+390            DBG(`     → maker exhausted and removed`);
+                                                      ~~~
+391              this.pushPlaced(match.socket_id);
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+...
+395         updateOrderLog(this.orderbookName, match.uuid, 'PT-FILLED');
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+396           DBG(`     → maker now ${match.props.amount} left`);
+    ~~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:396:21 - error TS1127: Invalid character.
+
+396           DBG(`     → maker now ${match.props.amount} left`);
+                        ~
+
+src/services/orderbook/orderbook.class.ts:396:21 - error TS1128: Declaration or statement expected.
+
+396           DBG(`     → maker now ${match.props.amount} left`);
+                        ~
+
+src/services/orderbook/orderbook.class.ts:396:23 - error TS1434: Unexpected keyword or identifier.
+
+396           DBG(`     → maker now ${match.props.amount} left`);
+                          ~~~~~
+
+src/services/orderbook/orderbook.class.ts:396:23 - error TS2304: Cannot find name 'maker'.
+
+396           DBG(`     → maker now ${match.props.amount} left`);
+                          ~~~~~
+
+src/services/orderbook/orderbook.class.ts:396:29 - error TS1434: Unexpected keyword or identifier.
+
+396           DBG(`     → maker now ${match.props.amount} left`);
+                                ~~~
+
+src/services/orderbook/orderbook.class.ts:396:29 - error TS2304: Cannot find name 'now'.
+
+396           DBG(`     → maker now ${match.props.amount} left`);
+                                ~~~
+
+src/services/orderbook/orderbook.class.ts:396:33 - error TS1434: Unexpected keyword or identifier.
+
+396           DBG(`     → maker now ${match.props.amount} left`);
+                                    ~
+
+src/services/orderbook/orderbook.class.ts:396:33 - error TS2592: Cannot find name '$'. Do you need to install type definitions for jQuery? Try `npm i --save-dev @types/jquery` and then add 'jquery' to the types field in your tsconfig.
+
+396           DBG(`     → maker now ${match.props.amount} left`);
+                                    ~
+
+src/services/orderbook/orderbook.class.ts:396:35 - error TS2304: Cannot find name 'match'.
+
+396           DBG(`     → maker now ${match.props.amount} left`);
+                                      ~~~~~
+
+src/services/orderbook/orderbook.class.ts:396:55 - error TS2304: Cannot find name 'left'.
+
+396           DBG(`     → maker now ${match.props.amount} left`);
+                                                          ~~~~
+
+src/services/orderbook/orderbook.class.ts:430:16 - error TS1005: ';' expected.
+
+430         DBG(`! buildTrade failed`, combRes.error);
+                   ~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:430:16 - error TS2448: Block-scoped variable 'buildTrade' used before its declaration.
+
+430         DBG(`! buildTrade failed`, combRes.error);
+                   ~~~~~~~~~~
+
+  src/services/orderbook/orderbook.class.ts:551:7
+    551 const buildTrade = (
+              ~~~~~~~~~~
+    'buildTrade' is declared here.
+
+src/services/orderbook/orderbook.class.ts:430:27 - error TS2304: Cannot find name 'failed'.
+
+430         DBG(`! buildTrade failed`, combRes.error);
+                              ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:430:33 - error TS1443: Module declaration names may only use ' or " quoted strings.
+
+430         DBG(`! buildTrade failed`, combRes.error);
+                                    ~~~~~~~~~~~~~~~~~~
+431         continue;}                      // (edge-case recovery)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+...
+437         aggTrades.push(combRes.data.tradeInfo);
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+438             DBG(`   ↳ opened channel VWAP ${vwap} for ${bucket.totalAmt}`);
+    ~~~~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:438:21 - error TS1127: Invalid character.
+
+438             DBG(`   ↳ opened channel VWAP ${vwap} for ${bucket.totalAmt}`);
+                        ~
+
+src/services/orderbook/orderbook.class.ts:438:21 - error TS1128: Declaration or statement expected.
+
+438             DBG(`   ↳ opened channel VWAP ${vwap} for ${bucket.totalAmt}`);
+                        ~
+
+src/services/orderbook/orderbook.class.ts:438:23 - error TS1434: Unexpected keyword or identifier.
+
+438             DBG(`   ↳ opened channel VWAP ${vwap} for ${bucket.totalAmt}`);
+                          ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:438:23 - error TS2304: Cannot find name 'opened'.
+
+438             DBG(`   ↳ opened channel VWAP ${vwap} for ${bucket.totalAmt}`);
+                          ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:438:30 - error TS1434: Unexpected keyword or identifier.
+
+438             DBG(`   ↳ opened channel VWAP ${vwap} for ${bucket.totalAmt}`);
+                                 ~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:438:38 - error TS1434: Unexpected keyword or identifier.
+
+438             DBG(`   ↳ opened channel VWAP ${vwap} for ${bucket.totalAmt}`);
+                                         ~~~~
+
+src/services/orderbook/orderbook.class.ts:438:38 - error TS2304: Cannot find name 'VWAP'.
+
+438             DBG(`   ↳ opened channel VWAP ${vwap} for ${bucket.totalAmt}`);
+                                         ~~~~
+
+src/services/orderbook/orderbook.class.ts:438:43 - error TS1434: Unexpected keyword or identifier.
+
+438             DBG(`   ↳ opened channel VWAP ${vwap} for ${bucket.totalAmt}`);
+                                              ~
+
+src/services/orderbook/orderbook.class.ts:438:43 - error TS2592: Cannot find name '$'. Do you need to install type definitions for jQuery? Try `npm i --save-dev @types/jquery` and then add 'jquery' to the types field in your tsconfig.
+
+438             DBG(`   ↳ opened channel VWAP ${vwap} for ${bucket.totalAmt}`);
+                                              ~
+
+src/services/orderbook/orderbook.class.ts:438:45 - error TS2304: Cannot find name 'vwap'.
+
+438             DBG(`   ↳ opened channel VWAP ${vwap} for ${bucket.totalAmt}`);
+                                                ~~~~
+
+src/services/orderbook/orderbook.class.ts:438:55 - error TS1005: '(' expected.
+
+438             DBG(`   ↳ opened channel VWAP ${vwap} for ${bucket.totalAmt}`);
+                                                          ~
+
+src/services/orderbook/orderbook.class.ts:438:55 - error TS2592: Cannot find name '$'. Do you need to install type definitions for jQuery? Try `npm i --save-dev @types/jquery` and then add 'jquery' to the types field in your tsconfig.
+
+438             DBG(`   ↳ opened channel VWAP ${vwap} for ${bucket.totalAmt}`);
+                                                          ~
+
+src/services/orderbook/orderbook.class.ts:438:56 - error TS1005: ';' expected.
+
+438             DBG(`   ↳ opened channel VWAP ${vwap} for ${bucket.totalAmt}`);
+                                                           ~
+
+src/services/orderbook/orderbook.class.ts:438:56 - error TS2349: This expression is not callable.
+  Type '{ bucket: any; "": any; }' has no call signatures.
+
+438             DBG(`   ↳ opened channel VWAP ${vwap} for ${bucket.totalAmt}`);
+                                                           ~~~~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:438:57 - error TS18004: No value exists in scope for the shorthand property 'bucket'. Either declare one or provide an initializer.
+
+438             DBG(`   ↳ opened channel VWAP ${vwap} for ${bucket.totalAmt}`);
+                                                            ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:438:63 - error TS1005: ',' expected.
+
+438             DBG(`   ↳ opened channel VWAP ${vwap} for ${bucket.totalAmt}`);
+                                                                  ~
+
+src/services/orderbook/orderbook.class.ts:464:14 - error TS1005: ';' expected.
+
+464         DBG(`Residual taker ${remaining} added back to book`);
+                 ~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:464:14 - error TS2304: Cannot find name 'Residual'.
+
+464         DBG(`Residual taker ${remaining} added back to book`);
+                 ~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:464:23 - error TS1005: ')' expected.
+
+464         DBG(`Residual taker ${remaining} added back to book`);
+                          ~~~~~
+
+src/services/orderbook/orderbook.class.ts:464:23 - error TS2304: Cannot find name 'taker'.
+
+464         DBG(`Residual taker ${remaining} added back to book`);
+                          ~~~~~
+
+src/services/orderbook/orderbook.class.ts:464:29 - error TS1434: Unexpected keyword or identifier.
+
+464         DBG(`Residual taker ${remaining} added back to book`);
+                                ~
+
+src/services/orderbook/orderbook.class.ts:464:29 - error TS2592: Cannot find name '$'. Do you need to install type definitions for jQuery? Try `npm i --save-dev @types/jquery` and then add 'jquery' to the types field in your tsconfig.
+
+464         DBG(`Residual taker ${remaining} added back to book`);
+                                ~
+
+src/services/orderbook/orderbook.class.ts:464:31 - error TS2304: Cannot find name 'remaining'.
+
+464         DBG(`Residual taker ${remaining} added back to book`);
+                                  ~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:464:42 - error TS1434: Unexpected keyword or identifier.
+
+464         DBG(`Residual taker ${remaining} added back to book`);
+                                             ~~~~~
+
+src/services/orderbook/orderbook.class.ts:464:42 - error TS2304: Cannot find name 'added'.
+
+464         DBG(`Residual taker ${remaining} added back to book`);
+                                             ~~~~~
+
+src/services/orderbook/orderbook.class.ts:464:48 - error TS1434: Unexpected keyword or identifier.
+
+464         DBG(`Residual taker ${remaining} added back to book`);
+                                                   ~~~~
+
+src/services/orderbook/orderbook.class.ts:464:48 - error TS2304: Cannot find name 'back'.
+
+464         DBG(`Residual taker ${remaining} added back to book`);
+                                                   ~~~~
+
+src/services/orderbook/orderbook.class.ts:464:53 - error TS1434: Unexpected keyword or identifier.
+
+464         DBG(`Residual taker ${remaining} added back to book`);
+                                                        ~~
+
+src/services/orderbook/orderbook.class.ts:464:53 - error TS2304: Cannot find name 'to'.
+
+464         DBG(`Residual taker ${remaining} added back to book`);
+                                                        ~~
+
+src/services/orderbook/orderbook.class.ts:464:56 - error TS2304: Cannot find name 'book'.
+
+464         DBG(`Residual taker ${remaining} added back to book`);
+                                                           ~~~~
+
+src/services/orderbook/orderbook.class.ts:464:60 - error TS1443: Module declaration names may only use ' or " quoted strings.
+
+464         DBG(`Residual taker ${remaining} added back to book`);
+                                                               ~~~
+465       }
+    ~~~~~~~
+...
+530             if (!orderForRemove) {
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+531                 throw new Error(`Order with uuid ${uuid} doesn't exist in current orderbook`);
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:531:34 - error TS1434: Unexpected keyword or identifier.
+
+531                 throw new Error(`Order with uuid ${uuid} doesn't exist in current orderbook`);
+                                     ~~~~~
+
+src/services/orderbook/orderbook.class.ts:531:34 - error TS2304: Cannot find name 'Order'.
+
+531                 throw new Error(`Order with uuid ${uuid} doesn't exist in current orderbook`);
+                                     ~~~~~
+
+src/services/orderbook/orderbook.class.ts:531:40 - error TS1101: 'with' statements are not allowed in strict mode.
+
+531                 throw new Error(`Order with uuid ${uuid} doesn't exist in current orderbook`);
+                                           ~~~~
+
+src/services/orderbook/orderbook.class.ts:531:45 - error TS1005: '(' expected.
+
+531                 throw new Error(`Order with uuid ${uuid} doesn't exist in current orderbook`);
+                                                ~~~~
+
+src/services/orderbook/orderbook.class.ts:531:45 - error TS2304: Cannot find name 'uuid'.
+
+531                 throw new Error(`Order with uuid ${uuid} doesn't exist in current orderbook`);
+                                                ~~~~
+
+src/services/orderbook/orderbook.class.ts:531:50 - error TS1005: ')' expected.
+
+531                 throw new Error(`Order with uuid ${uuid} doesn't exist in current orderbook`);
+                                                     ~
+
+src/services/orderbook/orderbook.class.ts:531:52 - error TS2304: Cannot find name 'uuid'.
+
+531                 throw new Error(`Order with uuid ${uuid} doesn't exist in current orderbook`);
+                                                       ~~~~
+
+src/services/orderbook/orderbook.class.ts:531:58 - error TS1434: Unexpected keyword or identifier.
+
+531                 throw new Error(`Order with uuid ${uuid} doesn't exist in current orderbook`);
+                                                             ~~~~~
+
+src/services/orderbook/orderbook.class.ts:531:58 - error TS2304: Cannot find name 'doesn'.
+
+531                 throw new Error(`Order with uuid ${uuid} doesn't exist in current orderbook`);
+                                                             ~~~~~
+
+src/services/orderbook/orderbook.class.ts:531:95 - error TS1002: Unterminated string literal.
+
+531                 throw new Error(`Order with uuid ${uuid} doesn't exist in current orderbook`);
+
+
+src/services/orderbook/orderbook.class.ts:532:13 - error TS1128: Declaration or statement expected.
+
+532             }
+                ~
+
+src/services/orderbook/orderbook.class.ts:535:17 - error TS2304: Cannot find name 'socket_id'.
+
+535             if (socket_id !== orderForRemove.socket_id) {
+                    ~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:535:31 - error TS2304: Cannot find name 'orderForRemove'.
+
+535             if (socket_id !== orderForRemove.socket_id) {
+                                  ~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:536:78 - error TS2304: Cannot find name 'uuid'.
+
+536                 throw new Error(`Not Authorized to remove order with uuid: ${uuid}`);
+                                                                                 ~~~~
+
+src/services/orderbook/orderbook.class.ts:540:13 - error TS2532: Object is possibly 'undefined'.
+
+540             this.orders = this.orders.filter(o => o !== orderForRemove);
+                ~~~~
+
+src/services/orderbook/orderbook.class.ts:540:27 - error TS2532: Object is possibly 'undefined'.
+
+540             this.orders = this.orders.filter(o => o !== orderForRemove);
+                              ~~~~
+
+src/services/orderbook/orderbook.class.ts:540:57 - error TS2304: Cannot find name 'orderForRemove'.
+
+540             this.orders = this.orders.filter(o => o !== orderForRemove);
+                                                            ~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:541:13 - error TS2532: Object is possibly 'undefined'.
+
+541             this.broadcastSnapshot();   // <- broadcast after removal
+                ~~~~
+
+src/services/orderbook/orderbook.class.ts:544:9 - error TS1128: Declaration or statement expected.
+
+544         } catch (error) {
+            ~
+
+src/services/orderbook/orderbook.class.ts:544:11 - error TS1005: 'try' expected.
+
+544         } catch (error) {
+              ~~~~~
+
+src/services/orderbook/orderbook.class.ts:547:5 - error TS1128: Declaration or statement expected.
+
+547     }
+        ~
+
+src/services/orderbook/orderbook.class.ts:548:1 - error TS1128: Declaration or statement expected.
+
+548 }
+    ~
+
+src/services/socket/manager.class.ts:27:27 - error TS2339: Property 'orders' does not exist on type 'Orderbook'.
+
+27             .map(ob => ob.orders)
+                             ~~~~~~
+
+src/services/socket/manager.class.ts:48:12 - error TS2393: Duplicate function implementation.
+
+48     public broadcastToMarket(marketKey: string, msg: object) {
+              ~~~~~~~~~~~~~~~~~
+
+src/services/socket/manager.class.ts:60:13 - error TS2393: Duplicate function implementation.
+
+60     private subscribeMarket(socketId: string, marketKey: string) {
+               ~~~~~~~~~~~~~~~
+
+src/services/socket/manager.class.ts:67:13 - error TS2393: Duplicate function implementation.
+
+67     private unsubscribeMarket(socketId: string, marketKey: string) {
+               ~~~~~~~~~~~~~~~~~
+
+src/services/socket/manager.class.ts:74:12 - error TS2393: Duplicate function implementation.
+
+74     public broadcastToMarket(marketKey: string, msg: object) {
+              ~~~~~~~~~~~~~~~~~
+
+src/services/socket/manager.class.ts:86:13 - error TS2393: Duplicate function implementation.
+
+86     private subscribeMarket(socketId: string, marketKey: string) {
+               ~~~~~~~~~~~~~~~
+
+src/services/socket/manager.class.ts:93:14 - error TS2393: Duplicate function implementation.
+
+93      private unsubscribeMarket(socketId: string, marketKey: string) {
+                ~~~~~~~~~~~~~~~~~
+
+src/services/socket/manager.class.ts:191:54 - error TS2339: Property 'findByFilter' does not exist on type 'Orderbook'.
+
+191   const ob = orderbookManager.orderbooks.find(o => o.findByFilter(filter));
+                                                         ~~~~~~~~~~~~
+
+src/services/socket/manager.class.ts:196:22 - error TS2339: Property 'orders' does not exist on type 'Orderbook'.
+
+196           orders: ob.orders.filter(o => !o.lock),
+                         ~~~~~~
+
+src/services/socket/manager.class.ts:197:23 - error TS2339: Property 'historyTrades' does not exist on type 'Orderbook'.
+
+197           history: ob.historyTrades,
+                          ~~~~~~~~~~~~~
+
+
+Found 407 errors in 3 files.
+
+Errors  Files
+    10  src/services/orderbook/manager.class.ts:16
+   387  src/services/orderbook/orderbook.class.ts:44
+    10  src/services/socket/manager.class.ts:27
+PS C:\Users\patri\tl-orderbook-server> npm run build
+
+> tl-orderbook-server@1.0.0 build
+> tsc
+
+src/services/orderbook/manager.class.ts:23:23 - error TS2339: Property 'updatePlacedOrdersForSocketId' does not exist on type 'Orderbook'.
+
+23             orderbook.updatePlacedOrdersForSocketId(firstOrder.socket_id);
+                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+src/services/orderbook/manager.class.ts:24:47 - error TS2339: Property 'orders' does not exist on type 'Orderbook'.
+
+24             return { data: { order: orderbook.orders[0] } };
+                                                 ~~~~~~
+
+src/services/orderbook/manager.class.ts:33:71 - error TS2339: Property 'checkCompatible' does not exist on type 'Orderbook'.
+
+33                 const existingOrderbook = this.orderbooks.find(b => b.checkCompatible(order));
+                                                                         ~~~~~~~~~~~~~~~
+
+src/services/orderbook/manager.class.ts:35:47 - error TS2339: Property 'addOrder' does not exist on type 'Orderbook'.
+
+35                     ? await existingOrderbook.addOrder(order, noTrades)
+                                                 ~~~~~~~~
+
+src/services/orderbook/manager.class.ts:45:59 - error TS2339: Property 'orders' does not exist on type 'Orderbook'.
+
+45             const orderbook = this.orderbooks.find(b => b.orders.find(o => o.uuid === uuid));
+                                                             ~~~~~~
+
+src/services/orderbook/manager.class.ts:49:37 - error TS2339: Property 'orders' does not exist on type 'Orderbook'.
+
+49             const order = orderbook.orders.find(q => q.uuid === uuid);
+                                       ~~~~~~
+
+src/services/orderbook/manager.class.ts:53:35 - error TS2339: Property 'removeOrder' does not exist on type 'Orderbook'.
+
+53             const res = orderbook.removeOrder(uuid, socket_id);
+                                     ~~~~~~~~~~~
+
+src/services/orderbook/manager.class.ts:64:16 - error TS2339: Property 'orders' does not exist on type 'Orderbook'.
+
+64             ob.orders.forEach(o => {
+                  ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:44:10 - error TS2339: Property 'addProps' does not exist on type 'Orderbook'.
+
+44     this.addProps(firstOrder);
+            ~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:45:10 - error TS2339: Property 'addOrder' does not exist on type 'Orderbook'.
+
+45     this.addOrder(firstOrder);
+            ~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:46:10 - error TS2339: Property 'addExistingTradesHistory' does not exist on type 'Orderbook'.
+
+46     this.addExistingTradesHistory();
+            ~~~~~~~~~~~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:101:13 - error TS1003: Identifier expected.
+
+101         if (!marketKey) return;
+                ~
+
+src/services/orderbook/orderbook.class.ts:101:25 - error TS1144: '{' or ';' expected.
+
+101         if (!marketKey) return;
+                            ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:103:9 - error TS1434: Unexpected keyword or identifier.
+
+103         socketManager.broadcastToMarket(marketKey, {
+            ~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:103:22 - error TS1068: Unexpected token. A constructor, method, accessor, or property was expected.
+
+103         socketManager.broadcastToMarket(marketKey, {
+                         ~
+
+src/services/orderbook/orderbook.class.ts:103:41 - error TS2300: Duplicate identifier 'marketKey'.
+
+103         socketManager.broadcastToMarket(marketKey, {
+                                            ~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:104:30 - error TS1005: ',' expected.
+
+104             event: EmitEvents.ORDERBOOK_DATA,
+                                 ~
+
+src/services/orderbook/orderbook.class.ts:105:13 - error TS2300: Duplicate identifier 'marketKey'.
+
+105             marketKey,
+                ~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:106:20 - error TS2300: Duplicate identifier '(Missing)'.
+
+106             orders: this._orders.filter(o => !o.lock),
+
+
+src/services/orderbook/orderbook.class.ts:106:21 - error TS1359: Identifier expected. 'this' is a reserved word that cannot be used here.
+
+106             orders: this._orders.filter(o => !o.lock),
+                        ~~~~
+
+src/services/orderbook/orderbook.class.ts:106:25 - error TS2300: Duplicate identifier '(Missing)'.
+
+106             orders: this._orders.filter(o => !o.lock),
+
+
+src/services/orderbook/orderbook.class.ts:106:25 - error TS1005: ':' expected.
+
+106             orders: this._orders.filter(o => !o.lock),
+                            ~
+
+src/services/orderbook/orderbook.class.ts:106:33 - error TS1005: ',' expected.
+
+106             orders: this._orders.filter(o => !o.lock),
+                                    ~
+
+src/services/orderbook/orderbook.class.ts:106:40 - error TS1005: ',' expected.
+
+106             orders: this._orders.filter(o => !o.lock),
+                                           ~
+
+src/services/orderbook/orderbook.class.ts:106:40 - error TS2695: Left side of comma operator is unused and has no side effects.
+
+106             orders: this._orders.filter(o => !o.lock),
+                                           ~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:107:20 - error TS1005: ';' expected.
+
+107             history: this._historyTrades,
+                       ~
+
+src/services/orderbook/orderbook.class.ts:107:22 - error TS2532: Object is possibly 'undefined'.
+
+107             history: this._historyTrades,
+                         ~~~~
+
+src/services/orderbook/orderbook.class.ts:108:9 - error TS1109: Expression expected.
+
+108         });
+            ~
+
+src/services/orderbook/orderbook.class.ts:108:10 - error TS1128: Declaration or statement expected.
+
+108         });
+             ~
+
+src/services/orderbook/orderbook.class.ts:115:21 - error TS2532: Object is possibly 'undefined'.
+
+115             orders: this._orders.filter(o => !o.lock),
+                        ~~~~
+
+src/services/orderbook/orderbook.class.ts:116:22 - error TS2532: Object is possibly 'undefined'.
+
+116             history: this._historyTrades,
+                         ~~~~
+
+src/services/orderbook/orderbook.class.ts:118:5 - error TS1128: Declaration or statement expected.
+
+118     }
+        ~
+
+src/services/orderbook/orderbook.class.ts:121:9 - error TS1128: Declaration or statement expected.
+
+121         private pushPlaced = (...socketIds: string[]) => {
+            ~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:121:17 - error TS2304: Cannot find name 'pushPlaced'.
+
+121         private pushPlaced = (...socketIds: string[]) => {
+                    ~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:122:38 - error TS2532: Object is possibly 'undefined'.
+
+122             socketIds.forEach(sid => this.updatePlacedOrdersForSocketId(sid));
+                                         ~~~~
+
+src/services/orderbook/orderbook.class.ts:126:5 - error TS1434: Unexpected keyword or identifier.
+
+126     set orders(value: TOrder[]) {
+        ~~~
+
+src/services/orderbook/orderbook.class.ts:126:5 - error TS2552: Cannot find name 'set'. Did you mean 'Set'?
+
+126     set orders(value: TOrder[]) {
+        ~~~
+
+  node_modules/typescript/lib/lib.es2015.collection.d.ts:71:13
+    71 declare var Set: SetConstructor;
+                   ~~~
+    'Set' is declared here.
+
+src/services/orderbook/orderbook.class.ts:126:9 - error TS2304: Cannot find name 'orders'.
+
+126     set orders(value: TOrder[]) {
+            ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:126:16 - error TS2304: Cannot find name 'value'.
+
+126     set orders(value: TOrder[]) {
+                   ~~~~~
+
+src/services/orderbook/orderbook.class.ts:126:21 - error TS1005: ',' expected.
+
+126     set orders(value: TOrder[]) {
+                        ~
+
+src/services/orderbook/orderbook.class.ts:126:23 - error TS2693: 'TOrder' only refers to a type, but is being used as a value here.
+
+126     set orders(value: TOrder[]) {
+                          ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:126:30 - error TS1011: An element access expression should take an argument.
+
+126     set orders(value: TOrder[]) {
+
+
+src/services/orderbook/orderbook.class.ts:126:33 - error TS1005: ';' expected.
+
+126     set orders(value: TOrder[]) {
+                                    ~
+
+src/services/orderbook/orderbook.class.ts:127:9 - error TS2532: Object is possibly 'undefined'.
+
+127         this._orders = value;
+            ~~~~
+
+src/services/orderbook/orderbook.class.ts:127:24 - error TS2304: Cannot find name 'value'.
+
+127         this._orders = value;
+                           ~~~~~
+
+src/services/orderbook/orderbook.class.ts:129:9 - error TS2532: Object is possibly 'undefined'.
+
+129         this.broadcastSnapshot();
+            ~~~~
+
+src/services/orderbook/orderbook.class.ts:132:5 - error TS1434: Unexpected keyword or identifier.
+
+132     get orders(): TOrder[] {
+        ~~~
+
+src/services/orderbook/orderbook.class.ts:132:5 - error TS2304: Cannot find name 'get'.
+
+132     get orders(): TOrder[] {
+        ~~~
+
+src/services/orderbook/orderbook.class.ts:132:9 - error TS2304: Cannot find name 'orders'.
+
+132     get orders(): TOrder[] {
+            ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:132:17 - error TS1005: ';' expected.
+
+132     get orders(): TOrder[] {
+                    ~
+
+src/services/orderbook/orderbook.class.ts:132:19 - error TS2693: 'TOrder' only refers to a type, but is being used as a value here.
+
+132     get orders(): TOrder[] {
+                      ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:132:26 - error TS1011: An element access expression should take an argument.
+
+132     get orders(): TOrder[] {
+
+
+src/services/orderbook/orderbook.class.ts:132:28 - error TS1005: ';' expected.
+
+132     get orders(): TOrder[] {
+                               ~
+
+src/services/orderbook/orderbook.class.ts:136:5 - error TS1434: Unexpected keyword or identifier.
+
+136     get historyTrades() {
+        ~~~
+
+src/services/orderbook/orderbook.class.ts:136:5 - error TS2304: Cannot find name 'get'.
+
+136     get historyTrades() {
+        ~~~
+
+src/services/orderbook/orderbook.class.ts:136:9 - error TS2552: Cannot find name 'historyTrades'. Did you mean 'historyTrade'?
+
+136     get historyTrades() {
+            ~~~~~~~~~~~~~
+
+  src/services/orderbook/orderbook.class.ts:237:19
+    237             const historyTrade: IHistoryTrade = {
+                          ~~~~~~~~~~~~
+    'historyTrade' is declared here.
+
+src/services/orderbook/orderbook.class.ts:136:25 - error TS1005: ';' expected.
+
+136     get historyTrades() {
+                            ~
+
+src/services/orderbook/orderbook.class.ts:140:5 - error TS1128: Declaration or statement expected.
+
+140     private addExistingTradesHistory() {
+        ~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:140:13 - error TS2304: Cannot find name 'addExistingTradesHistory'.
+
+140     private addExistingTradesHistory() {
+                ~~~~~~~~~~~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:140:40 - error TS1005: ';' expected.
+
+140     private addExistingTradesHistory() {
+                                           ~
+
+src/services/orderbook/orderbook.class.ts:146:17 - error TS2532: Object is possibly 'undefined'.
+
+146             if (this.type === EOrderType.SPOT && 'id_desired' in this.props && 'id_for_sale' in this.props) {
+                    ~~~~
+
+src/services/orderbook/orderbook.class.ts:146:66 - error TS2532: Object is possibly 'undefined'.
+
+146             if (this.type === EOrderType.SPOT && 'id_desired' in this.props && 'id_for_sale' in this.props) {
+                                                                     ~~~~
+
+src/services/orderbook/orderbook.class.ts:146:97 - error TS2532: Object is possibly 'undefined'.
+
+146             if (this.type === EOrderType.SPOT && 'id_desired' in this.props && 'id_for_sale' in this.props) {
+                                                                                                    ~~~~
+
+src/services/orderbook/orderbook.class.ts:147:35 - error TS2532: Object is possibly 'undefined'.
+
+147                 const spotProps = this.props as ISpotOrderProps;
+                                      ~~~~
+
+src/services/orderbook/orderbook.class.ts:152:24 - error TS2532: Object is possibly 'undefined'.
+
+152             } else if (this.type === EOrderType.FUTURES && 'contract_id' in this.props) {
+                           ~~~~
+
+src/services/orderbook/orderbook.class.ts:152:77 - error TS2532: Object is possibly 'undefined'.
+
+152             } else if (this.type === EOrderType.FUTURES && 'contract_id' in this.props) {
+                                                                                ~~~~
+
+src/services/orderbook/orderbook.class.ts:153:38 - error TS2532: Object is possibly 'undefined'.
+
+153                 const futuresProps = this.props as IFuturesOrderProps;
+                                         ~~~~
+
+src/services/orderbook/orderbook.class.ts:171:13 - error TS2532: Object is possibly 'undefined'.
+
+171             this._historyTrades = data.slice(0, 2000);
+                ~~~~
+
+src/services/orderbook/orderbook.class.ts:173:13 - error TS2532: Object is possibly 'undefined'.
+
+173             this.broadcastSnapshot();
+                ~~~~
+
+src/services/orderbook/orderbook.class.ts:182:1 - error TS1128: Declaration or statement expected.
+
+182 private sameMarket(a: TOrder, b: TOrder): boolean {
+    ~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:182:9 - error TS2304: Cannot find name 'sameMarket'.
+
+182 private sameMarket(a: TOrder, b: TOrder): boolean {
+            ~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:182:20 - error TS2304: Cannot find name 'a'.
+
+182 private sameMarket(a: TOrder, b: TOrder): boolean {
+                       ~
+
+src/services/orderbook/orderbook.class.ts:182:21 - error TS1005: ',' expected.
+
+182 private sameMarket(a: TOrder, b: TOrder): boolean {
+                        ~
+
+src/services/orderbook/orderbook.class.ts:182:23 - error TS2693: 'TOrder' only refers to a type, but is being used as a value here.
+
+182 private sameMarket(a: TOrder, b: TOrder): boolean {
+                          ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:182:31 - error TS2304: Cannot find name 'b'.
+
+182 private sameMarket(a: TOrder, b: TOrder): boolean {
+                                  ~
+
+src/services/orderbook/orderbook.class.ts:182:32 - error TS1005: ',' expected.
+
+182 private sameMarket(a: TOrder, b: TOrder): boolean {
+                                   ~
+
+src/services/orderbook/orderbook.class.ts:182:34 - error TS2693: 'TOrder' only refers to a type, but is being used as a value here.
+
+182 private sameMarket(a: TOrder, b: TOrder): boolean {
+                                     ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:182:41 - error TS1005: ';' expected.
+
+182 private sameMarket(a: TOrder, b: TOrder): boolean {
+                                            ~
+
+src/services/orderbook/orderbook.class.ts:182:43 - error TS1434: Unexpected keyword or identifier.
+
+182 private sameMarket(a: TOrder, b: TOrder): boolean {
+                                              ~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:182:43 - error TS2693: 'boolean' only refers to a type, but is being used as a value here.
+
+182 private sameMarket(a: TOrder, b: TOrder): boolean {
+                                              ~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:183:7 - error TS2304: Cannot find name 'a'.
+
+183   if (a.type !== b.type) return false;
+          ~
+
+src/services/orderbook/orderbook.class.ts:183:18 - error TS2304: Cannot find name 'b'.
+
+183   if (a.type !== b.type) return false;
+                     ~
+
+src/services/orderbook/orderbook.class.ts:185:7 - error TS2304: Cannot find name 'a'.
+
+185   if (a.type === EOrderType.FUTURES) {
+          ~
+
+src/services/orderbook/orderbook.class.ts:186:17 - error TS2304: Cannot find name 'a'.
+
+186     const ca = (a.props as IFuturesOrderProps).contract_id;
+                    ~
+
+src/services/orderbook/orderbook.class.ts:187:17 - error TS2304: Cannot find name 'b'.
+
+187     const cb = (b.props as IFuturesOrderProps).contract_id;
+                    ~
+
+src/services/orderbook/orderbook.class.ts:192:14 - error TS2304: Cannot find name 'a'.
+
+192   const pa = a.props as ISpotOrderProps;
+                 ~
+
+src/services/orderbook/orderbook.class.ts:193:14 - error TS2304: Cannot find name 'b'.
+
+193   const pb = b.props as ISpotOrderProps;
+                 ~
+
+src/services/orderbook/orderbook.class.ts:199:5 - error TS1128: Declaration or statement expected.
+
+199     private addProps(order: TOrder): IResult {
+        ~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:199:13 - error TS2304: Cannot find name 'addProps'.
+
+199     private addProps(order: TOrder): IResult {
+                ~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:199:22 - error TS2304: Cannot find name 'order'.
+
+199     private addProps(order: TOrder): IResult {
+                         ~~~~~
+
+src/services/orderbook/orderbook.class.ts:199:27 - error TS1005: ',' expected.
+
+199     private addProps(order: TOrder): IResult {
+                              ~
+
+src/services/orderbook/orderbook.class.ts:199:29 - error TS2693: 'TOrder' only refers to a type, but is being used as a value here.
+
+199     private addProps(order: TOrder): IResult {
+                                ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:199:36 - error TS1005: ';' expected.
+
+199     private addProps(order: TOrder): IResult {
+                                       ~
+
+src/services/orderbook/orderbook.class.ts:199:38 - error TS1434: Unexpected keyword or identifier.
+
+199     private addProps(order: TOrder): IResult {
+                                         ~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:199:38 - error TS2693: 'IResult' only refers to a type, but is being used as a value here.
+
+199     private addProps(order: TOrder): IResult {
+                                         ~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:201:17 - error TS2532: Object is possibly 'undefined'.
+
+201             if (this.props) {
+                    ~~~~
+
+src/services/orderbook/orderbook.class.ts:205:30 - error TS2304: Cannot find name 'order'.
+
+205             const { type } = order;
+                                 ~~~~~
+
+src/services/orderbook/orderbook.class.ts:207:53 - error TS2304: Cannot find name 'order'.
+
+207                 const { id_desired, id_for_sale } = order.props as ISpotOrderProps;
+                                                        ~~~~~
+
+src/services/orderbook/orderbook.class.ts:208:17 - error TS2532: Object is possibly 'undefined'.
+
+208                 this.props = { id_desired, id_for_sale } as ISpotOrderProps;
+                    ~~~~
+
+src/services/orderbook/orderbook.class.ts:212:41 - error TS2304: Cannot find name 'order'.
+
+212                 const { contract_id } = order.props as IFuturesOrderProps;
+                                            ~~~~~
+
+src/services/orderbook/orderbook.class.ts:213:17 - error TS2532: Object is possibly 'undefined'.
+
+213                 this.props = { contract_id } as IFuturesOrderProps;
+                    ~~~~
+
+src/services/orderbook/orderbook.class.ts:222:5 - error TS1128: Declaration or statement expected.
+
+222     private async newChannel(tradeInfo: ITradeInfo, unfilled: TOrder): Promise<IResultChannelSwap> {
+        ~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:222:13 - error TS1434: Unexpected keyword or identifier.
+
+222     private async newChannel(tradeInfo: ITradeInfo, unfilled: TOrder): Promise<IResultChannelSwap> {
+                ~~~~~
+
+src/services/orderbook/orderbook.class.ts:222:13 - error TS2304: Cannot find name 'async'.
+
+222     private async newChannel(tradeInfo: ITradeInfo, unfilled: TOrder): Promise<IResultChannelSwap> {
+                ~~~~~
+
+src/services/orderbook/orderbook.class.ts:222:19 - error TS2304: Cannot find name 'newChannel'.
+
+222     private async newChannel(tradeInfo: ITradeInfo, unfilled: TOrder): Promise<IResultChannelSwap> {
+                      ~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:222:30 - error TS2304: Cannot find name 'tradeInfo'.
+
+222     private async newChannel(tradeInfo: ITradeInfo, unfilled: TOrder): Promise<IResultChannelSwap> {
+                                 ~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:222:39 - error TS1005: ',' expected.
+
+222     private async newChannel(tradeInfo: ITradeInfo, unfilled: TOrder): Promise<IResultChannelSwap> {
+                                          ~
+
+src/services/orderbook/orderbook.class.ts:222:41 - error TS2693: 'ITradeInfo' only refers to a type, but is being used as a value here.
+
+222     private async newChannel(tradeInfo: ITradeInfo, unfilled: TOrder): Promise<IResultChannelSwap> {
+                                            ~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:222:53 - error TS2304: Cannot find name 'unfilled'.
+
+222     private async newChannel(tradeInfo: ITradeInfo, unfilled: TOrder): Promise<IResultChannelSwap> {
+                                                        ~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:222:61 - error TS1005: ',' expected.
+
+222     private async newChannel(tradeInfo: ITradeInfo, unfilled: TOrder): Promise<IResultChannelSwap> {
+                                                                ~
+
+src/services/orderbook/orderbook.class.ts:222:63 - error TS2693: 'TOrder' only refers to a type, but is being used as a value here.
+
+222     private async newChannel(tradeInfo: ITradeInfo, unfilled: TOrder): Promise<IResultChannelSwap> {
+                                                                  ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:222:70 - error TS1005: ';' expected.
+
+222     private async newChannel(tradeInfo: ITradeInfo, unfilled: TOrder): Promise<IResultChannelSwap> {
+                                                                         ~
+
+src/services/orderbook/orderbook.class.ts:222:72 - error TS2365: Operator '>' cannot be applied to types 'boolean' and '{ try: boolean | { const: Websocket<unknown>; if(: any, buyerSocket: any): any; }; }'.
+
+222     private async newChannel(tradeInfo: ITradeInfo, unfilled: TOrder): Promise<IResultChannelSwap> {
+                                                                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+223         try {
+    ~~~~~~~~~~~~~
+...
+228
+
+229             if (!buyerSocket || !sellerSocket) {
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:222:80 - error TS2693: 'IResultChannelSwap' only refers to a type, but is being used as a value here.
+
+222     private async newChannel(tradeInfo: ITradeInfo, unfilled: TOrder): Promise<IResultChannelSwap> {
+                                                                                   ~~~~~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:223:13 - error TS1005: ':' expected.
+
+223         try {
+                ~
+
+src/services/orderbook/orderbook.class.ts:224:19 - error TS1005: ':' expected.
+
+224             const buyerSocketId = tradeInfo.buyer.socketId;
+                      ~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:224:19 - error TS2304: Cannot find name 'buyerSocketId'.
+
+224             const buyerSocketId = tradeInfo.buyer.socketId;
+                      ~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:224:35 - error TS2304: Cannot find name 'tradeInfo'.
+
+224             const buyerSocketId = tradeInfo.buyer.socketId;
+                                      ~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:224:59 - error TS1005: ',' expected.
+
+224             const buyerSocketId = tradeInfo.buyer.socketId;
+                                                              ~
+
+src/services/orderbook/orderbook.class.ts:225:19 - error TS1005: ':' expected.
+
+225             const sellerSocketId = tradeInfo.seller.socketId;
+                      ~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:225:19 - error TS2304: Cannot find name 'sellerSocketId'.
+
+225             const sellerSocketId = tradeInfo.seller.socketId;
+                      ~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:225:36 - error TS2304: Cannot find name 'tradeInfo'.
+
+225             const sellerSocketId = tradeInfo.seller.socketId;
+                                       ~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:225:61 - error TS1005: ',' expected.
+
+225             const sellerSocketId = tradeInfo.seller.socketId;
+                                                                ~
+
+src/services/orderbook/orderbook.class.ts:226:19 - error TS1005: ':' expected.
+
+226             const buyerSocket = socketManager.getSocketById(buyerSocketId) as Websocket;
+                      ~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:226:19 - error TS2304: Cannot find name 'buyerSocket'.
+
+226             const buyerSocket = socketManager.getSocketById(buyerSocketId) as Websocket;
+                      ~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:226:61 - error TS2304: Cannot find name 'buyerSocketId'.
+
+226             const buyerSocket = socketManager.getSocketById(buyerSocketId) as Websocket;
+                                                                ~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:226:88 - error TS1005: ',' expected.
+
+226             const buyerSocket = socketManager.getSocketById(buyerSocketId) as Websocket;
+                                                                                           ~
+
+src/services/orderbook/orderbook.class.ts:227:19 - error TS1005: ':' expected.
+
+227             const sellerSocket = socketManager.getSocketById(sellerSocketId) as Websocket;
+                      ~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:227:19 - error TS2304: Cannot find name 'sellerSocket'.
+
+227             const sellerSocket = socketManager.getSocketById(sellerSocketId) as Websocket;
+                      ~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:227:62 - error TS2304: Cannot find name 'sellerSocketId'.
+
+227             const sellerSocket = socketManager.getSocketById(sellerSocketId) as Websocket;
+                                                                 ~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:227:90 - error TS1005: ',' expected.
+
+227             const sellerSocket = socketManager.getSocketById(sellerSocketId) as Websocket;
+                                                                                             ~
+
+src/services/orderbook/orderbook.class.ts:229:17 - error TS1003: Identifier expected.
+
+229             if (!buyerSocket || !sellerSocket) {
+                    ~
+
+src/services/orderbook/orderbook.class.ts:229:30 - error TS1005: ',' expected.
+
+229             if (!buyerSocket || !sellerSocket) {
+                                 ~~
+
+  src/services/orderbook/orderbook.class.ts:223:13
+    223         try {
+                    ~
+    The parser expected to find a '}' to match the '{' token here.
+
+src/services/orderbook/orderbook.class.ts:229:34 - error TS2304: Cannot find name 'sellerSocket'.
+
+229             if (!buyerSocket || !sellerSocket) {
+                                     ~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:229:46 - error TS1005: ',' expected.
+
+229             if (!buyerSocket || !sellerSocket) {
+                                                 ~
+
+src/services/orderbook/orderbook.class.ts:229:48 - error TS1136: Property assignment expected.
+
+229             if (!buyerSocket || !sellerSocket) {
+                                                   ~
+
+src/services/orderbook/orderbook.class.ts:233:45 - error TS2304: Cannot find name 'buyerSocket'.
+
+233             const channel = new ChannelSwap(buyerSocket, sellerSocket, tradeInfo, unfilled);
+                                                ~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:233:58 - error TS2304: Cannot find name 'sellerSocket'.
+
+233             const channel = new ChannelSwap(buyerSocket, sellerSocket, tradeInfo, unfilled);
+                                                             ~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:233:72 - error TS2304: Cannot find name 'tradeInfo'.
+
+233             const channel = new ChannelSwap(buyerSocket, sellerSocket, tradeInfo, unfilled);
+                                                                           ~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:233:83 - error TS2304: Cannot find name 'unfilled'.
+
+233             const channel = new ChannelSwap(buyerSocket, sellerSocket, tradeInfo, unfilled);
+                                                                                      ~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:240:20 - error TS2304: Cannot find name 'tradeInfo'.
+
+240                 ...tradeInfo,
+                       ~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:242:13 - error TS2532: Object is possibly 'undefined'.
+
+242             this.saveToHistory(historyTrade);
+                ~~~~
+
+src/services/orderbook/orderbook.class.ts:244:9 - error TS1128: Declaration or statement expected.
+
+244         } catch (error) {
+            ~
+
+src/services/orderbook/orderbook.class.ts:244:11 - error TS1005: 'try' expected.
+
+244         } catch (error) {
+              ~~~~~
+
+src/services/orderbook/orderbook.class.ts:247:5 - error TS1128: Declaration or statement expected.
+
+247     }
+        ~
+
+src/services/orderbook/orderbook.class.ts:250:5 - error TS1128: Declaration or statement expected.
+
+250     private lockOrder(order: TOrder, lock: boolean = true) {
+        ~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:250:13 - error TS2304: Cannot find name 'lockOrder'.
+
+250     private lockOrder(order: TOrder, lock: boolean = true) {
+                ~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:250:23 - error TS2304: Cannot find name 'order'.
+
+250     private lockOrder(order: TOrder, lock: boolean = true) {
+                          ~~~~~
+
+src/services/orderbook/orderbook.class.ts:250:28 - error TS1005: ',' expected.
+
+250     private lockOrder(order: TOrder, lock: boolean = true) {
+                               ~
+
+src/services/orderbook/orderbook.class.ts:250:30 - error TS2693: 'TOrder' only refers to a type, but is being used as a value here.
+
+250     private lockOrder(order: TOrder, lock: boolean = true) {
+                                 ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:250:38 - error TS2304: Cannot find name 'lock'.
+
+250     private lockOrder(order: TOrder, lock: boolean = true) {
+                                         ~~~~
+
+src/services/orderbook/orderbook.class.ts:250:42 - error TS1005: ',' expected.
+
+250     private lockOrder(order: TOrder, lock: boolean = true) {
+                                             ~
+
+src/services/orderbook/orderbook.class.ts:250:44 - error TS2693: 'boolean' only refers to a type, but is being used as a value here.
+
+250     private lockOrder(order: TOrder, lock: boolean = true) {
+                                               ~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:250:60 - error TS1005: ';' expected.
+
+250     private lockOrder(order: TOrder, lock: boolean = true) {
+                                                               ~
+
+src/services/orderbook/orderbook.class.ts:251:9 - error TS2304: Cannot find name 'order'.
+
+251         order.lock = lock;
+            ~~~~~
+
+src/services/orderbook/orderbook.class.ts:251:22 - error TS2304: Cannot find name 'lock'.
+
+251         order.lock = lock;
+                         ~~~~
+
+src/services/orderbook/orderbook.class.ts:252:9 - error TS2532: Object is possibly 'undefined'.
+
+252         this.broadcastSnapshot();
+            ~~~~
+
+src/services/orderbook/orderbook.class.ts:255:5 - error TS1128: Declaration or statement expected.
+
+255     private saveToHistory(historyTrade: IHistoryTrade) {
+        ~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:255:13 - error TS2304: Cannot find name 'saveToHistory'.
+
+255     private saveToHistory(historyTrade: IHistoryTrade) {
+                ~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:255:39 - error TS1005: ',' expected.
+
+255     private saveToHistory(historyTrade: IHistoryTrade) {
+                                          ~
+
+src/services/orderbook/orderbook.class.ts:255:41 - error TS2693: 'IHistoryTrade' only refers to a type, but is being used as a value here.
+
+255     private saveToHistory(historyTrade: IHistoryTrade) {
+                                            ~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:255:56 - error TS1005: ';' expected.
+
+255     private saveToHistory(historyTrade: IHistoryTrade) {
+                                                           ~
+
+src/services/orderbook/orderbook.class.ts:256:9 - error TS2532: Object is possibly 'undefined'.
+
+256         this._historyTrades = [historyTrade, ...this.historyTrades.slice(0, 1999)];
+            ~~~~
+
+src/services/orderbook/orderbook.class.ts:256:49 - error TS2532: Object is possibly 'undefined'.
+
+256         this._historyTrades = [historyTrade, ...this.historyTrades.slice(0, 1999)];
+                                                    ~~~~
+
+src/services/orderbook/orderbook.class.ts:257:17 - error TS2532: Object is possibly 'undefined'.
+
+257         saveLog(this.orderbookName, "TRADE", historyTrade);
+                    ~~~~
+
+src/services/orderbook/orderbook.class.ts:258:9 - error TS2532: Object is possibly 'undefined'.
+
+258         this.broadcastSnapshot();
+            ~~~~
+
+src/services/orderbook/orderbook.class.ts:261:5 - error TS2304: Cannot find name 'updatePlacedOrdersForSocketId'.
+
+261     updatePlacedOrdersForSocketId(socketid: string) {
+        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:261:35 - error TS2304: Cannot find name 'socketid'.
+
+261     updatePlacedOrdersForSocketId(socketid: string) {
+                                      ~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:261:43 - error TS1005: ',' expected.
+
+261     updatePlacedOrdersForSocketId(socketid: string) {
+                                              ~
+
+src/services/orderbook/orderbook.class.ts:261:45 - error TS2693: 'string' only refers to a type, but is being used as a value here.
+
+261     updatePlacedOrdersForSocketId(socketid: string) {
+                                                ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:261:53 - error TS1005: ';' expected.
+
+261     updatePlacedOrdersForSocketId(socketid: string) {
+                                                        ~
+
+src/services/orderbook/orderbook.class.ts:262:67 - error TS2304: Cannot find name 'socketid'.
+
+262         const openedOrders = orderbookManager.getOrdersBySocketId(socketid);
+                                                                      ~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:264:55 - error TS2304: Cannot find name 'socketid'.
+
+264         const socketObj = socketManager.getSocketById(socketid) as Websocket;
+                                                          ~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:270:5 - error TS1128: Declaration or statement expected.
+
+270     private checkMatch(order: TOrder): IResult<{ match: TOrder | null }> {
+        ~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:270:13 - error TS2304: Cannot find name 'checkMatch'.
+
+270     private checkMatch(order: TOrder): IResult<{ match: TOrder | null }> {
+                ~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:270:24 - error TS2304: Cannot find name 'order'.
+
+270     private checkMatch(order: TOrder): IResult<{ match: TOrder | null }> {
+                           ~~~~~
+
+src/services/orderbook/orderbook.class.ts:270:29 - error TS1005: ',' expected.
+
+270     private checkMatch(order: TOrder): IResult<{ match: TOrder | null }> {
+                                ~
+
+src/services/orderbook/orderbook.class.ts:270:31 - error TS2693: 'TOrder' only refers to a type, but is being used as a value here.
+
+270     private checkMatch(order: TOrder): IResult<{ match: TOrder | null }> {
+                                  ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:270:38 - error TS1005: ';' expected.
+
+270     private checkMatch(order: TOrder): IResult<{ match: TOrder | null }> {
+                                         ~
+
+src/services/orderbook/orderbook.class.ts:270:40 - error TS2693: 'IResult' only refers to a type, but is being used as a value here.
+
+270     private checkMatch(order: TOrder): IResult<{ match: TOrder | null }> {
+                                           ~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:270:40 - error TS2365: Operator '>' cannot be applied to types 'boolean' and '{ try: { const: any; compatible: any; "": boolean; if(: any, best: any): any; if(best: any): any; if(best: any): any; return: { data: { match: any; }; }; throw: Error; }; catch(err: any): { error: string; }; }'.
+
+270     private checkMatch(order: TOrder): IResult<{ match: TOrder | null }> {
+                                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+271   try {
+    ~~~~~~~
+...
+303   }
+    ~~~
+304 }
+    ~
+
+src/services/orderbook/orderbook.class.ts:270:57 - error TS2693: 'TOrder' only refers to a type, but is being used as a value here.
+
+270     private checkMatch(order: TOrder): IResult<{ match: TOrder | null }> {
+                                                            ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:270:66 - error TS2531: Object is possibly 'null'.
+
+270     private checkMatch(order: TOrder): IResult<{ match: TOrder | null }> {
+                                                                     ~~~~
+
+src/services/orderbook/orderbook.class.ts:271:7 - error TS1005: ':' expected.
+
+271   try {
+          ~
+
+src/services/orderbook/orderbook.class.ts:272:11 - error TS1005: ':' expected.
+
+272     const isBuy = order.action === EOrderAction.BUY;
+              ~~~~~
+
+src/services/orderbook/orderbook.class.ts:272:11 - error TS2304: Cannot find name 'isBuy'.
+
+272     const isBuy = order.action === EOrderAction.BUY;
+              ~~~~~
+
+src/services/orderbook/orderbook.class.ts:272:19 - error TS2304: Cannot find name 'order'.
+
+272     const isBuy = order.action === EOrderAction.BUY;
+                      ~~~~~
+
+src/services/orderbook/orderbook.class.ts:272:52 - error TS1005: ',' expected.
+
+272     const isBuy = order.action === EOrderAction.BUY;
+                                                       ~
+
+src/services/orderbook/orderbook.class.ts:273:11 - error TS1005: ':' expected.
+
+273     const price  = order.props.price;
+              ~~~~~
+
+src/services/orderbook/orderbook.class.ts:273:11 - error TS2304: Cannot find name 'price'.
+
+273     const price  = order.props.price;
+              ~~~~~
+
+src/services/orderbook/orderbook.class.ts:273:20 - error TS2304: Cannot find name 'order'.
+
+273     const price  = order.props.price;
+                       ~~~~~
+
+src/services/orderbook/orderbook.class.ts:273:37 - error TS1005: ',' expected.
+
+273     const price  = order.props.price;
+                                        ~
+
+src/services/orderbook/orderbook.class.ts:275:11 - error TS1005: ':' expected.
+
+275     const compatible = this.orders.filter(o => {
+              ~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:275:11 - error TS2304: Cannot find name 'compatible'.
+
+275     const compatible = this.orders.filter(o => {
+              ~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:275:24 - error TS2532: Object is possibly 'undefined'.
+
+275     const compatible = this.orders.filter(o => {
+                           ~~~~
+
+src/services/orderbook/orderbook.class.ts:277:24 - error TS2304: Cannot find name 'order'.
+
+277       if (o.action === order.action) return false;
+                           ~~~~~
+
+src/services/orderbook/orderbook.class.ts:278:12 - error TS2532: Object is possibly 'undefined'.
+
+278       if (!this.sameMarket(o, order)) return false;
+               ~~~~
+
+src/services/orderbook/orderbook.class.ts:278:31 - error TS2304: Cannot find name 'order'.
+
+278       if (!this.sameMarket(o, order)) return false;
+                                  ~~~~~
+
+src/services/orderbook/orderbook.class.ts:279:11 - error TS2304: Cannot find name 'isBuy'.
+
+279       if (isBuy ? o.props.price > price : o.props.price < price) return false;
+              ~~~~~
+
+src/services/orderbook/orderbook.class.ts:279:35 - error TS2304: Cannot find name 'price'.
+
+279       if (isBuy ? o.props.price > price : o.props.price < price) return false;
+                                      ~~~~~
+
+src/services/orderbook/orderbook.class.ts:279:59 - error TS2304: Cannot find name 'price'.
+
+279       if (isBuy ? o.props.price > price : o.props.price < price) return false;
+                                                              ~~~~~
+
+src/services/orderbook/orderbook.class.ts:281:7 - error TS1005: ',' expected.
+
+281     });
+          ~
+
+src/services/orderbook/orderbook.class.ts:283:5 - error TS18004: No value exists in scope for the shorthand property 'compatible'. Either declare one or provide an initializer.
+
+283     compatible.sort((a,b) => {
+        ~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:283:15 - error TS1005: ',' expected.
+
+283     compatible.sort((a,b) => {
+                  ~
+
+src/services/orderbook/orderbook.class.ts:284:11 - error TS2304: Cannot find name 'isBuy'.
+
+284       if (isBuy) {
+              ~~~~~
+
+src/services/orderbook/orderbook.class.ts:290:7 - error TS1005: ',' expected.
+
+290     });
+          ~
+
+src/services/orderbook/orderbook.class.ts:292:11 - error TS1005: ':' expected.
+
+292     const best = compatible[0];
+              ~~~~
+
+src/services/orderbook/orderbook.class.ts:292:11 - error TS2304: Cannot find name 'best'.
+
+292     const best = compatible[0];
+              ~~~~
+
+src/services/orderbook/orderbook.class.ts:292:18 - error TS2304: Cannot find name 'compatible'.
+
+292     const best = compatible[0];
+                     ~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:292:31 - error TS1005: ',' expected.
+
+292     const best = compatible[0];
+                                  ~
+
+src/services/orderbook/orderbook.class.ts:293:9 - error TS1003: Identifier expected.
+
+293     if (!best) return { data: { match: null } };
+            ~
+
+src/services/orderbook/orderbook.class.ts:293:16 - error TS1005: '{' expected.
+
+293     if (!best) return { data: { match: null } };
+                   ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:293:23 - error TS1005: ':' expected.
+
+293     if (!best) return { data: { match: null } };
+                          ~
+
+src/services/orderbook/orderbook.class.ts:293:48 - error TS1005: ',' expected.
+
+293     if (!best) return { data: { match: null } };
+                                                   ~
+
+src/services/orderbook/orderbook.class.ts:295:13 - error TS1005: ',' expected.
+
+295     if (best.socket_id === order.socket_id)
+                ~
+
+src/services/orderbook/orderbook.class.ts:295:28 - error TS2304: Cannot find name 'order'.
+
+295     if (best.socket_id === order.socket_id)
+                               ~~~~~
+
+src/services/orderbook/orderbook.class.ts:295:43 - error TS1005: ',' expected.
+
+295     if (best.socket_id === order.socket_id)
+                                              ~
+
+src/services/orderbook/orderbook.class.ts:296:13 - error TS1005: ':' expected.
+
+296       throw new Error('Self-trade (socket)');
+                ~~~
+
+src/services/orderbook/orderbook.class.ts:296:45 - error TS1005: ',' expected.
+
+296       throw new Error('Self-trade (socket)');
+                                                ~
+
+src/services/orderbook/orderbook.class.ts:297:13 - error TS1005: ',' expected.
+
+297     if (best.keypair.address === order.keypair.address)
+                ~
+
+src/services/orderbook/orderbook.class.ts:297:34 - error TS2304: Cannot find name 'order'.
+
+297     if (best.keypair.address === order.keypair.address)
+                                     ~~~~~
+
+src/services/orderbook/orderbook.class.ts:297:55 - error TS1005: ',' expected.
+
+297     if (best.keypair.address === order.keypair.address)
+                                                          ~
+
+src/services/orderbook/orderbook.class.ts:298:13 - error TS1005: ':' expected.
+
+298       throw new Error('Self-trade (address)');
+                ~~~
+
+src/services/orderbook/orderbook.class.ts:298:46 - error TS1005: ',' expected.
+
+298       throw new Error('Self-trade (address)');
+                                                 ~
+
+src/services/orderbook/orderbook.class.ts:300:12 - error TS1005: ':' expected.
+
+300     return { data: { match: best } };
+               ~
+
+src/services/orderbook/orderbook.class.ts:300:29 - error TS2304: Cannot find name 'best'.
+
+300     return { data: { match: best } };
+                                ~~~~
+
+src/services/orderbook/orderbook.class.ts:300:37 - error TS1005: ',' expected.
+
+300     return { data: { match: best } };
+                                        ~
+
+src/services/orderbook/orderbook.class.ts:301:5 - error TS1005: ',' expected.
+
+301   } catch (err) {
+        ~~~~~
+
+src/services/orderbook/orderbook.class.ts:307:5 - error TS1128: Declaration or statement expected.
+
+307     private cloneWithAmount(order: TOrder, amount: number): TOrder {
+        ~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:307:13 - error TS2304: Cannot find name 'cloneWithAmount'.
+
+307     private cloneWithAmount(order: TOrder, amount: number): TOrder {
+                ~~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:307:29 - error TS2304: Cannot find name 'order'.
+
+307     private cloneWithAmount(order: TOrder, amount: number): TOrder {
+                                ~~~~~
+
+src/services/orderbook/orderbook.class.ts:307:34 - error TS1005: ',' expected.
+
+307     private cloneWithAmount(order: TOrder, amount: number): TOrder {
+                                     ~
+
+src/services/orderbook/orderbook.class.ts:307:36 - error TS2693: 'TOrder' only refers to a type, but is being used as a value here.
+
+307     private cloneWithAmount(order: TOrder, amount: number): TOrder {
+                                       ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:307:44 - error TS2304: Cannot find name 'amount'.
+
+307     private cloneWithAmount(order: TOrder, amount: number): TOrder {
+                                               ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:307:50 - error TS1005: ',' expected.
+
+307     private cloneWithAmount(order: TOrder, amount: number): TOrder {
+                                                     ~
+
+src/services/orderbook/orderbook.class.ts:307:52 - error TS2693: 'number' only refers to a type, but is being used as a value here.
+
+307     private cloneWithAmount(order: TOrder, amount: number): TOrder {
+                                                       ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:307:59 - error TS1005: ';' expected.
+
+307     private cloneWithAmount(order: TOrder, amount: number): TOrder {
+                                                              ~
+
+src/services/orderbook/orderbook.class.ts:307:61 - error TS1434: Unexpected keyword or identifier.
+
+307     private cloneWithAmount(order: TOrder, amount: number): TOrder {
+                                                                ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:307:61 - error TS2693: 'TOrder' only refers to a type, but is being used as a value here.
+
+307     private cloneWithAmount(order: TOrder, amount: number): TOrder {
+                                                                ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:309:13 - error TS2304: Cannot find name 'order'.
+
+309         if (order.type === EOrderType.SPOT) {
+                ~~~~~
+
+src/services/orderbook/orderbook.class.ts:310:27 - error TS2304: Cannot find name 'order'.
+
+310             const props = order.props as ISpotOrderProps;
+                              ~~~~~
+
+src/services/orderbook/orderbook.class.ts:318:20 - error TS2304: Cannot find name 'order'.
+
+318         } else if (order.type === EOrderType.FUTURES) {
+                       ~~~~~
+
+src/services/orderbook/orderbook.class.ts:319:27 - error TS2304: Cannot find name 'order'.
+
+319             const props = order.props as IFuturesOrderProps;
+                              ~~~~~
+
+src/services/orderbook/orderbook.class.ts:332:5 - error TS1434: Unexpected keyword or identifier.
+
+332     async addOrder(
+        ~~~~~
+
+src/services/orderbook/orderbook.class.ts:332:5 - error TS2304: Cannot find name 'async'.
+
+332     async addOrder(
+        ~~~~~
+
+src/services/orderbook/orderbook.class.ts:332:11 - error TS2304: Cannot find name 'addOrder'.
+
+332     async addOrder(
+              ~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:333:7 - error TS2304: Cannot find name 'order'.
+
+333       order: TOrder,
+          ~~~~~
+
+src/services/orderbook/orderbook.class.ts:333:12 - error TS1005: ',' expected.
+
+333       order: TOrder,
+               ~
+
+src/services/orderbook/orderbook.class.ts:333:14 - error TS2693: 'TOrder' only refers to a type, but is being used as a value here.
+
+333       order: TOrder,
+                 ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:334:7 - error TS2304: Cannot find name 'noTrades'.
+
+334       noTrades = false
+          ~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:335:6 - error TS1005: ';' expected.
+
+335     ): Promise<IResult<{ order?: TOrder; trades?: ITradeInfo[] }>> {
+         ~
+
+src/services/orderbook/orderbook.class.ts:335:8 - error TS2365: Operator '<' cannot be applied to types 'boolean' and 'number'.
+
+335     ): Promise<IResult<{ order?: TOrder; trades?: ITradeInfo[] }>> {
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+336       try {
+    ~~~~~~~~~~~
+...
+343     const bucketByUuid   = new Map<string, Agg>(); // one bucket per maker UUID
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+344       DBG(`New taker ${order.uuid.slice(0, 6)}…  ${order.action} ${order.props.amount} @ ${order.props.price}`);
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:335:16 - error TS2693: 'IResult' only refers to a type, but is being used as a value here.
+
+335     ): Promise<IResult<{ order?: TOrder; trades?: ITradeInfo[] }>> {
+                   ~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:335:24 - error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+
+335     ): Promise<IResult<{ order?: TOrder; trades?: ITradeInfo[] }>> {
+                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:335:34 - error TS2693: 'TOrder' only refers to a type, but is being used as a value here.
+
+335     ): Promise<IResult<{ order?: TOrder; trades?: ITradeInfo[] }>> {
+                                     ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:335:40 - error TS1005: ',' expected.
+
+335     ): Promise<IResult<{ order?: TOrder; trades?: ITradeInfo[] }>> {
+                                           ~
+
+src/services/orderbook/orderbook.class.ts:335:51 - error TS2693: 'ITradeInfo' only refers to a type, but is being used as a value here.
+
+335     ): Promise<IResult<{ order?: TOrder; trades?: ITradeInfo[] }>> {
+                                                      ~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:335:62 - error TS1011: An element access expression should take an argument.
+
+335     ): Promise<IResult<{ order?: TOrder; trades?: ITradeInfo[] }>> {
+
+
+src/services/orderbook/orderbook.class.ts:335:68 - error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+
+335     ): Promise<IResult<{ order?: TOrder; trades?: ITradeInfo[] }>> {
+                                                                       ~
+336       try {
+    ~~~~~~~~~~~
+...
+343     const bucketByUuid   = new Map<string, Agg>(); // one bucket per maker UUID
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+344       DBG(`New taker ${order.uuid.slice(0, 6)}…  ${order.action} ${order.props.amount} @ ${order.props.price}`);
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:336:11 - error TS1005: ':' expected.
+
+336       try {
+              ~
+
+src/services/orderbook/orderbook.class.ts:337:13 - error TS1003: Identifier expected.
+
+337         if (!this.checkCompatible(order))
+                ~
+
+src/services/orderbook/orderbook.class.ts:337:14 - error TS2680: A 'this' parameter must be the first parameter.
+
+337         if (!this.checkCompatible(order))
+                 ~~~~
+
+src/services/orderbook/orderbook.class.ts:337:18 - error TS1005: ',' expected.
+
+337         if (!this.checkCompatible(order))
+                     ~
+
+src/services/orderbook/orderbook.class.ts:337:35 - error TS2304: Cannot find name 'order'.
+
+337         if (!this.checkCompatible(order))
+                                      ~~~~~
+
+src/services/orderbook/orderbook.class.ts:337:41 - error TS1005: ',' expected.
+
+337         if (!this.checkCompatible(order))
+                                            ~
+
+src/services/orderbook/orderbook.class.ts:338:17 - error TS1005: ':' expected.
+
+338           throw new Error('Order mismatch with order-book');
+                    ~~~
+
+src/services/orderbook/orderbook.class.ts:338:60 - error TS1005: ',' expected.
+
+338           throw new Error('Order mismatch with order-book');
+                                                               ~
+
+src/services/orderbook/orderbook.class.ts:341:5 - error TS18004: No value exists in scope for the shorthand property 'let'. Either declare one or provide an initializer.
+
+341     let remaining        = order.props.amount;
+        ~~~
+
+src/services/orderbook/orderbook.class.ts:341:9 - error TS1005: ',' expected.
+
+341     let remaining        = order.props.amount;
+            ~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:341:28 - error TS2304: Cannot find name 'order'.
+
+341     let remaining        = order.props.amount;
+                               ~~~~~
+
+src/services/orderbook/orderbook.class.ts:341:46 - error TS1005: ',' expected.
+
+341     let remaining        = order.props.amount;
+                                                 ~
+
+src/services/orderbook/orderbook.class.ts:342:11 - error TS1005: ':' expected.
+
+342     const touchedSockets = new Set<string>();     // every socket we must refresh
+              ~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:342:11 - error TS2304: Cannot find name 'touchedSockets'.
+
+342     const touchedSockets = new Set<string>();     // every socket we must refresh
+              ~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:342:45 - error TS1005: ',' expected.
+
+342     const touchedSockets = new Set<string>();     // every socket we must refresh
+                                                ~
+
+src/services/orderbook/orderbook.class.ts:343:11 - error TS1005: ':' expected.
+
+343     const bucketByUuid   = new Map<string, Agg>(); // one bucket per maker UUID
+              ~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:343:11 - error TS2304: Cannot find name 'bucketByUuid'.
+
+343     const bucketByUuid   = new Map<string, Agg>(); // one bucket per maker UUID
+              ~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:343:50 - error TS1005: ',' expected.
+
+343     const bucketByUuid   = new Map<string, Agg>(); // one bucket per maker UUID
+                                                     ~
+
+src/services/orderbook/orderbook.class.ts:344:11 - error TS1003: Identifier expected.
+
+344       DBG(`New taker ${order.uuid.slice(0, 6)}…  ${order.action} ${order.props.amount} @ ${order.props.price}`);
+              ~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:344:29 - error TS1005: ',' expected.
+
+344       DBG(`New taker ${order.uuid.slice(0, 6)}…  ${order.action} ${order.props.amount} @ ${order.props.price}`);
+                                ~
+
+src/services/orderbook/orderbook.class.ts:344:47 - error TS1127: Invalid character.
+
+344       DBG(`New taker ${order.uuid.slice(0, 6)}…  ${order.action} ${order.props.amount} @ ${order.props.price}`);
+                                                  ~
+
+src/services/orderbook/orderbook.class.ts:344:50 - error TS2592: Cannot find name '$'. Do you need to install type definitions for jQuery? Try `npm i --save-dev @types/jquery` and then add 'jquery' to the types field in your tsconfig.
+
+344       DBG(`New taker ${order.uuid.slice(0, 6)}…  ${order.action} ${order.props.amount} @ ${order.props.price}`);
+                                                     ~
+
+src/services/orderbook/orderbook.class.ts:344:51 - error TS1005: ',' expected.
+
+344       DBG(`New taker ${order.uuid.slice(0, 6)}…  ${order.action} ${order.props.amount} @ ${order.props.price}`);
+                                                      ~
+
+  src/services/orderbook/orderbook.class.ts:335:68
+    335     ): Promise<IResult<{ order?: TOrder; trades?: ITradeInfo[] }>> {
+                                                                           ~
+    The parser expected to find a '}' to match the '{' token here.
+
+src/services/orderbook/orderbook.class.ts:344:52 - error TS2304: Cannot find name 'order'.
+
+344       DBG(`New taker ${order.uuid.slice(0, 6)}…  ${order.action} ${order.props.amount} @ ${order.props.price}`);
+                                                       ~~~~~
+
+src/services/orderbook/orderbook.class.ts:344:66 - error TS1434: Unexpected keyword or identifier.
+
+344       DBG(`New taker ${order.uuid.slice(0, 6)}…  ${order.action} ${order.props.amount} @ ${order.props.price}`);
+                                                                     ~
+
+src/services/orderbook/orderbook.class.ts:344:66 - error TS2592: Cannot find name '$'. Do you need to install type definitions for jQuery? Try `npm i --save-dev @types/jquery` and then add 'jquery' to the types field in your tsconfig.
+
+344       DBG(`New taker ${order.uuid.slice(0, 6)}…  ${order.action} ${order.props.amount} @ ${order.props.price}`);
+                                                                     ~
+
+src/services/orderbook/orderbook.class.ts:344:68 - error TS2304: Cannot find name 'order'.
+
+344       DBG(`New taker ${order.uuid.slice(0, 6)}…  ${order.action} ${order.props.amount} @ ${order.props.price}`);
+                                                                       ~~~~~
+
+src/services/orderbook/orderbook.class.ts:344:91 - error TS1146: Declaration expected.
+
+344       DBG(`New taker ${order.uuid.slice(0, 6)}…  ${order.action} ${order.props.amount} @ ${order.props.price}`);
+
+
+src/services/orderbook/orderbook.class.ts:344:92 - error TS2304: Cannot find name 'order'.
+
+344       DBG(`New taker ${order.uuid.slice(0, 6)}…  ${order.action} ${order.props.amount} @ ${order.props.price}`);
+                                                                                               ~~~~~
+
+src/services/orderbook/orderbook.class.ts:384:17 - error TS1127: Invalid character.
+
+384         DBG(`   ⋆ fill ${fillAmt} vs maker ${match.uuid.slice(0, 6)}…  (before: ${match.props.amount})`);
+                    ~
+
+src/services/orderbook/orderbook.class.ts:384:19 - error TS1434: Unexpected keyword or identifier.
+
+384         DBG(`   ⋆ fill ${fillAmt} vs maker ${match.uuid.slice(0, 6)}…  (before: ${match.props.amount})`);
+                      ~~~~
+
+src/services/orderbook/orderbook.class.ts:384:19 - error TS2304: Cannot find name 'fill'.
+
+384         DBG(`   ⋆ fill ${fillAmt} vs maker ${match.uuid.slice(0, 6)}…  (before: ${match.props.amount})`);
+                      ~~~~
+
+src/services/orderbook/orderbook.class.ts:384:24 - error TS1434: Unexpected keyword or identifier.
+
+384         DBG(`   ⋆ fill ${fillAmt} vs maker ${match.uuid.slice(0, 6)}…  (before: ${match.props.amount})`);
+                           ~
+
+src/services/orderbook/orderbook.class.ts:384:24 - error TS2592: Cannot find name '$'. Do you need to install type definitions for jQuery? Try `npm i --save-dev @types/jquery` and then add 'jquery' to the types field in your tsconfig.
+
+384         DBG(`   ⋆ fill ${fillAmt} vs maker ${match.uuid.slice(0, 6)}…  (before: ${match.props.amount})`);
+                           ~
+
+src/services/orderbook/orderbook.class.ts:384:26 - error TS2304: Cannot find name 'fillAmt'.
+
+384         DBG(`   ⋆ fill ${fillAmt} vs maker ${match.uuid.slice(0, 6)}…  (before: ${match.props.amount})`);
+                             ~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:384:35 - error TS1434: Unexpected keyword or identifier.
+
+384         DBG(`   ⋆ fill ${fillAmt} vs maker ${match.uuid.slice(0, 6)}…  (before: ${match.props.amount})`);
+                                      ~~
+
+src/services/orderbook/orderbook.class.ts:384:35 - error TS2304: Cannot find name 'vs'.
+
+384         DBG(`   ⋆ fill ${fillAmt} vs maker ${match.uuid.slice(0, 6)}…  (before: ${match.props.amount})`);
+                                      ~~
+
+src/services/orderbook/orderbook.class.ts:384:38 - error TS1434: Unexpected keyword or identifier.
+
+384         DBG(`   ⋆ fill ${fillAmt} vs maker ${match.uuid.slice(0, 6)}…  (before: ${match.props.amount})`);
+                                         ~~~~~
+
+src/services/orderbook/orderbook.class.ts:384:38 - error TS2304: Cannot find name 'maker'.
+
+384         DBG(`   ⋆ fill ${fillAmt} vs maker ${match.uuid.slice(0, 6)}…  (before: ${match.props.amount})`);
+                                         ~~~~~
+
+src/services/orderbook/orderbook.class.ts:384:44 - error TS1434: Unexpected keyword or identifier.
+
+384         DBG(`   ⋆ fill ${fillAmt} vs maker ${match.uuid.slice(0, 6)}…  (before: ${match.props.amount})`);
+                                               ~
+
+src/services/orderbook/orderbook.class.ts:384:44 - error TS2592: Cannot find name '$'. Do you need to install type definitions for jQuery? Try `npm i --save-dev @types/jquery` and then add 'jquery' to the types field in your tsconfig.
+
+384         DBG(`   ⋆ fill ${fillAmt} vs maker ${match.uuid.slice(0, 6)}…  (before: ${match.props.amount})`);
+                                               ~
+
+src/services/orderbook/orderbook.class.ts:384:46 - error TS2304: Cannot find name 'match'.
+
+384         DBG(`   ⋆ fill ${fillAmt} vs maker ${match.uuid.slice(0, 6)}…  (before: ${match.props.amount})`);
+                                                 ~~~~~
+
+src/services/orderbook/orderbook.class.ts:384:69 - error TS1127: Invalid character.
+
+384         DBG(`   ⋆ fill ${fillAmt} vs maker ${match.uuid.slice(0, 6)}…  (before: ${match.props.amount})`);
+                                                                        ~
+
+src/services/orderbook/orderbook.class.ts:384:81 - error TS2592: Cannot find name '$'. Do you need to install type definitions for jQuery? Try `npm i --save-dev @types/jquery` and then add 'jquery' to the types field in your tsconfig.
+
+384         DBG(`   ⋆ fill ${fillAmt} vs maker ${match.uuid.slice(0, 6)}…  (before: ${match.props.amount})`);
+                                                                                    ~
+
+src/services/orderbook/orderbook.class.ts:384:82 - error TS1005: ',' expected.
+
+384         DBG(`   ⋆ fill ${fillAmt} vs maker ${match.uuid.slice(0, 6)}…  (before: ${match.props.amount})`);
+                                                                                     ~
+
+src/services/orderbook/orderbook.class.ts:384:88 - error TS1005: ',' expected.
+
+384         DBG(`   ⋆ fill ${fillAmt} vs maker ${match.uuid.slice(0, 6)}…  (before: ${match.props.amount})`);
+                                                                                           ~
+
+src/services/orderbook/orderbook.class.ts:384:94 - error TS1005: ',' expected.
+
+384         DBG(`   ⋆ fill ${fillAmt} vs maker ${match.uuid.slice(0, 6)}…  (before: ${match.props.amount})`);
+                                                                                                 ~
+
+src/services/orderbook/orderbook.class.ts:384:103 - error TS1005: '=>' expected.
+
+384         DBG(`   ⋆ fill ${fillAmt} vs maker ${match.uuid.slice(0, 6)}…  (before: ${match.props.amount})`);
+                                                                                                          ~~~
+385       touchedSockets.add(match.socket_id);
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+...
+389         updateOrderLog(this.orderbookName, match.uuid, 'FILLED');
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+390            DBG(`     → maker exhausted and removed`);
+    ~~~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:390:22 - error TS1127: Invalid character.
+
+390            DBG(`     → maker exhausted and removed`);
+                         ~
+
+src/services/orderbook/orderbook.class.ts:390:24 - error TS1434: Unexpected keyword or identifier.
+
+390            DBG(`     → maker exhausted and removed`);
+                           ~~~~~
+
+src/services/orderbook/orderbook.class.ts:390:24 - error TS2304: Cannot find name 'maker'.
+
+390            DBG(`     → maker exhausted and removed`);
+                           ~~~~~
+
+src/services/orderbook/orderbook.class.ts:390:30 - error TS1434: Unexpected keyword or identifier.
+
+390            DBG(`     → maker exhausted and removed`);
+                                 ~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:390:30 - error TS2304: Cannot find name 'exhausted'.
+
+390            DBG(`     → maker exhausted and removed`);
+                                 ~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:390:40 - error TS1434: Unexpected keyword or identifier.
+
+390            DBG(`     → maker exhausted and removed`);
+                                           ~~~
+
+src/services/orderbook/orderbook.class.ts:390:40 - error TS2304: Cannot find name 'and'.
+
+390            DBG(`     → maker exhausted and removed`);
+                                           ~~~
+
+src/services/orderbook/orderbook.class.ts:390:44 - error TS2304: Cannot find name 'removed'.
+
+390            DBG(`     → maker exhausted and removed`);
+                                               ~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:390:51 - error TS1443: Module declaration names may only use ' or " quoted strings.
+
+390            DBG(`     → maker exhausted and removed`);
+                                                      ~~~
+391              this.pushPlaced(match.socket_id);
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+...
+395         updateOrderLog(this.orderbookName, match.uuid, 'PT-FILLED');
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+396           DBG(`     → maker now ${match.props.amount} left`);
+    ~~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:396:21 - error TS1127: Invalid character.
+
+396           DBG(`     → maker now ${match.props.amount} left`);
+                        ~
+
+src/services/orderbook/orderbook.class.ts:396:21 - error TS1128: Declaration or statement expected.
+
+396           DBG(`     → maker now ${match.props.amount} left`);
+                        ~
+
+src/services/orderbook/orderbook.class.ts:396:23 - error TS1434: Unexpected keyword or identifier.
+
+396           DBG(`     → maker now ${match.props.amount} left`);
+                          ~~~~~
+
+src/services/orderbook/orderbook.class.ts:396:23 - error TS2304: Cannot find name 'maker'.
+
+396           DBG(`     → maker now ${match.props.amount} left`);
+                          ~~~~~
+
+src/services/orderbook/orderbook.class.ts:396:29 - error TS1434: Unexpected keyword or identifier.
+
+396           DBG(`     → maker now ${match.props.amount} left`);
+                                ~~~
+
+src/services/orderbook/orderbook.class.ts:396:29 - error TS2304: Cannot find name 'now'.
+
+396           DBG(`     → maker now ${match.props.amount} left`);
+                                ~~~
+
+src/services/orderbook/orderbook.class.ts:396:33 - error TS1434: Unexpected keyword or identifier.
+
+396           DBG(`     → maker now ${match.props.amount} left`);
+                                    ~
+
+src/services/orderbook/orderbook.class.ts:396:33 - error TS2592: Cannot find name '$'. Do you need to install type definitions for jQuery? Try `npm i --save-dev @types/jquery` and then add 'jquery' to the types field in your tsconfig.
+
+396           DBG(`     → maker now ${match.props.amount} left`);
+                                    ~
+
+src/services/orderbook/orderbook.class.ts:396:35 - error TS2304: Cannot find name 'match'.
+
+396           DBG(`     → maker now ${match.props.amount} left`);
+                                      ~~~~~
+
+src/services/orderbook/orderbook.class.ts:396:55 - error TS2304: Cannot find name 'left'.
+
+396           DBG(`     → maker now ${match.props.amount} left`);
+                                                          ~~~~
+
+src/services/orderbook/orderbook.class.ts:430:16 - error TS1005: ';' expected.
+
+430         DBG(`! buildTrade failed`, combRes.error);
+                   ~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:430:16 - error TS2448: Block-scoped variable 'buildTrade' used before its declaration.
+
+430         DBG(`! buildTrade failed`, combRes.error);
+                   ~~~~~~~~~~
+
+  src/services/orderbook/orderbook.class.ts:551:7
+    551 const buildTrade = (
+              ~~~~~~~~~~
+    'buildTrade' is declared here.
+
+src/services/orderbook/orderbook.class.ts:430:27 - error TS2304: Cannot find name 'failed'.
+
+430         DBG(`! buildTrade failed`, combRes.error);
+                              ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:430:33 - error TS1443: Module declaration names may only use ' or " quoted strings.
+
+430         DBG(`! buildTrade failed`, combRes.error);
+                                    ~~~~~~~~~~~~~~~~~~
+431         continue;}                      // (edge-case recovery)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+...
+437         aggTrades.push(combRes.data.tradeInfo);
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+438             DBG(`   ↳ opened channel VWAP ${vwap} for ${bucket.totalAmt}`);
+    ~~~~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:438:21 - error TS1127: Invalid character.
+
+438             DBG(`   ↳ opened channel VWAP ${vwap} for ${bucket.totalAmt}`);
+                        ~
+
+src/services/orderbook/orderbook.class.ts:438:21 - error TS1128: Declaration or statement expected.
+
+438             DBG(`   ↳ opened channel VWAP ${vwap} for ${bucket.totalAmt}`);
+                        ~
+
+src/services/orderbook/orderbook.class.ts:438:23 - error TS1434: Unexpected keyword or identifier.
+
+438             DBG(`   ↳ opened channel VWAP ${vwap} for ${bucket.totalAmt}`);
+                          ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:438:23 - error TS2304: Cannot find name 'opened'.
+
+438             DBG(`   ↳ opened channel VWAP ${vwap} for ${bucket.totalAmt}`);
+                          ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:438:30 - error TS1434: Unexpected keyword or identifier.
+
+438             DBG(`   ↳ opened channel VWAP ${vwap} for ${bucket.totalAmt}`);
+                                 ~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:438:38 - error TS1434: Unexpected keyword or identifier.
+
+438             DBG(`   ↳ opened channel VWAP ${vwap} for ${bucket.totalAmt}`);
+                                         ~~~~
+
+src/services/orderbook/orderbook.class.ts:438:38 - error TS2304: Cannot find name 'VWAP'.
+
+438             DBG(`   ↳ opened channel VWAP ${vwap} for ${bucket.totalAmt}`);
+                                         ~~~~
+
+src/services/orderbook/orderbook.class.ts:438:43 - error TS1434: Unexpected keyword or identifier.
+
+438             DBG(`   ↳ opened channel VWAP ${vwap} for ${bucket.totalAmt}`);
+                                              ~
+
+src/services/orderbook/orderbook.class.ts:438:43 - error TS2592: Cannot find name '$'. Do you need to install type definitions for jQuery? Try `npm i --save-dev @types/jquery` and then add 'jquery' to the types field in your tsconfig.
+
+438             DBG(`   ↳ opened channel VWAP ${vwap} for ${bucket.totalAmt}`);
+                                              ~
+
+src/services/orderbook/orderbook.class.ts:438:45 - error TS2304: Cannot find name 'vwap'.
+
+438             DBG(`   ↳ opened channel VWAP ${vwap} for ${bucket.totalAmt}`);
+                                                ~~~~
+
+src/services/orderbook/orderbook.class.ts:438:55 - error TS1005: '(' expected.
+
+438             DBG(`   ↳ opened channel VWAP ${vwap} for ${bucket.totalAmt}`);
+                                                          ~
+
+src/services/orderbook/orderbook.class.ts:438:55 - error TS2592: Cannot find name '$'. Do you need to install type definitions for jQuery? Try `npm i --save-dev @types/jquery` and then add 'jquery' to the types field in your tsconfig.
+
+438             DBG(`   ↳ opened channel VWAP ${vwap} for ${bucket.totalAmt}`);
+                                                          ~
+
+src/services/orderbook/orderbook.class.ts:438:56 - error TS1005: ';' expected.
+
+438             DBG(`   ↳ opened channel VWAP ${vwap} for ${bucket.totalAmt}`);
+                                                           ~
+
+src/services/orderbook/orderbook.class.ts:438:56 - error TS2349: This expression is not callable.
+  Type '{ bucket: any; "": any; }' has no call signatures.
+
+438             DBG(`   ↳ opened channel VWAP ${vwap} for ${bucket.totalAmt}`);
+                                                           ~~~~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:438:57 - error TS18004: No value exists in scope for the shorthand property 'bucket'. Either declare one or provide an initializer.
+
+438             DBG(`   ↳ opened channel VWAP ${vwap} for ${bucket.totalAmt}`);
+                                                            ~~~~~~
+
+src/services/orderbook/orderbook.class.ts:438:63 - error TS1005: ',' expected.
+
+438             DBG(`   ↳ opened channel VWAP ${vwap} for ${bucket.totalAmt}`);
+                                                                  ~
+
+src/services/orderbook/orderbook.class.ts:464:14 - error TS1005: ';' expected.
+
+464         DBG(`Residual taker ${remaining} added back to book`);
+                 ~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:464:14 - error TS2304: Cannot find name 'Residual'.
+
+464         DBG(`Residual taker ${remaining} added back to book`);
+                 ~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:464:23 - error TS1005: ')' expected.
+
+464         DBG(`Residual taker ${remaining} added back to book`);
+                          ~~~~~
+
+src/services/orderbook/orderbook.class.ts:464:23 - error TS2304: Cannot find name 'taker'.
+
+464         DBG(`Residual taker ${remaining} added back to book`);
+                          ~~~~~
+
+src/services/orderbook/orderbook.class.ts:464:29 - error TS1434: Unexpected keyword or identifier.
+
+464         DBG(`Residual taker ${remaining} added back to book`);
+                                ~
+
+src/services/orderbook/orderbook.class.ts:464:29 - error TS2592: Cannot find name '$'. Do you need to install type definitions for jQuery? Try `npm i --save-dev @types/jquery` and then add 'jquery' to the types field in your tsconfig.
+
+464         DBG(`Residual taker ${remaining} added back to book`);
+                                ~
+
+src/services/orderbook/orderbook.class.ts:464:31 - error TS2304: Cannot find name 'remaining'.
+
+464         DBG(`Residual taker ${remaining} added back to book`);
+                                  ~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:464:42 - error TS1434: Unexpected keyword or identifier.
+
+464         DBG(`Residual taker ${remaining} added back to book`);
+                                             ~~~~~
+
+src/services/orderbook/orderbook.class.ts:464:42 - error TS2304: Cannot find name 'added'.
+
+464         DBG(`Residual taker ${remaining} added back to book`);
+                                             ~~~~~
+
+src/services/orderbook/orderbook.class.ts:464:48 - error TS1434: Unexpected keyword or identifier.
+
+464         DBG(`Residual taker ${remaining} added back to book`);
+                                                   ~~~~
+
+src/services/orderbook/orderbook.class.ts:464:48 - error TS2304: Cannot find name 'back'.
+
+464         DBG(`Residual taker ${remaining} added back to book`);
+                                                   ~~~~
+
+src/services/orderbook/orderbook.class.ts:464:53 - error TS1434: Unexpected keyword or identifier.
+
+464         DBG(`Residual taker ${remaining} added back to book`);
+                                                        ~~
+
+src/services/orderbook/orderbook.class.ts:464:53 - error TS2304: Cannot find name 'to'.
+
+464         DBG(`Residual taker ${remaining} added back to book`);
+                                                        ~~
+
+src/services/orderbook/orderbook.class.ts:464:56 - error TS2304: Cannot find name 'book'.
+
+464         DBG(`Residual taker ${remaining} added back to book`);
+                                                           ~~~~
+
+src/services/orderbook/orderbook.class.ts:464:60 - error TS1443: Module declaration names may only use ' or " quoted strings.
+
+464         DBG(`Residual taker ${remaining} added back to book`);
+                                                               ~~~
+465       }
+    ~~~~~~~
+...
+530             if (!orderForRemove) {
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+531                 throw new Error(`Order with uuid ${uuid} doesn't exist in current orderbook`);
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:531:34 - error TS1434: Unexpected keyword or identifier.
+
+531                 throw new Error(`Order with uuid ${uuid} doesn't exist in current orderbook`);
+                                     ~~~~~
+
+src/services/orderbook/orderbook.class.ts:531:34 - error TS2304: Cannot find name 'Order'.
+
+531                 throw new Error(`Order with uuid ${uuid} doesn't exist in current orderbook`);
+                                     ~~~~~
+
+src/services/orderbook/orderbook.class.ts:531:40 - error TS1101: 'with' statements are not allowed in strict mode.
+
+531                 throw new Error(`Order with uuid ${uuid} doesn't exist in current orderbook`);
+                                           ~~~~
+
+src/services/orderbook/orderbook.class.ts:531:45 - error TS1005: '(' expected.
+
+531                 throw new Error(`Order with uuid ${uuid} doesn't exist in current orderbook`);
+                                                ~~~~
+
+src/services/orderbook/orderbook.class.ts:531:45 - error TS2304: Cannot find name 'uuid'.
+
+531                 throw new Error(`Order with uuid ${uuid} doesn't exist in current orderbook`);
+                                                ~~~~
+
+src/services/orderbook/orderbook.class.ts:531:50 - error TS1005: ')' expected.
+
+531                 throw new Error(`Order with uuid ${uuid} doesn't exist in current orderbook`);
+                                                     ~
+
+src/services/orderbook/orderbook.class.ts:531:52 - error TS2304: Cannot find name 'uuid'.
+
+531                 throw new Error(`Order with uuid ${uuid} doesn't exist in current orderbook`);
+                                                       ~~~~
+
+src/services/orderbook/orderbook.class.ts:531:58 - error TS1434: Unexpected keyword or identifier.
+
+531                 throw new Error(`Order with uuid ${uuid} doesn't exist in current orderbook`);
+                                                             ~~~~~
+
+src/services/orderbook/orderbook.class.ts:531:58 - error TS2304: Cannot find name 'doesn'.
+
+531                 throw new Error(`Order with uuid ${uuid} doesn't exist in current orderbook`);
+                                                             ~~~~~
+
+src/services/orderbook/orderbook.class.ts:531:95 - error TS1002: Unterminated string literal.
+
+531                 throw new Error(`Order with uuid ${uuid} doesn't exist in current orderbook`);
+
+
+src/services/orderbook/orderbook.class.ts:532:13 - error TS1128: Declaration or statement expected.
+
+532             }
+                ~
+
+src/services/orderbook/orderbook.class.ts:535:17 - error TS2304: Cannot find name 'socket_id'.
+
+535             if (socket_id !== orderForRemove.socket_id) {
+                    ~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:535:31 - error TS2304: Cannot find name 'orderForRemove'.
+
+535             if (socket_id !== orderForRemove.socket_id) {
+                                  ~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:536:78 - error TS2304: Cannot find name 'uuid'.
+
+536                 throw new Error(`Not Authorized to remove order with uuid: ${uuid}`);
+                                                                                 ~~~~
+
+src/services/orderbook/orderbook.class.ts:540:13 - error TS2532: Object is possibly 'undefined'.
+
+540             this.orders = this.orders.filter(o => o !== orderForRemove);
+                ~~~~
+
+src/services/orderbook/orderbook.class.ts:540:27 - error TS2532: Object is possibly 'undefined'.
+
+540             this.orders = this.orders.filter(o => o !== orderForRemove);
+                              ~~~~
+
+src/services/orderbook/orderbook.class.ts:540:57 - error TS2304: Cannot find name 'orderForRemove'.
+
+540             this.orders = this.orders.filter(o => o !== orderForRemove);
+                                                            ~~~~~~~~~~~~~~
+
+src/services/orderbook/orderbook.class.ts:541:13 - error TS2532: Object is possibly 'undefined'.
+
+541             this.broadcastSnapshot();   // <- broadcast after removal
+                ~~~~
+
+src/services/orderbook/orderbook.class.ts:544:9 - error TS1128: Declaration or statement expected.
+
+544         } catch (error) {
+            ~
+
+src/services/orderbook/orderbook.class.ts:544:11 - error TS1005: 'try' expected.
+
+544         } catch (error) {
+              ~~~~~
+
+src/services/orderbook/orderbook.class.ts:547:5 - error TS1128: Declaration or statement expected.
+
+547     }
+        ~
+
+src/services/orderbook/orderbook.class.ts:548:1 - error TS1128: Declaration or statement expected.
+
+548 }
+    ~
+
+src/services/socket/manager.class.ts:27:27 - error TS2339: Property 'orders' does not exist on type 'Orderbook'.
+
+27             .map(ob => ob.orders)
+                             ~~~~~~
+
+src/services/socket/manager.class.ts:48:12 - error TS2393: Duplicate function implementation.
+
+48     public broadcastToMarket(marketKey: string, msg: object) {
+              ~~~~~~~~~~~~~~~~~
+
+src/services/socket/manager.class.ts:60:13 - error TS2393: Duplicate function implementation.
+
+60     private subscribeMarket(socketId: string, marketKey: string) {
+               ~~~~~~~~~~~~~~~
+
+src/services/socket/manager.class.ts:67:13 - error TS2393: Duplicate function implementation.
+
+67     private unsubscribeMarket(socketId: string, marketKey: string) {
+               ~~~~~~~~~~~~~~~~~
+
+src/services/socket/manager.class.ts:74:12 - error TS2393: Duplicate function implementation.
+
+74     public broadcastToMarket(marketKey: string, msg: object) {
+              ~~~~~~~~~~~~~~~~~
+
+src/services/socket/manager.class.ts:86:13 - error TS2393: Duplicate function implementation.
+
+86     private subscribeMarket(socketId: string, marketKey: string) {
+               ~~~~~~~~~~~~~~~
+
+src/services/socket/manager.class.ts:93:14 - error TS2393: Duplicate function implementation.
+
+93      private unsubscribeMarket(socketId: string, marketKey: string) {
+                ~~~~~~~~~~~~~~~~~
+
+src/services/socket/manager.class.ts:191:54 - error TS2339: Property 'findByFilter' does not exist on type 'Orderbook'.
+
+191   const ob = orderbookManager.orderbooks.find(o => o.findByFilter(filter));
+                                                         ~~~~~~~~~~~~
+
+src/services/socket/manager.class.ts:196:22 - error TS2339: Property 'orders' does not exist on type 'Orderbook'.
+
+196           orders: ob.orders.filter(o => !o.lock),
+                         ~~~~~~
+
+src/services/socket/manager.class.ts:197:23 - error TS2339: Property 'historyTrades' does not exist on type 'Orderbook'.
+
+197           history: ob.historyTrades,
+                          ~~~~~~~~~~~~~
+
+
+Found 393 errors in 3 files.

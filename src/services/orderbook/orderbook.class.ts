@@ -33,76 +33,69 @@ const DBG = (...args: any[]) => {
   console.log(`\x1b[36m[OB DEBUG ${ts}]\x1b[0m`, ...args); // cyan
 };
 
-
 export class Orderbook {
-    private _type: EOrderType;
-    private _orders: TOrder[] = [];
-    private _historyTrades: IHistoryTrade[] = [];
-    private props: ISpotOrderProps | IFuturesOrderProps = null;
-    private orderbookName: string = ''
+  private _type: EOrderType;
+  private _orders: TOrder[] = [];
+  private _historyTrades: IHistoryTrade[] = [];
+  private props: ISpotOrderProps | IFuturesOrderProps = null;
 
-    constructor(firstOrder: TOrder) {
-        this._type = firstOrder.type;
-        this.addProps(firstOrder);
-        this.addOrder(firstOrder);
-        this.addExistingTradesHistory();
-        this.orderbookName = orderbookName()
+  constructor(firstOrder: TOrder) {
+    this._type = firstOrder.type;
+    this.addProps(firstOrder);
+    this.addOrder(firstOrder);
+    this.addExistingTradesHistory();
+  }
+
+  public get orderbookName(): string {
+    if (this._type === EOrderType.SPOT) {
+      const { id_desired, id_for_sale } = this.props as ISpotOrderProps;
+      return `spot_${id_for_sale}_${id_desired}`;
     }
-
-    public get orderbookName(): string {
-      if (this.type === EOrderType.SPOT) {
-        const { id_desired, id_for_sale } = this.props as ISpotOrderProps;
-        return `spot_${id_for_sale}_${id_desired}`;
-      }
-      if (this.type === EOrderType.FUTURES) {
-        const { contract_id } = this.props as IFuturesOrderProps;
-        return `futures_${contract_id}`;
-      }
-      return "unknown";
+    if (this._type === EOrderType.FUTURES) {
+      const { contract_id } = this.props as IFuturesOrderProps;
+      return `futures_${contract_id}`;
     }
+    return "unknown";
+  }
 
-    private get type(): EOrderType {
-        return this._type;
-    }
+  private get type(): EOrderType {
+    return this._type;
+  }
 
-    // New helper: broadcast full snapshot filtered to unlocked orders
-    private broadcastSnapshot() {
+  private broadcastSnapshot() {
+    const marketKey = this.orderbookName;
+    if (!marketKey) return;
 
+    socketManager.broadcastToMarket(marketKey, {
+      event: EmitEvents.ORDERBOOK_DATA,
+      marketKey,
+      orders: this._orders.filter(o => !o.lock),
+      history: this._historyTrades,
+    });
 
-    // New: build a param’d snapshot for this *single* orderbook
-    public snapshot(opts?: { depth?: number; side?: 'bids'|'asks'|'both'; includeTrades?: boolean }) {
-      const depth = Math.max(0, Number(opts?.depth ?? 50));
-      const side  = (opts?.side ?? 'both') as 'bids'|'asks'|'both';
-      const unlocked = this._orders.filter(o => !o.lock);
-      const bidsAll = unlocked.filter(o => o.action === EOrderAction.BUY)
-                              .sort((a,b) => b.props.price - a.props.price);
-      const asksAll = unlocked.filter(o => o.action === EOrderAction.SELL)
-                              .sort((a,b) => a.props.price - b.props.price);
-      const bids = (side === 'asks') ? [] : bidsAll.slice(0, depth);
-      const asks = (side === 'bids') ? [] : asksAll.slice(0, depth);
-      const trades = opts?.includeTrades ? this._historyTrades : [];
-      return { bids, asks, trades, lastTs: Date.now() };
-    }
+    socketManager.broadcastToAll({
+      event: EmitEvents.ORDERBOOK_DATA,
+      orders: this._orders.filter(o => !o.lock),
+      history: this._historyTrades,
+    });
+  }
 
-    const marketKey = this.orderbookName; // e.g., "futures-<id>" or "spot_<a>_<b>"
-        if (!marketKey) return;
-        // Market-scoped emit
-        socketManager.broadcastToMarket(marketKey, {
-            event: EmitEvents.ORDERBOOK_DATA,
-            marketKey,
-            orders: this._orders.filter(o => !o.lock),
-            history: this._historyTrades,
-        });
-        // (Optional) temporary compatibility:
-        // socketManager.broadcastToAll({ event: EmitEvents.ORDERBOOK_DATA, marketKey, orders: this._orders.filter(o => !o.lock), history: this._historyTrades });
+  public snapshot(opts?: { depth?: number; side?: 'bids'|'asks'|'both'; includeTrades?: boolean }) {
+    const depth = Math.max(0, Number(opts?.depth ?? 50));
+    const side  = (opts?.side ?? 'both') as 'bids'|'asks'|'both';
+    const unlocked = this._orders.filter(o => !o.lock);
 
-      console.log('broadcasting update ')
-        socketManager.broadcastToAll({
-            event: EmitEvents.ORDERBOOK_DATA,
-            orders: this._orders.filter(o => !o.lock),
-            history: this._historyTrades,
-        });
-    }
+    const bidsAll = unlocked.filter(o => o.action === EOrderAction.BUY)
+                            .sort((a,b) => b.props.price - a.props.price);
+    const asksAll = unlocked.filter(o => o.action === EOrderAction.SELL)
+                            .sort((a,b) => a.props.price - b.props.price);
+
+    const bids = (side === 'asks') ? [] : bidsAll.slice(0, depth);
+    const asks = (side === 'bids') ? [] : asksAll.slice(0, depth);
+    const trades = opts?.includeTrades ? this._historyTrades : [];
+
+    return { bids, asks, trades, lastTs: Date.now() };
+  }
 
     /* Fire-and-forget helper so we don’t have to sprinkle loops everywhere */
         private pushPlaced = (...socketIds: string[]) => {
@@ -114,18 +107,6 @@ export class Orderbook {
         this._orders = value;
         // Send updates to all connected WebSocket clients when order changes
         this.broadcastSnapshot();
-    }
-
-    get orderbookName() {
-        if (this.type === EOrderType.SPOT && 'id_desired' in this.props) {
-            const spotProps = this.props as ISpotOrderProps;
-            return `spot_${spotProps.id_for_sale}_${spotProps.id_desired}`;
-        } else if (this.type === EOrderType.FUTURES && 'contract_id' in this.props) {
-            const futuresProps = this.props as IFuturesOrderProps;
-            return `futures-${futuresProps.contract_id}`;
-        } else {
-            return null;
-        }
     }
 
     get orders(): TOrder[] {

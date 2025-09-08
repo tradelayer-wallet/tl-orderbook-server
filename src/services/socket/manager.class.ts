@@ -43,19 +43,6 @@ export class SocketManager {
     return this._liveSessions.get(id);
     }
 
-    
-    // NEW: targeted broadcast by market
-    public broadcastToMarket(marketKey: string, msg: object) {
-        const ids = this._marketSubs.get(marketKey);
-        if (!ids || ids.size === 0) return;
-        const str = JSON.stringify(msg);
-        for (const id of ids) {
-            const ws = this._liveSessions.get(id);
-            if (!ws) continue;
-            try { ws.send(str); } catch {}
-        }
-    }
-
     // NEW: subscribe / unsubscribe helpers
     private subscribeMarket(socketId: string, marketKey: string) {
         if (!this._marketSubs.has(marketKey)) this._marketSubs.set(marketKey, new Set());
@@ -81,20 +68,7 @@ export class SocketManager {
             try { ws.send(str); } catch {}
         }
     }
-
-    // NEW: subscribe / unsubscribe helpers
-    private subscribeMarket(socketId: string, marketKey: string) {
-        if (!this._marketSubs.has(marketKey)) this._marketSubs.set(marketKey, new Set());
-        this._marketSubs.get(marketKey)!.add(socketId);
-        if (!this._sessionSubs.has(socketId)) this._sessionSubs.set(socketId, new Set());
-         this._sessionSubs.get(socketId)!.add(marketKey);
-     }
-
-     private unsubscribeMarket(socketId: string, marketKey: string) {
-         this._marketSubs.get(marketKey)?.delete(socketId);
-         this._sessionSubs.get(socketId)?.delete(marketKey);
-     }
-
+    
     private handleClose(ws: HyperExpress.Websocket) {
         const id = (ws as any).id;
         this._liveSessions.delete(id);
