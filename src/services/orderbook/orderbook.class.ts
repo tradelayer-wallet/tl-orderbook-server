@@ -47,6 +47,18 @@ export class Orderbook {
         this.addExistingTradesHistory();
     }
 
+    public get orderbookName(): string {
+      if (this.type === EOrderType.SPOT) {
+        const { id_desired, id_for_sale } = this.props as ISpotOrderProps;
+        return `spot_${id_for_sale}_${id_desired}`;
+      }
+      if (this.type === EOrderType.FUTURES) {
+        const { contract_id } = this.props as IFuturesOrderProps;
+        return `futures_${contract_id}`;
+      }
+      return "unknown";
+    }
+
     private get type(): EOrderType {
         return this._type;
     }
