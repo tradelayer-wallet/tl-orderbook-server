@@ -46,17 +46,25 @@ export class Orderbook {
     this.addExistingTradesHistory();
   }
 
+  private normalizeOrderBookKey(p1: number, p2: number): string {
+    return p1 < p2 ? `${p1}-${p2}` : `${p2}-${p1}`;
+  }
+
   public get orderbookName(): string {
     if (this._type === EOrderType.SPOT) {
       const { id_desired, id_for_sale } = this.props as ISpotOrderProps;
-      return `spot_${id_for_sale}_${id_desired}`;
+      const normKey = this.normalizeOrderBookKey(id_for_sale, id_desired);
+      return `spot_${normKey}`;
     }
+
     if (this._type === EOrderType.FUTURES) {
       const { contract_id } = this.props as IFuturesOrderProps;
       return `futures_${contract_id}`;
     }
+
     return "unknown";
   }
+
 
   private get type(): EOrderType {
     return this._type;
