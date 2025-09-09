@@ -56,6 +56,31 @@ export class SocketManager {
         this._sessionSubs.get(socketId)?.delete(marketKey);
     }
 
+    addSession(id: string, ws: HyperExpress.Websocket) {
+    this._liveSessions.set(id, ws);
+
+	    // listen for JOIN/LEAVE events from client
+	    ws.on('message', (raw: string) => {
+	      try {
+	        const msg = JSON.parse(raw);
+	        if (msg.event === 'ORDERBOOK_JOIN') {
+	          this.subscribeMarket(id, msg.marketKey);
+	        } else if (msg.event === 'ORDERBOOK_LEAVE') {
+	          this.unsubscribeMarket(id, msg.marketKey);
+	        }
+	      } catch (err) {
+	        console.error('bad ws msg', err);
+	      }
+	    });
+	  }
+
+	  removeSession(id: string) {
+	    this._liveSessions.delete(id);
+	    for (const subs of this._marketSubs.values()) {
+	      subs.delete(id);
+	    }
+	  }
+
 
     // NEW: targeted broadcast by market
     public broadcastToMarket(marketKey: string, msg: object) {
@@ -68,7 +93,7 @@ export class SocketManager {
             try { ws.send(str); } catch {}
         }
     }
-    
+
     private handleClose(ws: HyperExpress.Websocket) {
         const id = (ws as any).id;
         this._liveSessions.delete(id);
