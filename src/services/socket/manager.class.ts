@@ -44,11 +44,19 @@ export class SocketManager {
     }
 
     // NEW: subscribe / unsubscribe helpers
-    private subscribeMarket(socketId: string, marketKey: string) {
+    private subscribeMarket(socketId: string, marketKey: string, socket: HyperExpress.Websocket){
         if (!this._marketSubs.has(marketKey)) this._marketSubs.set(marketKey, new Set());
         this._marketSubs.get(marketKey)!.add(socketId);
         if (!this._sessionSubs.has(socketId)) this._sessionSubs.set(socketId, new Set());
         this._sessionSubs.get(socketId)!.add(marketKey);
+		  const ob = orderbookManager.orderbooks.find(o => o.orderbookName === marketKey);
+
+		  if (socket && ob) {
+		    socket.emit(EmitEvents.ORDERBOOK_DATA, {
+		      orders: ob.orders.filter(o => !o.lock),
+		      history: ob.historyTrades,
+		    });
+		  }
     }
 
     private unsubscribeMarket(socketId: string, marketKey: string) {
@@ -141,7 +149,7 @@ export class SocketManager {
                 ws.close();
                 break;
             case OnEvents.ORDERBOOK_JOIN:
-            if (data.marketKey) this.subscribeMarket((ws as any).id, String(data.marketKey));
+            if (data.marketKey) this.subscribeMarket((ws as any).id, String(data.marketKey),ws);
                     break;
             case OnEvents.ORDERBOOK_LEAVE:
             if (data.marketKey) this.unsubscribeMarket((ws as any).id, String(data.marketKey));
@@ -191,6 +199,7 @@ export class SocketManager {
         if (!ob) {
           return socket.emit(EmitEvents.ORDERBOOK_DATA, { orders: [], history: [] });
         }
+
         socket.emit(EmitEvents.ORDERBOOK_DATA, {
           orders: ob.orders.filter(o => !o.lock),
           history: ob.historyTrades,
