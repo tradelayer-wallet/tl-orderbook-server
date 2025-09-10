@@ -52,10 +52,10 @@ export class SocketManager {
 		  const ob = orderbookManager.orderbooks.find(o => o.orderbookName === marketKey);
 
 		  if (socket && ob) {
-		    socket.emit(EmitEvents.ORDERBOOK_DATA as keyof Events, {
-		      orders: ob.orders.filter(o => !o.lock),
-		      history: ob.historyTrades,
-		    });
+		    socket.emit(EmitEvents.ORDERBOOK_DATA as any, {
+			  orders: ob.orders.filter(o => !o.lock),
+			  history: ob.historyTrades,
+			});
 		  }
     }
 
