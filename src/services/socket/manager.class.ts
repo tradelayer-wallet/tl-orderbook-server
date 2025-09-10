@@ -52,7 +52,7 @@ export class SocketManager {
 		  const ob = orderbookManager.orderbooks.find(o => o.orderbookName === marketKey);
 
 		  if (socket && ob) {
-		    socket.emit(EmitEvents.ORDERBOOK_DATA, {
+		    socket.emit(EmitEvents.ORDERBOOK_DATA as keyof Events, {
 		      orders: ob.orders.filter(o => !o.lock),
 		      history: ob.historyTrades,
 		    });
@@ -72,7 +72,7 @@ export class SocketManager {
 	      try {
 	        const msg = JSON.parse(raw);
 	        if (msg.event === 'ORDERBOOK_JOIN') {
-	          this.subscribeMarket(id, msg.marketKey);
+	          this.subscribeMarket(id, msg.marketKey,ws);
 	        } else if (msg.event === 'ORDERBOOK_LEAVE') {
 	          this.unsubscribeMarket(id, msg.marketKey);
 	        }
