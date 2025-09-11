@@ -193,7 +193,7 @@ export class SocketManager {
         }
     }
 
-    handleUpdateOrderbook(socket, data) {
+    handleUpdateOrderbook(ws, data) {
         const filter = data?.filter ?? data;   // accept {filter:{...}} or direct filter
 
         console.log('filter in update orderbook '+JSON.stringify(filter))
@@ -205,10 +205,10 @@ export class SocketManager {
         console.log('[SM] handleUpdateOrderbook ws.id', (ws as any).id);
 
         if (!ob) {
-          return socket.emit(EmitEvents.ORDERBOOK_DATA, { orders: [], history: [] });
+          return ws.emit(EmitEvents.ORDERBOOK_DATA, { orders: [], history: [] });
         }
 
-        socket.emit(EmitEvents.ORDERBOOK_DATA, {
+        ws.emit(EmitEvents.ORDERBOOK_DATA, {
           orders: ob.orders.filter(o => !o.lock),
           history: ob.historyTrades,
         });
