@@ -198,6 +198,7 @@ export class SocketManager {
           return socket.emit(EmitEvents.ORDERBOOK_DATA, { orders: [], history: [] });
         }
 		const ob = orderbookManager.orderbooks.find(o => o.findByFilter(filter));
+        console.log('ob result by filter '+JSON.stringify(ob))
         if (!ob) {
           return socket.emit(EmitEvents.ORDERBOOK_DATA, { orders: [], history: [] });
         }
