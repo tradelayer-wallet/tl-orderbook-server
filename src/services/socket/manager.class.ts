@@ -23,10 +23,13 @@ export class SocketManager {
         ws.on('close',   ()  => this.handleClose(ws));
 
         // Initial orderbook snapshot, history, etc.
-        const ordersSnapshot = orderbookManager.orderbooks
+        let ordersSnapshot = orderbookManager.orderbooks
             .map(ob => ob.orders)
             .reduce((a, b) => a.concat(b), [])
             .filter(o => !o.lock);
+
+        console.log('ordersSnapshot on open '+JSON.stringify(ordersSnapshot))
+        if(!ordersSnapshot){ordersSnapshot=[]}
 
         const historySnapshot = orderbookManager.getOrdersHistory();
 
@@ -199,6 +202,8 @@ export class SocketManager {
         }
 		const ob = orderbookManager.orderbooks.find(o => o.findByFilter(filter));
         console.log('ob result by filter '+JSON.stringify(ob))
+        console.log('[SM] handleUpdateOrderbook ws.id', (ws as any).id);
+
         if (!ob) {
           return socket.emit(EmitEvents.ORDERBOOK_DATA, { orders: [], history: [] });
         }
