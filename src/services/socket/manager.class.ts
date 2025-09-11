@@ -192,6 +192,8 @@ export class SocketManager {
 
     handleUpdateOrderbook(socket, data) {
         const filter = data?.filter ?? data;   // accept {filter:{...}} or direct filter
+
+        console.log('filter in update orderbook '+JSON.stringify(filter))
         if (!filter) {
           return socket.emit(EmitEvents.ORDERBOOK_DATA, { orders: [], history: [] });
         }
