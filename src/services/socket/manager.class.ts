@@ -192,27 +192,34 @@ export class SocketManager {
             ws.send(JSON.stringify({ event: EmitEvents.PLACED_ORDERS, openedOrders, orderHistory }));
         }
     }
+handleUpdateOrderbook(ws, data) {
+    const filter = data?.filter ?? data;   // accept {filter:{...}} or direct filter
 
-    handleUpdateOrderbook(ws, data) {
-        const filter = data?.filter ?? data;   // accept {filter:{...}} or direct filter
-
-        console.log('filter in update orderbook '+JSON.stringify(filter))
-        if (!filter) {
-          return ws.emit(EmitEvents.ORDERBOOK_DATA, { orders: [], history: [] });
-        }
-		const ob = orderbookManager.orderbooks.find(o => o.findByFilter(filter));
-        console.log('ob result by filter '+JSON.stringify(ob))
-        console.log('[SM] handleUpdateOrderbook ws.id', (ws as any).id);
-
-        if (!ob) {
-          return ws.emit(EmitEvents.ORDERBOOK_DATA, { orders: [], history: [] });
-        }
-
-        ws.emit(EmitEvents.ORDERBOOK_DATA, {
-          orders: ob.orders.filter(o => !o.lock),
-          history: ob.historyTrades,
-        });
+    console.log('filter in update orderbook ' + JSON.stringify(filter));
+    if (!filter) {
+        const payload = {
+            event: EmitEvents.ORDERBOOK_DATA,
+            orders: [],
+            history: []
+        };
+        console.log('[SM] sending empty snapshot (no filter)', JSON.stringify(payload));
+        return ws.send(JSON.stringify(payload));
     }
+
+    const ob = orderbookManager.orderbooks.find(o => o.findByFilter(filter));
+    console.log('ob result by filter ' + JSON.stringify(ob));
+    console.log('[SM] handleUpdateOrderbook ws.id', (ws as any).id);
+
+    const payload = {
+        event: EmitEvents.ORDERBOOK_DATA,
+        orders: ob ? ob.orders.filter(o => !o.lock) : [],
+        history: ob ? ob.historyTrades : []
+    };
+
+    console.log('[SM] sending snapshot', JSON.stringify(payload));
+    ws.send(JSON.stringify(payload));
+}
+
 
     private handleManyOrders(ws: HyperExpress.Websocket, data: any) {
         const id = (ws as any).id;
