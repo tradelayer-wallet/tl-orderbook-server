@@ -76,6 +76,7 @@ interface IFuturesTradeProps {
     price: number;
     initMargin: number;
     collateral: number;
+    sellerIsMaker: boolean;
 };
 
 interface ISpotTradeProps {
@@ -83,6 +84,7 @@ interface ISpotTradeProps {
     propIdForSale: number;
     amountDesired: number;
     amountForSale: number;
+    sellerIsMaker: boolean;
 };
 
 export interface ITradeInfo {

@@ -557,6 +557,7 @@ const buildTrade = (
 
         const amount = Math.min(newOrderAmount, oldOrderAmount);
         let price = old_order.props.price;
+        const sellerIsMaker = old_order.action === EOrderAction.SELL;
 
         let tradeProps: any;
         if (buyOrder.type === EOrderType.FUTURES) {
@@ -567,6 +568,7 @@ const buildTrade = (
                 price: price,
                 initMargin: buyOrderProps.initMargin,
                 collateral: buyOrderProps.collateral,
+                sellerIsMaker
             };
         } else {
             const buyOrderProps = buyOrder.props as ISpotOrderProps;
@@ -575,6 +577,7 @@ const buildTrade = (
                 propIdForSale: buyOrderProps.id_for_sale,
                 amountDesired: amount,
                 amountForSale: safeNumber(amount * price),
+                sellerIsMaker
             };
         }
 
