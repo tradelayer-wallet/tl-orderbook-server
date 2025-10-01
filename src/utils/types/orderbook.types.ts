@@ -8,6 +8,8 @@ export interface ISpotOrderProps {
     id_for_sale: number;
     amount: number;
     price: number;
+    sellerIsMaker: boolean;
+    transfer?: boolean;
 };
 
 export interface IFuturesOrderProps {
@@ -16,6 +18,8 @@ export interface IFuturesOrderProps {
     price: number;
     initMargin: number;
     collateral: number;
+    sellerIsMaker: boolean;
+    transfer?: boolean
 };
 
 interface IRawSpotOrder {
@@ -77,6 +81,7 @@ interface IFuturesTradeProps {
     initMargin: number;
     collateral: number;
     sellerIsMaker: boolean;
+    transfer?: boolean;
 };
 
 interface ISpotTradeProps {
@@ -85,6 +90,7 @@ interface ISpotTradeProps {
     amountDesired: number;
     amountForSale: number;
     sellerIsMaker: boolean;
+    transfer?: boolean;
 };
 
 export interface ITradeInfo {
