@@ -174,7 +174,22 @@ export class SocketManager {
                 delete data.props.contractId;
             }
         }
-        // (Add your spot/futures logic here, as in your version...)
+        
+        if (data?.type === 'SPOT' && data?.props) {
+            const baseId  = data.props.basePropertyId;   // must be supplied or resolved
+            const quoteId = data.props.quotePropertyId;
+            const side    = data.props.side; // 'BUY' or 'SELL'
+
+            if (side === 'BUY') {
+                // Selling base, desiring quote
+                data.props.id_for_sale  = baseId;
+                data.props.id_desired   = quoteId;
+            } else if (side === 'SELL') {
+                // Selling quote, desiring base
+                data.props.id_for_sale  = quoteId;
+                data.props.id_desired   = baseId;
+            }
+        }
 
         const id = (ws as any).id;
         const order = await orderFactory(data, id);
@@ -192,6 +207,7 @@ export class SocketManager {
             ws.send(JSON.stringify({ event: EmitEvents.PLACED_ORDERS, openedOrders, orderHistory }));
         }
     }
+
 handleUpdateOrderbook(ws, data) {
     const filter = data?.filter ?? data;   // accept {filter:{...}} or direct filter
 
