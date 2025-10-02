@@ -175,21 +175,35 @@ export class SocketManager {
             }
         }
         
-        if (data?.type === 'SPOT' && data?.props) {
-            const baseId  = data.props.basePropertyId;   // must be supplied or resolved
-            const quoteId = data.props.quotePropertyId;
-            const side    = data.props.side; // 'BUY' or 'SELL'
+      if (data?.type === 'SPOT' && data?.props) {
+            const f = data.props.id_for_sale;
+            const d = data.props.id_desired;
 
-            if (side === 'BUY') {
-                // Selling base, desiring quote
-                data.props.id_for_sale  = baseId;
-                data.props.id_desired   = quoteId;
-            } else if (side === 'SELL') {
-                // Selling quote, desiring base
-                data.props.id_for_sale  = quoteId;
-                data.props.id_desired   = baseId;
+            if (f == null || d == null) {
+                ws.send(JSON.stringify({ event: OrderEmitEvents.ERROR, message: 'Missing property IDs' }));
+                return;
             }
+
+            const baseId  = Math.min(f, d);
+            const quoteId = Math.max(f, d);
+
+            // BUY = selling base, desiring quote
+            // SELL = selling quote, desiring base
+            if (f === baseId && d === quoteId) {
+                data.props.side = 'BUY';
+            } else if (f === quoteId && d === baseId) {
+                data.props.side = 'SELL';
+            } else {
+                // Defensive: malformed combo
+                ws.send(JSON.stringify({ event: OrderEmitEvents.ERROR, message: 'Invalid property ID pair' }));
+                return;
+            }
+
+            // Normalize: enforce invariant for the book
+            data.props.id_for_sale = f;
+            data.props.id_desired  = d;
         }
+
 
         const id = (ws as any).id;
         const order = await orderFactory(data, id);
