@@ -280,11 +280,6 @@ export class Orderbook {
 	    const best = compatible[0];
 	    if (!best) return { data: { match: null } };
 
-	    if (best.socket_id === order.socket_id)
-	      throw new Error('Self-trade (socket)');
-	    if (best.keypair.address === order.keypair.address)
-	      throw new Error('Self-trade (address)');
-
 	    return { data: { match: best } };
 	  } catch (err) {
 	    return { error: (err as Error).message };
