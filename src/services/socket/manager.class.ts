@@ -9,9 +9,21 @@ export class SocketManager {
     private _marketSubs = new Map<string, Set<string>>();   
     private _sessionSubs = new Map<string, Set<string>>();
     private _attached = new WeakSet<HyperExpress.Websocket>();
+    private _recentClose = new Map<string, Map<string, number>>();
 
     constructor() {
         // NO servers here. Only manage global state.
+    }
+
+    
+    private _seenClose(ws: HyperExpress.Websocket, uuid: string, ms = 1500) {
+      const sid = (ws as any).id as string;
+      let byUuid = this._recentClose.get(sid);
+      if (!byUuid) this._recentClose.set(sid, byUuid = new Map());
+      const now = Date.now();
+      const last = byUuid.get(uuid) || 0;
+      byUuid.set(uuid, now);
+      return now - last < ms; // true → seen very recently
     }
 
     // Called from index.ts: server.ws('/ws', ws => socketManager.handleOpen(ws))
@@ -208,8 +220,12 @@ export class SocketManager {
                 this.handleUpdateOrderbook(ws, data);
                 break;
             case OnEvents.CLOSE_ORDER:
-                this.handleCloseOrder(ws, data);
-                break;
+                case OnEvents.CLOSE_ORDER: {
+                  const uuid = data.orderUUID;
+                  if (this._seenClose(ws, uuid)) break;   // drop duplicate
+                  this.handleCloseOrder(ws, data);
+                  break;
+                }
             case OnEvents.MANY_ORDERS:
                 this.handleManyOrders(ws, data);
                 break;
