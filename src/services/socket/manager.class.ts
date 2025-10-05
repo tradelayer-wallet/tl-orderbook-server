@@ -8,6 +8,7 @@ export class SocketManager {
     private _liveSessions = new Map<string, HyperExpress.Websocket>();
     private _marketSubs = new Map<string, Set<string>>();   
     private _sessionSubs = new Map<string, Set<string>>();
+    private _attached = new WeakSet<HyperExpress.Websocket>();
 
     constructor() {
         // NO servers here. Only manage global state.
@@ -15,57 +16,112 @@ export class SocketManager {
 
     // Called from index.ts: server.ws('/ws', ws => socketManager.handleOpen(ws))
     handleOpen(ws: HyperExpress.Websocket) {
-        const id = this.generateUniqueId();
-        (ws as any).id = id;
-        this._liveSessions.set(id, ws);
+      const id = this.generateUniqueId();
+      (ws as any).id = id;
+      this._liveSessions.set(id, ws);
 
-        ws.on('message', (m) => this.handleMessage(ws, m));
-        ws.on('close',   ()  => this.handleClose(ws));
+      // Per-socket state
+      (ws as any)._markets = new Set<string>();
+      (ws as any)._forwarders = (ws as any)._forwarders || {};
 
-        // Initial orderbook snapshot, history, etc.
-        let ordersSnapshot = orderbookManager.orderbooks
-            .map(ob => ob.orders)
-            .reduce((a, b) => a.concat(b), [])
-            .filter(o => !o.lock);
+      // ---- attach bus → socket forwarders ONCE per socket ----
+      if (!(ws as any)._forwarders.closeOrder) {
+        // optional short-window de-dupe to avoid spam if upstream double-emits
+        const recent = new Map<string, number>(); // uuid -> ts
+        const seenRecently = (uuid: string, ms = 1200) => {
+          const now = Date.now();
+          const last = recent.get(uuid) || 0;
+          recent.set(uuid, now);
+          return now - last < ms;
+        };
 
-        console.log('ordersSnapshot on open '+JSON.stringify(ordersSnapshot))
-        if(!ordersSnapshot){ordersSnapshot=[]}
+        const fwdClose = (evt: { orderUuid: string; marketKey?: string; [k: string]: any }) => {
+          // market filter per socket
+          const mk = evt.marketKey;
+          const markets: Set<string> = (ws as any)._markets;
+          if (mk && markets.size && !markets.has(mk)) return;
 
-        const historySnapshot = orderbookManager.getOrdersHistory();
+          // de-dupe per socket (belt & suspenders)
+          if (seenRecently(evt.orderUuid)) return;
 
-        ws.send(JSON.stringify({
-            event: EmitEvents.ORDERBOOK_DATA,
-            orders: ordersSnapshot,
-            history: historySnapshot
-        }));
-        ws.send(JSON.stringify({ event: 'connected', id }));
-        console.log(`[SM] OPEN ${id}, live=${this._liveSessions.size}`);
+          try {
+            ws.send(JSON.stringify({ event: 'close-order', ...evt }));
+          } catch {/* ignore */}
+        };
+
+        (ws as any)._forwarders.closeOrder = fwdClose;
+
+
+          console.log('[DBG] close-order listenerCount now:',
+            orderbookManager.bus.listenerCount('close-order')
+          );
+        // IMPORTANT: bind to your single OB bus just once per socket
+        orderbookManager.bus.on('close-order', fwdClose);
+            console.log('[DBG] close-order listenerCount (post):',
+            orderbookManager.bus.listenerCount('close-order')
+          );
+      }
+
+      // ---- wire ws lifecycle ----
+      ws.on('message', (m) => this.handleMessage(ws, m));
+      ws.on('close',   ()  => this.handleClose(ws));
+
+      // ---- initial snapshot (no live re-broadcast here) ----
+      let ordersSnapshot = orderbookManager.orderbooks
+      .map(ob => ob.orders)
+      .reduce((acc, arr) => acc.concat(arr), [] as any[])
+      .filter((o: any) => !o.lock);
+
+      const historySnapshot = orderbookManager.getOrdersHistory();
+
+      ws.send(JSON.stringify({
+        event: EmitEvents.ORDERBOOK_DATA,
+        orders: ordersSnapshot || [],
+        history: historySnapshot
+      }));
+      ws.send(JSON.stringify({ event: 'connected', id }));
+
+      console.log(`[SM] OPEN ${id}, live=${this._liveSessions.size}`);
     }
+
 
     public getSocketById(id: string): HyperExpress.Websocket | undefined {
     return this._liveSessions.get(id);
     }
 
     // NEW: subscribe / unsubscribe helpers
-    private subscribeMarket(socketId: string, marketKey: string, socket: HyperExpress.Websocket){
-        if (!this._marketSubs.has(marketKey)) this._marketSubs.set(marketKey, new Set());
-        this._marketSubs.get(marketKey)!.add(socketId);
-        if (!this._sessionSubs.has(socketId)) this._sessionSubs.set(socketId, new Set());
-        this._sessionSubs.get(socketId)!.add(marketKey);
-		  const ob = orderbookManager.orderbooks.find(o => o.orderbookName === marketKey);
+    private subscribeMarket(socketId: string, marketKey: string, ws: HyperExpress.Websocket) {
+      // track who’s subscribed (for admin/debug)
+      if (!this._marketSubs.has(marketKey)) this._marketSubs.set(marketKey, new Set());
+      this._marketSubs.get(marketKey)!.add(socketId);
 
-		  if (socket && ob) {
-		    socket.emit(EmitEvents.ORDERBOOK_DATA as any, {
-			  orders: ob.orders.filter(o => !o.lock),
-			  history: ob.historyTrades,
-			});
-		  }
+      if (!this._sessionSubs.has(socketId)) this._sessionSubs.set(socketId, new Set());
+      this._sessionSubs.get(socketId)!.add(marketKey);
+
+      // per-socket market filter set (used by the single forwarder)
+      const markets: Set<string> = (ws as any)._markets || ((ws as any)._markets = new Set());
+      markets.add(marketKey);
+
+      // send a one-shot snapshot for THIS market only
+      const ob = orderbookManager.orderbooks.find(o => o.orderbookName === marketKey);
+      if (ws && ob) {
+        ws.send(JSON.stringify({
+          event: EmitEvents.ORDERBOOK_DATA,
+          orders: ob.orders.filter(o => !o.lock),
+          history: ob.historyTrades
+        }));
+      }
     }
 
     private unsubscribeMarket(socketId: string, marketKey: string) {
-        this._marketSubs.get(marketKey)?.delete(socketId);
-        this._sessionSubs.get(socketId)?.delete(marketKey);
+      const ws = this._liveSessions.get(socketId);
+      if (!ws) return;
+
+      this._marketSubs.get(marketKey)?.delete(socketId);
+      this._sessionSubs.get(socketId)?.delete(marketKey);
+      (ws as any)._markets?.delete(marketKey);
     }
+
 
     addSession(id: string, ws: HyperExpress.Websocket) {
     this._liveSessions.set(id, ws);
@@ -106,25 +162,35 @@ export class SocketManager {
     }
 
     private handleClose(ws: HyperExpress.Websocket) {
-        const id = (ws as any).id;
-        this._liveSessions.delete(id);
-        console.log(`[SM] Connection closed: ${id}`);
+      const id = (ws as any).id;
+      this._liveSessions.delete(id);
+      console.log(`[SM] Connection closed: ${id}`);
 
-        const subs = this._sessionSubs.get(id);
-        if (subs) {
-            for (const mk of subs) this._marketSubs.get(mk)?.delete(id);
-            this._sessionSubs.delete(id);
-        }
+      // detach forwarders ONCE per socket
+      const f = (ws as any)._forwarders;
+      if (f?.closeOrder) {
+        orderbookManager.bus.off('close-order', f.closeOrder);
+        delete (ws as any)._forwarders.closeOrder;
+      }
 
-        // Purge user orders
-        const openedOrders = orderbookManager.getOrdersBySocketId(id);
-        openedOrders.forEach(o => {
-            orderbookManager.removeOrder(o.uuid, id);
-        });
+      // clear subscription indices
+      const subs = this._sessionSubs.get(id);
+      if (subs) {
+        for (const mk of subs) this._marketSubs.get(mk)?.delete(id);
+        this._sessionSubs.delete(id);
+      }
+
+      // purge user orders
+      const openedOrders = orderbookManager.getOrdersBySocketId(id);
+      openedOrders.forEach(o => {
+        orderbookManager.removeOrder(o.uuid, id);
+      });
     }
+
 
     private async handleMessage(ws: HyperExpress.Websocket, message: ArrayBuffer | string) {
         let data;
+        console.log('incoming message '+message)
         try {
             data = JSON.parse(
                 typeof message === 'string' ? message : Buffer.from(message).toString()
@@ -222,44 +288,46 @@ export class SocketManager {
         }
     }
 
-handleUpdateOrderbook(ws, data) {
-    const filter = data?.filter ?? data;   // accept {filter:{...}} or direct filter
+    handleUpdateOrderbook(ws, data) {
+        const filter = data?.filter ?? data;   // accept {filter:{...}} or direct filter
 
-    console.log('filter in update orderbook ' + JSON.stringify(filter));
-    if (!filter) {
+        console.log('filter in update orderbook ' + JSON.stringify(filter));
+        if (!filter) {
+            const payload = {
+                event: EmitEvents.ORDERBOOK_DATA,
+                orders: [],
+                history: []
+            };
+            console.log('[SM] sending empty snapshot (no filter)', JSON.stringify(payload));
+            return ws.send(JSON.stringify(payload));
+        }
+
+        const ob = orderbookManager.orderbooks.find(o => o.findByFilter(filter));
+        console.log('ob result by filter ' + JSON.stringify(ob));
+        console.log('[SM] handleUpdateOrderbook ws.id', (ws as any).id);
+
         const payload = {
             event: EmitEvents.ORDERBOOK_DATA,
-            orders: [],
-            history: []
+            orders: ob ? ob.orders.filter(o => !o.lock) : [],
+            history: ob ? ob.historyTrades : []
         };
-        console.log('[SM] sending empty snapshot (no filter)', JSON.stringify(payload));
-        return ws.send(JSON.stringify(payload));
+
+        console.log('[SM] sending snapshot', JSON.stringify(payload));
+        ws.send(JSON.stringify(payload));
     }
 
-    const ob = orderbookManager.orderbooks.find(o => o.findByFilter(filter));
-    console.log('ob result by filter ' + JSON.stringify(ob));
-    console.log('[SM] handleUpdateOrderbook ws.id', (ws as any).id);
+    private async handleManyOrders(ws: HyperExpress.Websocket, data: any) {
+          const id = (ws as any).id;
+          const rawOrders = data.orders as any[];
 
-    const payload = {
-        event: EmitEvents.ORDERBOOK_DATA,
-        orders: ob ? ob.orders.filter(o => !o.lock) : [],
-        history: ob ? ob.historyTrades : []
-    };
+          await Promise.all(rawOrders.map(async raw => {
+            const order = await orderFactory(raw, id);
+            return orderbookManager.addOrder(order, true);
+          }));
 
-    console.log('[SM] sending snapshot', JSON.stringify(payload));
-    ws.send(JSON.stringify(payload));
-}
+          ws.send(JSON.stringify({ event: OrderEmitEvents.SAVED }));
+        }
 
-
-    private handleManyOrders(ws: HyperExpress.Websocket, data: any) {
-        const id = (ws as any).id;
-        const rawOrders = data.orders;
-        rawOrders.forEach(async (rawOrder: any) => {
-            const order = await orderFactory(rawOrder, id);
-            await orderbookManager.addOrder(order, true);
-        });
-        ws.send(JSON.stringify({ event: OrderEmitEvents.SAVED }));
-    }
 
     private handleCloseOrder(ws: HyperExpress.Websocket, data: any) {
         const id = (ws as any).id;
