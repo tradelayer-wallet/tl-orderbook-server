@@ -1,278 +1,298 @@
 // src/services/orderbook/orderbook.class.ts
-import * as native from '../../../rust/matcher-core/matcher_core.node';
+
 import { Websocket } from "hyper-express";
-import { ChannelSwap } from "../channel-swap/channel-swap.class";   // <- adjust
-import { socketManager } from "../socket/manager.class";        
-// Minimal shape the Rust core expects
-type NativeOrder = {
-  uuid: string;
-  side: 'BUY' | 'SELL';
-  price: number;
-  amount: number;
-  socket_id?: string;
-};
+import { ChannelSwap } from "../channel-swap/channel-swap.class";        // <-- check path
+import { SocketManager } from "../socket/manager.class";                 // <-- check path
 
-type ConstructArg = string | { marketKey?: string; symbol?: string } | Record<string, any>;
+// N-API binding
+const core = require("../../../rust/matcher-core/matcher_core.node");    // <-- check path
 
-function inferSymbol(arg: ConstructArg): string {
-  if (typeof arg === 'string') return arg;
-  if (arg && typeof arg === 'object') {
-    if (typeof (arg as any).marketKey === 'string') return (arg as any).marketKey!;
-    if (typeof (arg as any).symbol === 'string') return (arg as any).symbol!;
-  }
-  return 'DEFAULT';
-}
+// === Use your real app types so manager/socket compile ===
+import type {
+  TOrder,            
+  ITradeInfo,         
+  IHistoryTrade
+} from "../../utils/types/orderbook.types";  
 
-function normSide(x: any): 'BUY' | 'SELL' {
-  const s =
-    (x?.side ?? x?.action ?? x?.orderSide ?? '').toString().toLowerCase();
-  return s === 'buy' ? 'BUY' : 'SELL';
-}
-function num(x: any, fallback = 0): number {
-  const n = Number(x);
-  return Number.isFinite(n) ? n : fallback;
-}
-function normalizeOrder(o: any): NativeOrder {
+type SideStr = "BUY" | "SELL";
+
+// Normalize to the JsOrder expected by the Rust layer
+function normalizeOrder(o: TOrder) {
   return {
-    uuid:
-      (o?.uuid ?? o?.id ?? o?.orderId ?? o?.clientOrderId ?? o?.cid ?? '').toString(),
-    side: normSide(o),
-    price: num(o?.price ?? o?.price_num ?? o?.px),
-    amount: num(o?.amount ?? o?.qty ?? o?.quantity ?? o?.size),
-    socket_id: o?.socket_id ?? o?.socketId,
+    uuid: o.uuid,
+    side: (o.side as string).toUpperCase(),  // "BUY"/"SELL"
+    price: o.price,
+    amount: o.amount,
+    socket_id: (o as any).socket_id ?? null,
   };
 }
 
+// Access a socket manager instance
+const socketManager: SocketManager =
+  (SocketManager as any).getInstance?.() ?? new SocketManager();
+
 export class Orderbook {
-  public orderbookName: string;
-  // keep these very loose so manager/socket code can stuff their own shapes
-  public orders: any[] = [];
-  public historyTrades: any[] = [];
-  
-  constructor(arg: ConstructArg) {
-    this.orderbookName = inferSymbol(arg).toUpperCase();
-    native.createBook(this.orderbookName);
-  }
+  public readonly orderbookName: string;
 
-  // server-side owner index for resting orders
-  const ownerByOrderId = new Map<string, string>();
-  export public rememberOwner(orderId: string, socketId?: string) {
-    if (orderId && socketId) ownerByOrderId.set(orderId, socketId);
-  }
-  export public forgetOwner(orderId: string) {
-    if (orderId) ownerByOrderId.delete(orderId);
-  }
-  export public ownerOf(orderId: string): string | undefined {
-    return ownerByOrderId.get(orderId);
-  }
+  // Legacy fields expected by other code
+  public orders: TOrder[] = [];
+  public historyTrades: IHistoryTrade[] = [];
 
-  public opposite(side: 'BUY'|'SELL'): 'BUY'|'SELL' { return side === 'BUY' ? 'SELL' : 'BUY'; }
+  // Internal owner map (maker routing)
+  private ownerByOrderId = new Map<string, string>();
 
-// Heuristic: when the maker isn’t fully removed (no id in filled_order_ids),
-// look up the current FIFO top at that price on the maker side.
-export public findMakerOrderIdFromSnapshot(obSymbol: string, makerSide: 'BUY'|'SELL', price: number): string | undefined {
-  try {
-    const depth = 20; // plenty for best level
-    const snap = JSON.parse(native.snapshot(obSymbol, depth));
-    const book = snap?.snapshot;
-    const levels = (makerSide === 'BUY' ? book?.bids : book?.asks) || [];
-    const lvl = levels.find((l: any) => l.price === price);
-    if (!lvl) return;
-    // FIFO: first order on that level is the maker currently at top
-    const first = lvl.orders?.[0];
-    if (!first) return;
-    const id = first.Standard?.id ?? first?.id;
-    return id;
-  } catch { return; }
-}
-
-  dispose() { native.dropBook(this.orderbookName); }
-
-  // Manager calls this with ISpotOrder; accept anything.
-  public checkCompatible(order: any): boolean {
-    const want = inferSymbol(order).toUpperCase();
-    return want === this.orderbookName;
-  }
-
-  public findByFilter(filter: string): boolean {
-    return this.orderbookName.toLowerCase().includes((filter ?? '').toLowerCase());
-  }
-
-    public updatePlacedOrdersForSocketId(_socketId?: string): void {}
-
-    // Accept anything and normalize for Rust
-    // orderbook.class.ts
-
-    // 1) single
-    public async addOrder(order: TOrder, noTrades: boolean = false) {
-      if (order?.uuid && order?.socket_id) this.rememberOwner(order.uuid, order.socket_id);
-
-      const raw = core.submit(this.orderbookName, normalizeOrder(order));
-      const res = typeof raw === "string" ? JSON.parse(raw) : raw;
-
-      if (!noTrades) {
-        await this.processSubmitResult(this.orderbookName, order, res).catch(e =>
-          console.error("[processSubmitResult]", e)
-        );
-      }
-      return res;
+  // --- Constructors: accept symbol OR firstOrder (legacy) ---
+  constructor(symbolOrOrder: string | TOrder) {
+    if (typeof symbolOrOrder === "string") {
+      this.orderbookName = symbolOrOrder;
+    } else {
+      const firstOrder = symbolOrOrder as TOrder;
+      const sym = (firstOrder as any).symbol || (firstOrder as any).pair || "UNKNOWN";
+      this.orderbookName = sym;
+      // Seed book with the first order without emitting trades
+      // (Manager expects `orderbook.orders[0]` right after creation)
+      this.addOrder(firstOrder, /* noTrades */ true).catch(() => {});
     }
 
-    // 2) batch
-    public async addOrdersBatch(orders: TOrder[], noTrades: boolean = false) {
-      for (const o of orders) if (o?.uuid && o?.socket_id) this.rememberOwner(o.uuid, o.socket_id);
-
-      const raw = core.submitBatch(this.orderbookName, orders.map(normalizeOrder));
-      const results: any[] = typeof raw === "string" ? JSON.parse(raw) : raw;
-
-      if (!noTrades) {
-        for (let i = 0; i < results.length; i++) {
-          try {
-            await this.processSubmitResult(this.orderbookName, orders[i], results[i]);
-          } catch (e) {
-            console.error("[processSubmitResult/batch]", e);
-          }
-        }
-      }
-      return results;
-    }
-
-
-  public removeOrder(orderId: string, _socket_id?: string) {
-    return native.cancel(this.orderbookName, orderId);
-  }
-
-  public cancelAllBySocket(socketId: string) {
-    return native.cancelAllBySocket(this.orderbookName, socketId);
-  }
-
-  public refresh(depth: number = 20): void {
-    const json = native.snapshot(this.orderbookName, depth);
     try {
-      const snap = JSON.parse(json);
-      const toList = (levels: any, side: 'BUY' | 'SELL') =>
-        Object.values(levels ?? {}).flatMap((lvl: any) =>
-          (lvl.orders ?? []).map((o: any) => ({
-            uuid: o.id ?? '',
-            side,
-            price: lvl.price ?? 0,
-            amount: o.quantity ?? 0,
-            lock: false,
-          })),
-        );
-      this.orders = [...toList(snap.bids, 'BUY'), ...toList(snap.asks, 'SELL')];
-    } catch {
-      this.orders = [];
+      if (typeof core.createBook === "function") core.createBook(this.orderbookName);
+    } catch (e) {
+      console.warn("[orderbook] createBook warn:", e);
     }
   }
 
-  public snapshot(depth: number = 20): any {
-    try { return JSON.parse(native.snapshot(this.orderbookName, depth)); }
-    catch { return {}; }
-  }
-  public stats(): any {
-    try { return JSON.parse(native.stats(this.orderbookName)); }
-    catch { return {}; }
+  /* ===========================
+        Legacy/compat API
+  =========================== */
+
+  // Manager calls this after constructing with firstOrder
+  public updatePlacedOrdersForSocketId(socketId?: string) {
+    // no-op placeholder to keep behavior; your old impl probably cached per-socket views
+    return;
   }
 
+  // Used by manager to find an OB that matches this order
+  public checkCompatible(order: TOrder): boolean {
+    const sym = (order as any).symbol || (order as any).pair || "UNKNOWN";
+    return sym === this.orderbookName;
+  }
+
+  // Used by socket manager to filter a specific book
+  public findByFilter(filter: { symbol?: string; [k: string]: any }): boolean {
+    return !filter?.symbol || filter.symbol === this.orderbookName;
+  }
+
+  // Legacy cancel (soft remove + TODO native cancel)
+  public removeOrder(uuid: string, socket_id?: string) {
+    // TODO: wire to native cancel if/when available
+    const idx = this.orders.findIndex(o => o.uuid === uuid);
+    if (idx >= 0) {
+      const [removed] = this.orders.splice(idx, 1);
+      this.ownerByOrderId.delete(uuid);
+      return { data: { removed } };
+    }
+    return { error: "order_not_found" };
+  }
+
+  /* ===========================
+        Public trading API
+  =========================== */
+
+  // add one; optionally suppress fan-out/swaps
+  public async addOrder(order: TOrder, noTrades: boolean = false) {
+    // Remember owner in case this order rests
+    if ((order as any)?.uuid && (order as any)?.socket_id) {
+      this.rememberOwner((order as any).uuid, (order as any).socket_id);
+    }
+
+    const raw = core.submit(this.orderbookName, normalizeOrder(order));
+    const res = typeof raw === "string" ? JSON.parse(raw) : raw;
+
+    // If it rests, reflect in local `orders`
+    if (!res.is_complete && res.remaining_qty > 0) {
+      const resting: TOrder = {
+        ...order,
+        amount: res.remaining_qty,
+      } as TOrder;
+      // Replace existing by uuid or push
+      const i = this.orders.findIndex(o => o.uuid === resting.uuid);
+      if (i >= 0) this.orders[i] = resting; else this.orders.push(resting);
+    }
+
+    if (!noTrades) {
+      await this.processSubmitResult(this.orderbookName, order, res).catch((e: any) =>
+        console.error("[processSubmitResult]", e)
+      );
+    }
+    return res;
+  }
+
+  // add many; optionally suppress fan-out/swaps
+  public async addOrdersBatch(orders: TOrder[], noTrades: boolean = false) {
+    for (const o of orders) {
+      if ((o as any)?.uuid && (o as any)?.socket_id) {
+        this.rememberOwner((o as any).uuid, (o as any).socket_id);
+      }
+    }
+
+    const raw = core.submitBatch(this.orderbookName, orders.map(normalizeOrder));
+    const results: any[] = typeof raw === "string" ? JSON.parse(raw) : raw;
+
+    // Update local orders for any that rested
+    results.forEach((res, i) => {
+      if (!res.is_complete && res.remaining_qty > 0) {
+        const src = orders[i];
+        const resting: TOrder = { ...src, amount: res.remaining_qty } as TOrder;
+        const idx = this.orders.findIndex(o => o.uuid === resting.uuid);
+        if (idx >= 0) this.orders[idx] = resting; else this.orders.push(resting);
+      }
+    });
+
+    if (!noTrades) {
+      for (let i = 0; i < results.length; i++) {
+        try {
+          await this.processSubmitResult(this.orderbookName, orders[i], results[i]);
+        } catch (e) {
+          console.error("[processSubmitResult/batch]", e);
+        }
+      }
+    }
+    return results;
+  }
+
+  /* ===========================
+        Internals
+  =========================== */
+
+  private rememberOwner(orderId: string, socketId?: string) {
+    if (orderId && socketId) this.ownerByOrderId.set(orderId, socketId);
+  }
+  private forgetOwner(orderId: string) {
+    if (orderId) this.ownerByOrderId.delete(orderId);
+  }
+  private ownerOf(orderId: string): string | undefined {
+    return this.ownerByOrderId.get(orderId);
+  }
+  private opposite(side: SideStr): SideStr {
+    return side === "BUY" ? "SELL" : "BUY";
+  }
+
+  private sendTo(socketId: string, payload: any) {
+    try {
+      const ws = (socketManager as any).getSocketById?.(socketId) as Websocket | undefined;
+      if (ws && (ws as any).readyState === 1 /* OPEN */) {
+        ws.send(typeof payload === "string" ? payload : JSON.stringify(payload));
+      }
+    } catch (e) {
+      console.warn("[orderbook.sendTo] error", e);
+    }
+  }
+
+  private saveToHistory(trade: IHistoryTrade) {
+    this.historyTrades.push(trade);
+  }
+
+  // Turn the native submit() result into client execs + channel swaps
+  private async processSubmitResult(
+    symbol: string,
+    order: TOrder,
+    res: {
+      transactions?: Array<{ price: number; quantity: number; transaction_id: string; maker?: boolean }>;
+      maker_slices?: Array<{ price: number; quantity: number; maker_order_id: string; taker_order_id: string; maker: true }>;
+      filled_order_ids?: string[];
+      executed_qty?: number;
+      remaining_qty?: number;
+      is_complete?: boolean;
+    }
+  ) {
+    const takerSide = ((order as any).side || "").toUpperCase() as SideStr;
+    const takerSocketId = (order as any).socket_id as string;
+
+    // 1) maker slices (definitive maker attribution from Rust)
+    for (const m of res.maker_slices || []) {
+      const makerSocketId = this.ownerOf(m.maker_order_id);
+      if (!makerSocketId) {
+        console.warn("[exec] maker socket not found for", m.maker_order_id);
+        continue;
+      }
+
+      // Build ITradeInfo expected by ChannelSwap in your app (add required fields)
+      const tradeInfo: ITradeInfo = {
+        symbol,
+        price: m.price,
+        quantity: m.quantity,
+        buyer:  takerSide === "BUY" ? { socketId: takerSocketId } : { socketId: makerSocketId },
+        seller: takerSide === "SELL" ? { socketId: takerSocketId } : { socketId: makerSocketId },
+        // Likely-required fields in your codebase:
+        taker: { socketId: takerSocketId } as any,    // <-- fill properly if your type demands more
+        props: {} as any,                             // <-- pass through any protocol props if needed
+        type: "swap" as any,                          // <-- set to your enum/literal
+        // helpful flags/ids
+        maker: true as any,
+        side_taker: takerSide as any,
+        maker_order_id: m.maker_order_id as any,
+        taker_order_id: m.taker_order_id as any,
+      } as ITradeInfo;
+
+      // Emit execution to each side
+      this.sendTo(makerSocketId, { event: "execution", data: { ...tradeInfo, party: "maker" } });
+      this.sendTo(takerSocketId, { event: "execution", data: { ...tradeInfo, party: "taker" } });
+
+      // Start settlement channel
+      await this.newChannel(tradeInfo, order);
+    }
+
+    // 2) taker-facing transactions (maker already handled)
+    for (const tx of res.transactions || []) {
+      const execTaker = {
+        symbol,
+        price: tx.price,
+        quantity: tx.quantity,
+        maker: false,
+        side_taker: takerSide,
+        txid: tx.transaction_id,
+      };
+      this.sendTo(takerSocketId, { event: "execution", data: execTaker });
+    }
+
+    // 3) GC fully-filled makers
+    for (const id of res.filled_order_ids || []) {
+      this.forgetOwner(id);
+      // also remove from local orders list if present
+      const idx = this.orders.findIndex(o => o.uuid === id);
+      if (idx >= 0) this.orders.splice(idx, 1);
+    }
+  }
+
+  // Your requested orchestration; keeps your exact flow
   private async newChannel(
-      tradeInfo: ITradeInfo,
-      unfilled: TOrder
-    ): Promise<IResultChannelSwap> {
-      try {
-        const buyerSocketId = tradeInfo.buyer.socketId;
-        const sellerSocketId = tradeInfo.seller.socketId;
+    tradeInfo: ITradeInfo,
+    unfilled: TOrder
+  ): Promise<IResultChannelSwap> {
+    try {
+      const buyerSocketId = (tradeInfo as any).buyer.socketId;
+      const sellerSocketId = (tradeInfo as any).seller.socketId;
 
-        const buyerSocket = socketManager.getSocketById(buyerSocketId) as Websocket;
-        const sellerSocket = socketManager.getSocketById(sellerSocketId) as Websocket;
+      const buyerSocket = (socketManager as any).getSocketById(buyerSocketId) as Websocket;
+      const sellerSocket = (socketManager as any).getSocketById(sellerSocketId) as Websocket;
 
-        if (!buyerSocket || !sellerSocket) {
-          throw new Error("One of the sockets is not available");
-        }
-
-        const channel = new ChannelSwap(buyerSocket, sellerSocket, tradeInfo, unfilled);
-        const channelRes = await channel.onReady();
-        if (channelRes.error || !channelRes.data) return channelRes;
-
-        const historyTrade: IHistoryTrade = {
-          txid: channelRes.data.txid,
-          time: Date.now(),
-          ...tradeInfo,
-        };
-        this.saveToHistory(historyTrade);
-        return channelRes;
-      } catch (error: any) {
-        return { error: error.message };
+      if (!buyerSocket || !sellerSocket) {
+        throw new Error("One of the sockets is not available");
       }
+
+      const channel = new ChannelSwap(buyerSocket, sellerSocket, tradeInfo, unfilled);
+      const channelRes = await channel.onReady();
+      if ((channelRes as any).error || !(channelRes as any).data) return channelRes;
+
+      const historyTrade: IHistoryTrade = {
+        txid: (channelRes as any).data.txid,
+        time: Date.now(),
+        ...tradeInfo,
+      };
+      this.saveToHistory(historyTrade);
+      return channelRes;
+    } catch (error: any) {
+      return { error: error.message };
     }
-
-    private async processSubmitResult(
-      symbol: string,
-      order: TOrder,                        // the taker (incoming) order
-      res: {
-        transactions?: Array<{ price: number; quantity: number; transaction_id: string; maker?: boolean }>;
-        maker_slices?: Array<{ price: number; quantity: number; maker_order_id: string; taker_order_id: string; maker: true }>;
-        filled_order_ids?: string[];
-        executed_qty?: number;
-        remaining_qty?: number;
-        is_complete?: boolean;
-      }
-    ) {
-      const takerSide = order.side.toUpperCase() as "BUY" | "SELL";
-      const makerSide = opposite(takerSide);
-      const takerSocketId = order.socket_id!;   // required for swaps
-
-      // 1) Maker executions (each slice ties to a concrete maker order id)
-      for (const m of res.maker_slices || []) {
-        const makerSocketId = ownerOf(m.maker_order_id);
-        if (!makerSocketId) {
-          console.warn("[exec] maker socket not found for", m.maker_order_id);
-          continue;
-        }
-
-        // Build a minimal trade info for ChannelSwap
-        const tradeInfo: ITradeInfo = {
-          symbol,
-          price: m.price,                // float (e.g., 1000.0)
-          quantity: m.quantity,          // integer units
-          buyer:  takerSide === "BUY"  ? { socketId: takerSocketId } : { socketId: makerSocketId },
-          seller: takerSide === "SELL" ? { socketId: takerSocketId } : { socketId: makerSocketId },
-          // Optional flags/metadata your protocol needs:
-          maker: true,
-          side_taker: takerSide,
-          maker_order_id: m.maker_order_id,
-          taker_order_id: m.taker_order_id,
-          txid_hint: undefined,
-        };
-
-        // Fan-out execution events if you already do that:
-        this.sendTo(makerSocketId, { event: "execution", data: { ...tradeInfo, party: "maker" } });
-        this.sendTo(takerSocketId, { event: "execution", data: { ...tradeInfo, party: "taker" } });
-
-        // Start the channel swap for this maker slice
-        await this.newChannel(tradeInfo, order);
-      }
-
-      // 2) Taker-view transactions (inform taker; maker already got a slice)
-      for (const tx of res.transactions || []) {
-        const execTaker = {
-          symbol,
-          price: tx.price,               // float
-          quantity: tx.quantity,
-          maker: false,
-          side_taker: takerSide,
-          txid: tx.transaction_id,
-        };
-        this.sendTo(takerSocketId, { event: "execution", data: execTaker });
-      }
-
-      // 3) Cleanup fully-filled makers
-      for (const id of res.filled_order_ids || []) {
-        forgetOwner(id);
-      }
-
-      // 4) If the taker left a residual on book (shouldn’t happen for IOC), you may
-      //    add bookkeeping here; Rust already re-posts remaining when not complete.
-    }
-
+  }
 }
