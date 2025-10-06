@@ -30,23 +30,37 @@ struct State {
 
 static STATE: Lazy<Mutex<State>> = Lazy::new(|| Mutex::new(State::default()));
 
-#[inline]
+// Scales allow sub-unit precision while staying integer-safe.
+const PRICE_SCALE: f64 = 1e2; // integerize price
+const QTY_SCALE: f64 = 1.0;   // identity, no scaling
+
 fn to_price_u64(p: f64) -> u64 {
-  if p.is_finite() && p > 0.0 { p.floor() as u64 } else { 0 }
+    if p.is_finite() && p > 0.0 {
+        (p * PRICE_SCALE).round() as u64
+    } else {
+        0
+    }
 }
 
-#[inline]
 fn to_qty_u64(q: f64) -> u64 {
-  if q.is_finite() && q > 0.0 { q.floor() as u64 } else { 0 }
+    if q.is_finite() && q > 0.0 {
+        q.round() as u64   // pass plain integerized qty
+    } else {
+        0
+    }
 }
+
 
 #[inline]
 fn parse_side(s: &str) -> Side {
-  match s.to_ascii_lowercase().as_str() {
-    "buy" => Side::Buy,
-    _ => Side::Sell,
-  }
+    let side = match s.to_ascii_lowercase().as_str() {
+        "buy" => Side::Buy,
+        _ => Side::Sell,
+    };
+    println!("side parsed = {:?}", side);
+    side
 }
+
 
 fn to_order_id(s: &str) -> OrderId {
   if let Ok(u) = Uuid::parse_str(s) {
@@ -77,60 +91,92 @@ pub fn drop_book(symbol: String) -> bool {
   s.by_socket.remove(&symbol);
   s.man.remove_book(&symbol).is_some()
 }
+
 #[napi]
 pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
-  let mut s = STATE.lock().unwrap();
+    let mut s = STATE.lock().unwrap();
 
-  // 1) Ensure the book exists (mutably touches s.man)
-  if !s.man.has_book(&symbol) {
-    s.man.add_book(&symbol);
-  }
+    // Ensure book exists
+    if !s.man.has_book(&symbol) {
+        s.man.add_book(&symbol);
+    }
 
-  // 2) Update by_socket (mutably touches s.by_socket) in its own scope
-  if let Some(sock) = &order.socket_id {
-    s.by_socket
-      .entry(symbol.clone())
-      .or_default()
-      .entry(sock.clone())
-      .or_default()
-      .push(order.uuid.clone());
-  }
+    // Track order by socket for later cancels
+    if let Some(sock) = &order.socket_id {
+        s.by_socket
+            .entry(symbol.clone())
+            .or_default()
+            .entry(sock.clone())
+            .or_default()
+            .push(order.uuid.clone());
+    }
 
-  // 3) Now borrow the book mutably (no other borrows of `s` alive)
-  let mr = {
+    // --- Prepare parameters ---
     let book = s.man.get_book_mut(&symbol).expect("book exists");
     let id = to_order_id(&order.uuid);
     let price = to_price_u64(order.price);
     let qty = to_qty_u64(order.amount);
     let side = parse_side(&order.side);
-    book
-      .match_limit_order(id, price, side, qty)
-      .map_err(|e| Error::from_reason(format!("submit: {e:?}")))?
-  };
 
-  let txns = mr
-    .transactions
-    .as_vec()
-    .iter()
-    .map(|tx| {
-      serde_json::json!({
-        "quantity": tx.quantity,
-        "price": tx.price,
-        "transaction_id": tx.transaction_id
-      })
-    })
-    .collect::<Vec<_>>();
+    println!(
+        "submit(): book {:p} symbol={} side={:?} price={} qty={}",
+        &book, symbol, side, price, qty
+    );
 
-  let payload = serde_json::json!({
-    "order_id": format!("{:?}", mr.order_id),
-    "executed_qty": mr.executed_quantity(),
-    "remaining_qty": mr.remaining_quantity,
-    "is_complete": mr.is_complete,
-    "transactions": txns,
-    "filled_order_ids": mr.filled_order_ids.iter().map(|fid| format!("{:?}", fid)).collect::<Vec<_>>()
-  });
+    // --- Execute match ---
+    let mr = book
+        .match_limit_order(id.clone(), qty,side, price)
+        .map_err(|e| Error::from_reason(format!("submit: {e:?}")))?;
 
-  Ok(serde_json::to_string(&payload).unwrap_or_else(|_| "{}".into()))
+     // Only insert if not fully matched
+    if !mr.is_complete && mr.remaining_quantity > 0 {
+        use orderbook_rs::prelude::{OrderType, TimeInForce};
+        let order_to_add = OrderType::Standard {
+            id: id.clone(),
+            price,
+            quantity: mr.remaining_quantity,
+            side,
+            timestamp: current_time_millis(),
+            time_in_force: TimeInForce::Gtc,
+            extra_fields: (),
+        };
+
+        book.add_order(order_to_add)
+            .map_err(|e| Error::from_reason(format!("add_order: {e:?}")))?;
+    }
+
+    // --- Serialize result ---
+    let txns = mr
+        .transactions
+        .as_vec()
+        .iter()
+        .map(|tx| {
+            serde_json::json!({
+                "quantity": tx.quantity,
+                "price": tx.price,
+                "transaction_id": tx.transaction_id
+            })
+        })
+        .collect::<Vec<_>>();
+
+    let payload = serde_json::json!({
+        "order_id": format!("{:?}", mr.order_id),
+        "executed_qty": (mr.executed_quantity() as f64),   // reverse internal scaling
+        "remaining_qty": (mr.remaining_quantity as f64),
+        "is_complete": mr.is_complete,
+        "transactions": mr.transactions.as_vec().iter().map(|tx| {
+            serde_json::json!({
+                "quantity": (tx.quantity as f64),          // rescale too
+                "price": (tx.price as f64) / 1e2,                // price back to float
+                "transaction_id": tx.transaction_id
+            })
+        }).collect::<Vec<_>>(),
+        "filled_order_ids": mr.filled_order_ids.iter()
+            .map(|fid| format!("{:?}", fid))
+            .collect::<Vec<_>>()
+    });
+
+    Ok(serde_json::to_string(&payload).unwrap_or_else(|_| "{}".into()))
 }
 
 #[napi]
@@ -163,7 +209,7 @@ pub fn submit_batch(symbol: String, orders: Vec<JsOrder>) -> napi::Result<String
       let qty = to_qty_u64(o.amount);
       let side = parse_side(&o.side);
       book
-        .match_limit_order(id, price, side, qty)
+        .match_limit_order(id.clone(), qty, side, price)
         .map_err(|e| Error::from_reason(format!("submit_batch: {e:?}")))?
     };
 
@@ -228,6 +274,7 @@ pub fn cancel_all_by_socket(symbol: String, socket_id: String) -> u32 {
 pub fn snapshot(symbol: String, depth: Option<u32>) -> String {
   let s = STATE.lock().unwrap();
   if let Some(book) = s.man.get_book(&symbol) {
+    println!("snapshot(): book {:p} symbol={}", book, symbol);
     let d = depth.unwrap_or(20) as usize;
     match book.snapshot_to_json(d) {
       Ok(json) => json,
