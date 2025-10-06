@@ -1,0 +1,8 @@
+{
+  "name": "matcher-core",
+  "version": "0.1.0",
+  "napi": {
+    "name": "matcher_core",
+    "triples": ["x86_64-unknown-linux-gnu"]
+  }
+}

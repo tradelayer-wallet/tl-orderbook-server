@@ -3,3 +3,4 @@ dist
 *.env
 *.hist
 *.log
+/rust/matcher-core/target
