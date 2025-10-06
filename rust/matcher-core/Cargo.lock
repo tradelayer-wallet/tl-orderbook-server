@@ -315,7 +315,6 @@ dependencies = [
  "napi-derive",
  "once_cell",
  "orderbook-rs",
- "pricelevel",
  "serde",
  "serde_json",
  "ulid",
