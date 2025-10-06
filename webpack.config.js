@@ -6,7 +6,7 @@ module.exports = (env, argv) => {
 
   return {
     entry: path.join(__dirname, './src/index.ts'),
-    mode: mode,
+    mode,
     target: 'node',
     module: {
       rules: [
@@ -26,7 +26,7 @@ module.exports = (env, argv) => {
     },
     output: {
       filename: 'index.js',
-      path: path.resolve(__dirname, './dist')
+      path: path.resolve(__dirname, './dist'),
     },
     externals: [
       'long',
@@ -36,9 +36,18 @@ module.exports = (env, argv) => {
       'uWebSockets.js',
     ],
     optimization: {
+      minimize: mode === 'production',
       minimizer: [
-        new TerserPlugin({ extractComments: false}),
+        new TerserPlugin({
+          extractComments: false,
+          terserOptions: {
+            keep_classnames: true,
+            keep_fnames: true,
+            mangle: false,          // ⛔ prevent function name mangling
+            module: true,
+          },
+        }),
       ],
     },
   };
-}
+};

@@ -195,20 +195,34 @@ pub fn submit_batch(symbol: String, orders: Vec<JsOrder>) -> napi::Result<String
 
 
 #[napi]
-pub fn cancel(_symbol: String, _order_id: String) -> bool {
-  // No public cancel/remove on this commit’s OrderBook API
+pub fn cancel(symbol: String, order_id: String) -> bool {
+  let mut s = STATE.lock().unwrap();
+  if let Some(book) = s.man.get_book_mut(&symbol) {
+    let oid = to_order_id(&order_id);
+    return book.cancel_order(oid).is_ok();
+  }
   false
 }
 
 #[napi]
 pub fn cancel_all_by_socket(symbol: String, socket_id: String) -> u32 {
-  // No real cancels here; just clear our index so future ops ignore them
   let mut s = STATE.lock().unwrap();
-  if let Some(idx) = s.by_socket.get_mut(&symbol) {
-    idx.remove(&socket_id);
+  let mut count = 0;
+  if let Some(book_map) = s.by_socket.get_mut(&symbol) {
+    if let Some(ids) = book_map.remove(&socket_id) {
+      if let Some(book) = s.man.get_book_mut(&symbol) {
+        for oid_str in ids {
+          let oid = to_order_id(&oid_str);
+          if book.cancel_order(oid).is_ok() {
+            count += 1;
+          }
+        }
+      }
+    }
   }
-  0
+  count
 }
+
 
 #[napi]
 pub fn snapshot(symbol: String, depth: Option<u32>) -> String {
