@@ -28,7 +28,13 @@ function normalizeOrder(o: TOrder) {
   // Map your TOrder -> JsOrder expected by Rust
   const side = (o.action as string).toUpperCase(); // BUY | SELL from EOrderAction
   const price = (o.props as any).price ?? 0;
-  const amount = (o.props as any).amount ?? 0;
+  let amount = (o.props as any).amount ?? 0;
+
+    // ✅ SPOT-only amount scaling so core doesn't see 0
+  if (o.type === EOrderType.SPOT) {
+    amount = Math.round(amount * QTY_SCALE_SPOT);
+  }
+
   return {
     uuid: o.uuid,
     side,
@@ -42,6 +48,8 @@ function normalizeBookKey(p1: number, p2: number): string {
   return p1 < p2 ? `${p1}-${p2}` : `${p2}-${p1}`;
 }
 
+const QTY_SCALE_SPOT = 1e8
+
 /* ------------------------------------------------------------------ */
 /* Orderbook                                                          */
 /* ------------------------------------------------------------------ */
@@ -51,7 +59,9 @@ export class Orderbook {
   private _orders: TOrder[] = [];
   private _historyTrades: IHistoryTrade[] = [];
   private props: ISpotOrderProps | IFuturesOrderProps = null;
-
+    private lastSnapTs = 0;
+    private snapMinIntervalMs = 75; // small debounce for spammy clients
+    private lastChecksum = "";
   // quick index: uuid -> order (to build ITradeInfo for maker slices)
   private byUuid = new Map<string, TOrder>();
 
@@ -68,6 +78,39 @@ export class Orderbook {
     this.addOrder(firstOrder, /* noTrades */ true);
     this.addExistingTradesHistory();
   }
+
+  private isSpot(): boolean {
+    return this._type === EOrderType.SPOT;
+  }
+
+    private downscaleResult(res: any) {
+      if (!this.isSpot() || !res) return res;
+      const scale = QTY_SCALE_SPOT;
+
+      const fixQty = (x: any) => (typeof x === "number" ? x / scale : x);
+
+      if (Array.isArray(res)) {
+        return res.map(r => ({
+          ...r,
+          executed_qty: fixQty(r.executed_qty),
+          remaining_qty: fixQty(r.remaining_qty),
+          transactions: (r.transactions || []).map((t: any) => ({
+            ...t,
+            quantity: fixQty(t.quantity),
+          })),
+        }));
+      } else {
+        return {
+          ...res,
+          executed_qty: fixQty(res.executed_qty),
+          remaining_qty: fixQty(res.remaining_qty),
+          transactions: (res.transactions || []).map((t: any) => ({
+            ...t,
+            quantity: fixQty(t.quantity),
+          })),
+        };
+      }
+    }
 
   /* ------------------------- Legacy/compat ------------------------- */
 
@@ -182,36 +225,27 @@ export class Orderbook {
 
     public findByFilter(filter: any): boolean {
       if (!filter) return true;
-
-      // string filters still work (legacy)
       if (typeof filter === "string") {
-        const k = this.orderbookName.toLowerCase();
-        return k.includes(filter.toLowerCase());
+        return this.orderbookName.toLowerCase().includes(filter.toLowerCase());
       }
-
-      // object filter from FE: { event:"update-orderbook", type:"SPOT"|"FUTURES", first_token, second_token }
-      const typ = (filter.type || filter.order_type || "").toString().toUpperCase();
-
+      const typ = String(filter.type || filter.order_type || "").toUpperCase();
       if (typ === "SPOT") {
         const ft = Number(filter.first_token);
         const st = Number(filter.second_token);
         const p = this.props as ISpotOrderProps;
-        // match either direction (TLTC/USDTt vs USDTt/TLTC)
         return (
           (p.id_desired === ft && p.id_for_sale === st) ||
           (p.id_desired === st && p.id_for_sale === ft)
         );
       }
-
       if (typ === "FUTURES") {
-        const p = this.props as IFuturesOrderProps;
-        // accept contract_id via different keys if needed
         const cid = filter.contract_id ?? filter.cid ?? filter.symbol ?? filter.marketKey;
+        const p = this.props as IFuturesOrderProps;
         return cid != null && `${p.contract_id}` === `${cid}`;
       }
-
       return false;
     }
+
 
   updatePlacedOrdersForSocketId(socketid: string) {
     try {
@@ -242,25 +276,42 @@ export class Orderbook {
 
   /* ------------------------- IO / snapshots ------------------------ */
 
-  private broadcastSnapshot() {
-    const marketKey = this.orderbookName;
-    if (!marketKey) return;
-
-    const unlocked = this._orders.filter((o) => !o.lock);
-
-    socketManager.broadcastToMarket(marketKey, {
-      event: EmitEvents.ORDERBOOK_DATA,
-      marketKey,
-      orders: unlocked,
-      history: this._historyTrades,
-    });
-
-    socketManager.broadcastToAll({
-      event: EmitEvents.ORDERBOOK_DATA,
-      orders: unlocked,
-      history: this._historyTrades,
-    });
+  
+public snapshotNative(depth: number = 50) {
+  try {
+    const json = native.snapshot(this.orderbookName, depth);
+    console.log('snapshot of book '+json+' '+JSON.stringify(json))
+    return typeof json === "string" ? JSON.parse(json) : json;
+  } catch {
+    return { version: 1, snapshot: { symbol: this.orderbookName, bids: [], asks: [] }, checksum: "" };
   }
+}
+
+// call this after addOrder / addOrdersBatch
+private broadcastSnapshot(force = false) {
+  const now = Date.now();
+  if (!force && now - this.lastSnapTs < this.snapMinIntervalMs) return;
+  this.lastSnapTs = now;
+
+  const marketKey = this.orderbookName;
+  const nativeSnap = this.snapshotNative(50);
+
+  // keep legacy arrays for old panels (may be empty) + authoritative native
+  socketManager.broadcastToMarket(marketKey, {
+    event: "orderbook-data",
+    marketKey,
+    orders: this._orders.filter(o => !o.lock),
+    history: this._historyTrades,
+    native: nativeSnap, // <-- FE should read this for bids/asks
+  });
+
+  socketManager.broadcastToAll({
+    event: "orderbook-data",
+    orders: this._orders.filter(o => !o.lock),
+    history: this._historyTrades,
+    native: nativeSnap,
+  });
+}
 
   /* --------------------------- Trading API ------------------------- */
 
@@ -278,8 +329,9 @@ export class Orderbook {
       // Submit to native
       const raw = native.submit(this.orderbookName, normalizeOrder(order));
       this.broadcastSnapshot();
-      const res =
+      let res =
         typeof raw === "string" ? JSON.parse(raw) : (raw ?? { transactions: [] });
+        res= this.downscaleResult(res)
       //console.log('back from rust engine '+JSON.stringify(res))
       // If not complete, reflect remaining on our local orders
       if (!res.is_complete && res.remaining_qty > 0) {
@@ -331,7 +383,21 @@ export class Orderbook {
         this.orderbookName,
         orders.map(normalizeOrder)
       );
-      const results: any[] = typeof raw === "string" ? JSON.parse(raw) : raw;
+
+      let results: any[] = typeof raw === "string" ? JSON.parse(raw) : raw;
+
+      if (this._type === EOrderType.SPOT) {
+          const scale = 1e8;
+          results = results.map(r => ({
+            ...r,
+            executed_qty: typeof r.executed_qty === "number" ? r.executed_qty / scale : r.executed_qty,
+            remaining_qty: typeof r.remaining_qty === "number" ? r.remaining_qty / scale : r.remaining_qty,
+            transactions: (r.transactions || []).map((t: any) => ({
+              ...t,
+              quantity: typeof t.quantity === "number" ? t.quantity / scale : t.quantity,
+            })),
+          }));
+        }
 
       const tradesAll: ITradeInfo[] = [];
 
