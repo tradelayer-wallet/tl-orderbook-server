@@ -280,7 +280,7 @@ export class Orderbook {
 public snapshotNative(depth: number = 50) {
   try {
     const json = native.snapshot(this.orderbookName, depth);
-    console.log('snapshot of book '+json+' '+JSON.stringify(json))
+    //console.log('snapshot of book '+json+' '+JSON.stringify(json))
     return typeof json === "string" ? JSON.parse(json) : json;
   } catch {
     return { version: 1, snapshot: { symbol: this.orderbookName, bids: [], asks: [] }, checksum: "" };

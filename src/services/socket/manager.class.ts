@@ -202,7 +202,7 @@ export class SocketManager {
 
     private async handleMessage(ws: HyperExpress.Websocket, message: ArrayBuffer | string) {
         let data;
-        console.log('incoming message '+message)
+        //console.log('incoming message '+message)
         try {
             data = JSON.parse(
                 typeof message === 'string' ? message : Buffer.from(message).toString()
@@ -240,7 +240,8 @@ export class SocketManager {
             if (data.marketKey) this.unsubscribeMarket((ws as any).id, String(data.marketKey));
             break;
             default:
-                console.log(`[SM] Unknown event type: ${data.event}`);
+                break
+                //console.log(`[SM] Unknown event type: ${data.event}`);
         }
     }
 
@@ -307,20 +308,16 @@ export class SocketManager {
     handleUpdateOrderbook(ws, data) {
         const filter = data?.filter ?? data;   // accept {filter:{...}} or direct filter
 
-        console.log('filter in update orderbook ' + JSON.stringify(filter));
         if (!filter) {
             const payload = {
                 event: EmitEvents.ORDERBOOK_DATA,
                 orders: [],
                 history: []
             };
-            console.log('[SM] sending empty snapshot (no filter)', JSON.stringify(payload));
             return ws.send(JSON.stringify(payload));
         }
 
         const ob = orderbookManager.orderbooks.find(o => o.findByFilter(filter));
-        console.log('ob result by filter ' + JSON.stringify(ob));
-        console.log('[SM] handleUpdateOrderbook ws.id', (ws as any).id);
 
         const payload = {
             event: EmitEvents.ORDERBOOK_DATA,
@@ -328,7 +325,6 @@ export class SocketManager {
             history: ob ? ob.historyTrades : []
         };
 
-        console.log('[SM] sending snapshot', JSON.stringify(payload));
         ws.send(JSON.stringify(payload));
     }
 
