@@ -5,6 +5,15 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Mutex;
 use hashbrown::HashMap as FastMap;
+use std::fs::OpenOptions;
+use std::io::Write;
+
+const LOG_PATH: &str = "/tmp/tl_ob.log";
+fn log_line<S: AsRef<str>>(s: S) {
+    if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(LOG_PATH) {
+        let _ = writeln!(f, "{}", s.as_ref());
+    }
+}
 
 use orderbook_rs::prelude::{
   BookManager, BookManagerStd, OrderBook, OrderId, Side, current_time_millis,
@@ -51,6 +60,16 @@ fn to_qty_u64(q: f64) -> u64 {
     }
 }
 
+// Find which socket owns a given order id string, by scanning s.by_socket
+fn socket_owner_of(s: &State, symbol: &str, order_id_str: &str) -> Option<String> {
+    s.by_socket.get(symbol).and_then(|by_sock| {
+        by_sock.iter().find_map(|(sock, ids)| {
+            if ids.iter().any(|id| id == order_id_str) { Some(sock.clone()) } else { None }
+        })
+    })
+}
+
+
 
 #[inline]
 fn parse_side(s: &str) -> Side {
@@ -95,6 +114,9 @@ pub fn drop_book(symbol: String) -> bool {
 
 #[napi]
 pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
+    use orderbook_rs::{OrderType, prelude::TimeInForce};
+    use std::collections::HashMap;
+
     let mut s = STATE.lock().unwrap();
 
     // Ensure book exists
@@ -102,63 +124,59 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
         s.man.add_book(&symbol);
     }
 
-    // Track order by socket for later cancels
+    // Prepare params (no book borrow needed)
+    let id     = to_order_id(&order.uuid);
+    let id_str = id.to_string();                 // engine-format id for owner lookup
+    let price  = to_price_u64(order.price);
+    let qty    = to_qty_u64(order.amount);
+    let side   = parse_side(&order.side);
+
+    // Track owner by socket (do this BEFORE any book mutable borrow)
     if let Some(sock) = &order.socket_id {
-        s.by_socket
+        let v = s.by_socket
             .entry(symbol.clone())
             .or_default()
             .entry(sock.clone())
-            .or_default()
-            .push(order.uuid.clone());
+            .or_default();
+        if !v.iter().any(|x| x == &id_str)     { v.push(id_str.clone()); }
+        if !v.iter().any(|x| x == &order.uuid) { v.push(order.uuid.clone()); }
+        log_line(format!("[OWNERMAP] sock={} symbol={} ids=[{}, {}]", sock, symbol, id_str, order.uuid));
     }
 
-    // --- Prepare parameters ---
-    let book = s.man.get_book_mut(&symbol).expect("book exists");
-    let id = to_order_id(&order.uuid);
-    let price = to_price_u64(order.price);
-    let qty = to_qty_u64(order.amount);
-    let side = parse_side(&order.side);
+    log_line(format!("[SUBMIT] symbol={} side={:?} px={} qty={} id={}", symbol, side, price, qty, id_str));
+    println!("submit(): symbol={} side={:?} price={} qty={}", symbol, side, price, qty);
 
-    println!(
-        "submit(): book {:p} symbol={} side={:?} price={} qty={}",
-        &book, symbol, side, price, qty
-    );
-
-    // ---------- PRE-SNAPSHOT: capture maker FIFO per price (small depth) ----------
-    use std::collections::HashMap;
+    // ---------- PRE-SNAPSHOT: capture maker FIFO per price ----------
     let maker_side = match side { Side::Buy => Side::Sell, Side::Sell => Side::Buy };
     let mut pre_fifo: HashMap<u64, Vec<(String, u64)>> = HashMap::new();
     {
-        // depth ~ 32 is plenty for near-top sweeps
-        let depth = 32;
-        let snap = book.create_snapshot(depth);
-        let levels = match maker_side {
-            Side::Buy  => &snap.bids,
-            Side::Sell => &snap.asks,
-        };
-
+        // (Scoped) borrow book for snapshot only
+        let depth = 64usize;
+        let book  = s.man.get_book_mut(&symbol).expect("book exists");
+        let snap  = book.create_snapshot(depth);
+        let levels = match maker_side { Side::Buy => &snap.bids, Side::Sell => &snap.asks };
         for lvl in levels.iter() {
             let mut fifo: Vec<(String, u64)> = Vec::new();
             for ord in &lvl.orders {
-                // Snapshot order enum -> id/qty
                 if let OrderType::Standard { id, quantity, .. } = ord.as_ref() {
                     fifo.push((id.to_string(), *quantity as u64));
                 }
             }
-            if !fifo.is_empty() {
-                pre_fifo.insert(lvl.price, fifo);
-            }
+            if !fifo.is_empty() { pre_fifo.insert(lvl.price, fifo); }
         }
-    }
+    } // book borrow dropped here
 
-    // --- Execute match ---
-    let mr = book
-        .match_limit_order(id.clone(), qty, side, price)
-        .map_err(|e| Error::from_reason(format!("submit: {e:?}")))?;
+    // --- Match (scoped borrow)
+    let mr = {
+        let book = s.man.get_book_mut(&symbol).expect("book exists");
+        book
+            .match_limit_order(id.clone(), qty, side, price)
+            .map_err(|e| Error::from_reason(format!("submit: {e:?}")))?
+    }; // book borrow dropped
 
-    // If not fully matched, rest the remaining
+    // If not fully matched, rest the remaining (taker) qty (scoped borrow)
     if !mr.is_complete && mr.remaining_quantity > 0 {
-        use orderbook_rs::prelude::{OrderType, TimeInForce};
+        let mut book = s.man.get_book_mut(&symbol).expect("book exists");
         let order_to_add = OrderType::Standard {
             id: id.clone(),
             price,
@@ -168,71 +186,130 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
             time_in_force: TimeInForce::Gtc,
             extra_fields: (),
         };
-        book.add_order(order_to_add)
-            .map_err(|e| Error::from_reason(format!("add_order: {e:?}")))?;
+        if let Err(e) = book.add_order(order_to_add) {
+            eprintln!("add_order (taker remainder) error: {:?}", e);
+            log_line(format!("[ERROR] add_order remainder: {:?}", e));
+        }
+        // book borrow dropped here
     }
 
-    // ---------- Allocate fills onto pre-FIFO to recover maker ids ----------
+    // ---------- Allocate fills + detect self for bump (no book borrow needed) ----------
+    let mut self_refill_at_price: HashMap<u64, u64> = HashMap::new();
+    let taker_sock_opt = order.socket_id.clone();
+
     let mut maker_slices: Vec<serde_json::Value> = Vec::new();
     for tx in mr.transactions.as_vec().iter() {
-        let p = tx.price;                 // engine units (e.g., 100000)
-        let mut want = tx.quantity;       // how much this tx executed at price p
+        let p = tx.price;
+        let mut want = tx.quantity;
+
         if let Some(fifo) = pre_fifo.get_mut(&p) {
             let mut i = 0usize;
             while want > 0 && i < fifo.len() {
+                // clone head to avoid aliased borrows
                 let (maker_id, rem_val) = {
-                let (id_str, qty_ref) = &fifo[i];
-                (id_str.clone(), *qty_ref)
-            };
-            let take = want.min(rem_val);
-            if take > 0 {
-                maker_slices.push(serde_json::json!({
-                    "maker_order_id": maker_id,
-                    "taker_order_id": format!("{:?}", id),
-                    "price": (p as f64) / 1e2,
-                    "quantity": take as f64,
-                    "maker": true
-                }));
+                    let (id_str, qty_ref) = &fifo[i];
+                    (id_str.clone(), *qty_ref)
+                };
 
-                // Mutate after releasing the immutable borrow
-                fifo[i].1 -= take;
-                want -= take;
-                if fifo[i].1 == 0 { i += 1; } else { break; }
-            } else {
+                let take = want.min(rem_val);
+                if take > 0 {
+                    let is_self = if let Some(ref taker_sock) = taker_sock_opt {
+                        socket_owner_of(&s, &symbol, &maker_id).as_ref() == Some(taker_sock)
+                    } else { false };
+
+                    if is_self {
+                        *self_refill_at_price.entry(p).or_insert(0) += take;
+                        log_line(format!("[SELF-MATCH] symbol={} price={} qty={} maker_id={} taker_id={}",
+                            symbol, p, take, maker_id, id_str));
+                    } else {
+                        maker_slices.push(serde_json::json!({
+                            "maker_order_id": maker_id,
+                            "taker_order_id": format!("{:?}", id),
+                            "price": (p as f64) / 1e2,
+                            "quantity": take as f64,
+                            "maker": true
+                        }));
+                    }
+
+                    // mutate fifo after clone
+                    fifo[i].1 -= take;
+                    want -= take;
+                    if fifo[i].1 == 0 { i += 1; } else { break; }
+                } else {
                     i += 1;
                 }
             }
-            // drop fully-consumed heads
             fifo.drain(..i);
         }
     }
 
-    // --- Serialize taker-view transactions (maker=false) ---
-    let txns = mr
-        .transactions
-        .as_vec()
-        .iter()
-        .map(|tx| {
-            serde_json::json!({
-                "quantity": (tx.quantity as f64),
-                "price": (tx.price as f64) / 1e2,
-                "transaction_id": tx.transaction_id,
-                "maker": false
-            })
-        })
-        .collect::<Vec<_>>();
+    if !self_refill_at_price.is_empty() {
+        let total: u64 = self_refill_at_price.values().copied().sum();
+        log_line(format!("[SELF-BUMP] symbol={} side={:?} total_qty={} prices={:?}",
+            symbol, side, total, self_refill_at_price.keys().cloned().collect::<Vec<_>>()));
+    }
 
-    // --- Payload ---
+    // ---------- Re-add (bump) self-matched quantities on maker side ----------
+    if !self_refill_at_price.is_empty() {
+        let maker_side = match side { Side::Buy => Side::Sell, Side::Sell => Side::Buy };
+
+        for (price_u64, qty_u64) in self_refill_at_price.into_iter() {
+            if qty_u64 == 0 { continue; }
+
+            // (scoped) book borrow just for add_order
+            let bump_id = to_order_id(&format!("SELFREFILL-{}-{}", price_u64, current_time_millis()));
+            {
+                let mut book = s.man.get_book_mut(&symbol).expect("book exists");
+                let order_to_add = OrderType::Standard {
+                    id: bump_id.clone(),
+                    price: price_u64,
+                    quantity: qty_u64,
+                    side: maker_side,
+                    timestamp: current_time_millis(),
+                    time_in_force: TimeInForce::Gtc,
+                    extra_fields: (),
+                };
+                match book.add_order(order_to_add) {
+                    Err(e) => {
+                        eprintln!("self-refill add_order error at price {}: {:?}", price_u64, e);
+                        log_line(format!("[ERROR] self-refill add_order px={} err={:?}", price_u64, e));
+                    }
+                    Ok(_) => {
+                        log_line(format!("[SELF-BUMP] readded px={} qty={} as {:?}", price_u64, qty_u64, bump_id));
+                    }
+                }
+            } // drop book borrow
+
+            // update by_socket for the new bump id (separate from book borrow)
+            if let Some(ref taker_sock) = taker_sock_opt {
+                s.by_socket
+                    .entry(symbol.clone())
+                    .or_default()
+                    .entry(taker_sock.clone())
+                    .or_default()
+                    .push(format!("{:?}", bump_id));
+            }
+        }
+    }
+
+    // --- Serialize taker-view transactions (maker=false) ---
+    let txns = mr.transactions.as_vec().iter().map(|tx| {
+        serde_json::json!({
+            "quantity": (tx.quantity as f64),
+            "price": (tx.price as f64) / 1e2,
+            "transaction_id": tx.transaction_id,
+            "maker": false
+        })
+    }).collect::<Vec<_>>();
+
     let payload = serde_json::json!({
         "order_id": format!("{:?}", mr.order_id),
         "executed_qty": (mr.executed_quantity() as f64),
         "remaining_qty": (mr.remaining_quantity as f64),
         "is_complete": mr.is_complete,
-        "transactions": txns,                        // taker slices
-        "maker_slices": maker_slices,                // maker attribution per slice
-        "filled_order_ids": mr.filled_order_ids.iter()
-            .map(|fid| format!("{:?}", fid))
-            .collect::<Vec<_>>()
+        "transactions": txns,
+        "maker_slices": maker_slices,
+        "filled_order_ids": mr.filled_order_ids.iter().map(|fid| format!("{:?}", fid)).collect::<Vec<_>>()
     });
 
     Ok(serde_json::to_string(&payload).unwrap_or_else(|_| "{}".into()))
@@ -240,9 +317,11 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
 
 #[napi]
 pub fn submit_batch(symbol: String, orders: Vec<JsOrder>) -> napi::Result<String> {
+    use orderbook_rs::{OrderType, prelude::TimeInForce};
+    use std::collections::HashMap;
+
     let mut s = STATE.lock().unwrap();
 
-    // Ensure book exists
     if !s.man.has_book(&symbol) {
         s.man.add_book(&symbol);
     }
@@ -250,34 +329,33 @@ pub fn submit_batch(symbol: String, orders: Vec<JsOrder>) -> napi::Result<String
     let mut out = Vec::<serde_json::Value>::new();
 
     for o in orders {
-        // Track owner per socket
+        // Prepare first so we can store engine id in owner map
+        let id     = to_order_id(&o.uuid);
+        let id_str = id.to_string();
+        let price  = to_price_u64(o.price);
+        let qty    = to_qty_u64(o.amount);
+        let side   = parse_side(&o.side);
+
+        // Store both engine id and client uuid under socket
         if let Some(sock) = &o.socket_id {
-            s.by_socket
+            let v = s.by_socket
                 .entry(symbol.clone())
                 .or_default()
                 .entry(sock.clone())
-                .or_default()
-                .push(o.uuid.clone());
+                .or_default();
+            if !v.iter().any(|x| x == &id_str) { v.push(id_str.clone()); }
+            if !v.iter().any(|x| x == &o.uuid) { v.push(o.uuid.clone()); }
+            log_line(format!("[OWNERMAP] sock={} symbol={} ids=[{}, {}]", sock, symbol, id_str, o.uuid));
         }
 
-        // Prepare
-        let id = to_order_id(&o.uuid);
-        let price = to_price_u64(o.price);
-        let qty = to_qty_u64(o.amount);
-        let side = parse_side(&o.side);
-
-        // --- PRE-SNAPSHOT maker FIFO per price (small depth) ---
-        use std::collections::HashMap;
+        // --- PRE-SNAPSHOT maker FIFO (scoped borrow)
         let maker_side = match side { Side::Buy => Side::Sell, Side::Sell => Side::Buy };
         let mut pre_fifo: HashMap<u64, Vec<(String, u64)>> = HashMap::new();
         {
-            let book = s.man.get_book_mut(&symbol).expect("book exists");
-            let depth = 32;
-            let snap = book.create_snapshot(depth);
-            let levels = match maker_side {
-                Side::Buy  => &snap.bids,
-                Side::Sell => &snap.asks,
-            };
+            let depth = 64usize;
+            let book  = s.man.get_book_mut(&symbol).expect("book exists");
+            let snap  = book.create_snapshot(depth);
+            let levels = match maker_side { Side::Buy => &snap.bids, Side::Sell => &snap.asks };
             for lvl in levels.iter() {
                 let mut fifo: Vec<(String, u64)> = Vec::new();
                 for ord in &lvl.orders {
@@ -285,24 +363,21 @@ pub fn submit_batch(symbol: String, orders: Vec<JsOrder>) -> napi::Result<String
                         fifo.push((id.to_string(), *quantity as u64));
                     }
                 }
-                if !fifo.is_empty() {
-                    pre_fifo.insert(lvl.price, fifo);
-                }
+                if !fifo.is_empty() { pre_fifo.insert(lvl.price, fifo); }
             }
-        }
+        } // drop book
 
-        // --- Match (use a fresh mutable borrow) ---
+        // --- Match (scoped borrow)
         let mr = {
             let book = s.man.get_book_mut(&symbol).expect("book exists");
             book
                 .match_limit_order(id.clone(), qty, side, price)
                 .map_err(|e| Error::from_reason(format!("submit_batch: {e:?}")))?
-        };
+        }; // drop book
 
-        // If not fully matched, rest remaining
+        // Rest remainder (taker) (scoped)
         if !mr.is_complete && mr.remaining_quantity > 0 {
-            use orderbook_rs::prelude::{OrderType, TimeInForce};
-            let book = s.man.get_book_mut(&symbol).expect("book exists");
+            let mut book = s.man.get_book_mut(&symbol).expect("book exists");
             let order_to_add = OrderType::Standard {
                 id: id.clone(),
                 price,
@@ -312,15 +387,21 @@ pub fn submit_batch(symbol: String, orders: Vec<JsOrder>) -> napi::Result<String
                 time_in_force: TimeInForce::Gtc,
                 extra_fields: (),
             };
-            book.add_order(order_to_add)
-                .map_err(|e| Error::from_reason(format!("add_order: {e:?}")))?;
-        }
+            if let Err(e) = book.add_order(order_to_add) {
+                eprintln!("add_order (taker remainder) error: {:?}", e);
+                log_line(format!("[ERROR] add_order remainder: {:?}", e));
+            }
+        } // drop book
 
-        // --- Allocate maker attribution per tx ---
+        // --- Maker attribution + self bump collection (no book borrow)
         let mut maker_slices: Vec<serde_json::Value> = Vec::new();
+        let mut self_refill_at_price: HashMap<u64, u64> = HashMap::new();
+        let taker_sock_opt = o.socket_id.clone();
+
         for tx in mr.transactions.as_vec().iter() {
             let p = tx.price;
             let mut want = tx.quantity;
+
             if let Some(fifo) = pre_fifo.get_mut(&p) {
                 let mut i = 0usize;
                 while want > 0 && i < fifo.len() {
@@ -330,15 +411,24 @@ pub fn submit_batch(symbol: String, orders: Vec<JsOrder>) -> napi::Result<String
                     };
                     let take = want.min(rem_val);
                     if take > 0 {
-                        maker_slices.push(serde_json::json!({
-                            "maker_order_id": maker_id,
-                            "taker_order_id": format!("{:?}", id),
-                            "price": (p as f64) / 1e2,
-                            "quantity": take as f64,
-                            "maker": true
-                        }));
+                        let is_self = if let Some(ref taker_sock) = taker_sock_opt {
+                            socket_owner_of(&s, &symbol, &maker_id).as_ref() == Some(taker_sock)
+                        } else { false };
 
-                        // Mutate after releasing the immutable borrow
+                        if is_self {
+                            *self_refill_at_price.entry(p).or_insert(0) += take;
+                            log_line(format!("[SELF-MATCH] symbol={} price={} qty={} maker_id={} taker_id={}",
+                                symbol, p, take, maker_id, id_str));
+                        } else {
+                            maker_slices.push(serde_json::json!({
+                                "maker_order_id": maker_id,
+                                "taker_order_id": format!("{:?}", id),
+                                "price": (p as f64) / 1e2,
+                                "quantity": take as f64,
+                                "maker": true
+                            }));
+                        }
+
                         fifo[i].1 -= take;
                         want -= take;
                         if fifo[i].1 == 0 { i += 1; } else { break; }
@@ -350,28 +440,71 @@ pub fn submit_batch(symbol: String, orders: Vec<JsOrder>) -> napi::Result<String
             }
         }
 
-        // Build taker-view transactions
-        let txns = mr
-            .transactions
-            .as_vec()
-            .iter()
-            .map(|tx| {
-                serde_json::json!({
-                    "quantity": (tx.quantity as f64),
-                    "price": (tx.price as f64) / 1e2,
-                    "transaction_id": tx.transaction_id,
-                    "maker": false
-                })
+        if !self_refill_at_price.is_empty() {
+            let total: u64 = self_refill_at_price.values().copied().sum();
+            log_line(format!("[SELF-BUMP] symbol={} side={:?} total_qty={} prices={:?}",
+                symbol, side, total, self_refill_at_price.keys().cloned().collect::<Vec<_>>()));
+        }
+
+        // --- Re-add (bump) on maker side; update by_socket after each add
+        if !self_refill_at_price.is_empty() {
+            let maker_side = match side { Side::Buy => Side::Sell, Side::Sell => Side::Buy };
+
+            for (price_u64, qty_u64) in self_refill_at_price.into_iter() {
+                if qty_u64 == 0 { continue; }
+                let bump_id = to_order_id(&format!("SELFREFILL-{}-{}", price_u64, current_time_millis()));
+
+                {
+                    // scoped book borrow for add_order
+                    let mut book = s.man.get_book_mut(&symbol).expect("book exists");
+                    let order_to_add = OrderType::Standard {
+                        id: bump_id.clone(),
+                        price: price_u64,
+                        quantity: qty_u64,
+                        side: maker_side,
+                        timestamp: current_time_millis(),
+                        time_in_force: TimeInForce::Gtc,
+                        extra_fields: (),
+                    };
+                    match book.add_order(order_to_add) {
+                        Err(e) => {
+                            eprintln!("self-refill add_order error at price {}: {:?}", price_u64, e);
+                            log_line(format!("[ERROR] self-refill add_order px={} err={:?}", price_u64, e));
+                        }
+                        Ok(_) => {
+                            log_line(format!("[SELF-BUMP] readded px={} qty={} as {:?}", price_u64, qty_u64, bump_id));
+                        }
+                    }
+                } // drop book
+
+                if let Some(ref taker_sock) = taker_sock_opt {
+                    s.by_socket
+                        .entry(symbol.clone())
+                        .or_default()
+                        .entry(taker_sock.clone())
+                        .or_default()
+                        .push(format!("{:?}", bump_id));
+                }
+            }
+        }
+
+        // --- Build taker-view transactions
+        let txns = mr.transactions.as_vec().iter().map(|tx| {
+            serde_json::json!({
+                "quantity": (tx.quantity as f64),
+                "price": (tx.price as f64) / 1e2,
+                "transaction_id": tx.transaction_id,
+                "maker": false
             })
-            .collect::<Vec<_>>();
+        }).collect::<Vec<_>>();
 
         out.push(serde_json::json!({
             "order_id": format!("{:?}", mr.order_id),
             "executed_qty": mr.executed_quantity() as f64,
             "remaining_qty": mr.remaining_quantity as f64,
             "is_complete": mr.is_complete,
-            "transactions": txns,                         // taker
-            "maker_slices": maker_slices,                 // maker attribution
+            "transactions": txns,
+            "maker_slices": maker_slices,
             "filled_order_ids": mr.filled_order_ids.iter().map(|fid| format!("{:?}", fid)).collect::<Vec<_>>()
         }));
     }
