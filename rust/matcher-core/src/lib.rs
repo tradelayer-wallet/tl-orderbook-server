@@ -8,12 +8,16 @@ use hashbrown::HashMap as FastMap;
 use std::fs::OpenOptions;
 use std::io::Write;
 
-const LOG_PATH: &str = "/tmp/tl_ob.log";
+const LOG_PATH: &str = "/mnt/c/Users/patri/Downloads/tl_ob.log";
+use chrono::Local;
+
 fn log_line<S: AsRef<str>>(s: S) {
+    let now = Local::now().format("%Y-%m-%d %H:%M:%S");
     if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(LOG_PATH) {
-        let _ = writeln!(f, "{}", s.as_ref());
+        let _ = writeln!(f, "[{}] {}", now, s.as_ref());
     }
 }
+
 
 use orderbook_rs::prelude::{
   BookManager, BookManagerStd, OrderBook, OrderId, Side, current_time_millis,
@@ -77,7 +81,7 @@ fn parse_side(s: &str) -> Side {
         "buy" => Side::Buy,
         _ => Side::Sell,
     };
-    println!("side parsed = {:?}", side);
+    log_line(format!("side parsed = {:?}", side));
     side
 }
 
@@ -144,7 +148,7 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
     }
 
     log_line(format!("[SUBMIT] symbol={} side={:?} px={} qty={} id={}", symbol, side, price, qty, id_str));
-    println!("submit(): symbol={} side={:?} price={} qty={}", symbol, side, price, qty);
+    log_line(format!("submit(): symbol={} side={:?} price={} qty={}", symbol, side, price, qty));
 
     // ---------- PRE-SNAPSHOT: capture maker FIFO per price ----------
     let maker_side = match side { Side::Buy => Side::Sell, Side::Sell => Side::Buy };
@@ -165,6 +169,48 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
             if !fifo.is_empty() { pre_fifo.insert(lvl.price, fifo); }
         }
     } // book borrow dropped here
+
+    // === STPF: cancel self maker orders that cross ===
+    if let Some(ref taker_sock) = order.socket_id {
+        let mut to_cancel = Vec::<orderbook_rs::prelude::OrderId>::new();
+        {
+            let depth = 256usize;
+            let book = s.man.get_book_mut(&symbol).expect("book exists");
+            let snap = book.create_snapshot(depth);
+            let levels = match side { Side::Buy => snap.asks, Side::Sell => snap.bids };
+
+            if let Some(owner_ids) = s.by_socket.get(&symbol).and_then(|m| m.get(taker_sock)) {
+                for lvl in levels.iter() {
+                    let crosses = match side {
+                        Side::Buy => lvl.price <= price,
+                        Side::Sell => lvl.price >= price,
+                    };
+                    if !crosses { break; }
+
+                    for ord in &lvl.orders {
+                        if let orderbook_rs::OrderType::Standard { id, .. } = ord.as_ref() {
+                            let id_s = id.to_string();
+                            if owner_ids.iter().any(|x| x == &id_s) {
+                                to_cancel.push(id.clone());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if !to_cancel.is_empty() {
+            let book = s.man.get_book_mut(&symbol).expect("book exists");
+            for oid in to_cancel.iter() {
+                let _ = book.cancel_order(oid.clone());
+            }
+            if let Some(ids) = s.by_socket.get_mut(&symbol).and_then(|m| m.get_mut(taker_sock)) {
+                ids.retain(|x| !to_cancel.iter().any(|oid| *x == oid.to_string()));
+            }
+            log_line(format!("[STPF] pre-cancelled {} self maker orders", to_cancel.len()));
+        }
+    }
+    // === end STPF ===
 
     // --- Match (scoped borrow)
     let mr = {
@@ -187,7 +233,7 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
             extra_fields: (),
         };
         if let Err(e) = book.add_order(order_to_add) {
-            eprintln!("add_order (taker remainder) error: {:?}", e);
+            log_line(format!("add_order (taker remainder) error: {:?}", e));
             log_line(format!("[ERROR] add_order remainder: {:?}", e));
         }
         // book borrow dropped here
@@ -271,7 +317,7 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
                 };
                 match book.add_order(order_to_add) {
                     Err(e) => {
-                        eprintln!("self-refill add_order error at price {}: {:?}", price_u64, e);
+                        log_line(format!("self-refill add_order error at price {}: {:?}", price_u64, e));
                         log_line(format!("[ERROR] self-refill add_order px={} err={:?}", price_u64, e));
                     }
                     Ok(_) => {
@@ -388,7 +434,7 @@ pub fn submit_batch(symbol: String, orders: Vec<JsOrder>) -> napi::Result<String
                 extra_fields: (),
             };
             if let Err(e) = book.add_order(order_to_add) {
-                eprintln!("add_order (taker remainder) error: {:?}", e);
+                log_line(format!("add_order (taker remainder) error: {:?}", e));
                 log_line(format!("[ERROR] add_order remainder: {:?}", e));
             }
         } // drop book
@@ -468,7 +514,7 @@ pub fn submit_batch(symbol: String, orders: Vec<JsOrder>) -> napi::Result<String
                     };
                     match book.add_order(order_to_add) {
                         Err(e) => {
-                            eprintln!("self-refill add_order error at price {}: {:?}", price_u64, e);
+                            log_line(format!("self-refill add_order error at price {}: {:?}", price_u64, e));
                             log_line(format!("[ERROR] self-refill add_order px={} err={:?}", price_u64, e));
                         }
                         Ok(_) => {
@@ -546,7 +592,7 @@ pub fn cancel_all_by_socket(symbol: String, socket_id: String) -> u32 {
 pub fn snapshot(symbol: String, depth: Option<u32>) -> String {
   let s = STATE.lock().unwrap();
   if let Some(book) = s.man.get_book(&symbol) {
-    println!("snapshot(): book {:p} symbol={}", book, symbol);
+    log_line(format!("snapshot(): book {:p} symbol={}", book, symbol));
     let d = depth.unwrap_or(20) as usize;
     match book.snapshot_to_json(d) {
       Ok(json) => json,
