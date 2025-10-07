@@ -8,6 +8,7 @@ use hashbrown::HashMap as FastMap;
 
 use orderbook_rs::prelude::{
   BookManager, BookManagerStd, OrderBook, OrderId, Side, current_time_millis,
+  OrderType,
 };
 use uuid::Uuid;
 use ulid::Ulid;
@@ -140,8 +141,8 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
             let mut fifo: Vec<(String, u64)> = Vec::new();
             for ord in &lvl.orders {
                 // Snapshot order enum -> id/qty
-                if let Some(std) = &ord.standard {
-                    fifo.push((std.id.clone(), std.quantity as u64));
+                if let OrderType::Standard { id, quantity, .. } = ord.as_ref() {
+                    fifo.push((id.to_string(), *quantity as u64));
                 }
             }
             if !fifo.is_empty() {
@@ -179,20 +180,25 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
         if let Some(fifo) = pre_fifo.get_mut(&p) {
             let mut i = 0usize;
             while want > 0 && i < fifo.len() {
-                let (maker_id, rem) = (&fifo[i].0, &mut fifo[i].1);
-                let take = want.min(*rem);
-                if take > 0 {
-                    maker_slices.push(serde_json::json!({
-                        "maker_order_id": maker_id,
-                        "taker_order_id": format!("{:?}", id),
-                        "price": (p as f64) / 1e2,      // keep your price scaling
-                        "quantity": take as f64,        // qty already unscaled in your API
-                        "maker": true
-                    }));
-                    *rem -= take;
-                    want -= take;
-                    if *rem == 0 { i += 1; } else { break; }
-                } else {
+                let (maker_id, rem_val) = {
+                let (id_str, qty_ref) = &fifo[i];
+                (id_str.clone(), *qty_ref)
+            };
+            let take = want.min(rem_val);
+            if take > 0 {
+                maker_slices.push(serde_json::json!({
+                    "maker_order_id": maker_id,
+                    "taker_order_id": format!("{:?}", id),
+                    "price": (p as f64) / 1e2,
+                    "quantity": take as f64,
+                    "maker": true
+                }));
+
+                // Mutate after releasing the immutable borrow
+                fifo[i].1 -= take;
+                want -= take;
+                if fifo[i].1 == 0 { i += 1; } else { break; }
+            } else {
                     i += 1;
                 }
             }
@@ -275,8 +281,8 @@ pub fn submit_batch(symbol: String, orders: Vec<JsOrder>) -> napi::Result<String
             for lvl in levels.iter() {
                 let mut fifo: Vec<(String, u64)> = Vec::new();
                 for ord in &lvl.orders {
-                    if let Some(std) = &ord.standard {
-                        fifo.push((std.id.clone(), std.quantity as u64));
+                    if let OrderType::Standard { id, quantity, .. } = ord.as_ref() {
+                        fifo.push((id.to_string(), *quantity as u64));
                     }
                 }
                 if !fifo.is_empty() {
@@ -318,8 +324,11 @@ pub fn submit_batch(symbol: String, orders: Vec<JsOrder>) -> napi::Result<String
             if let Some(fifo) = pre_fifo.get_mut(&p) {
                 let mut i = 0usize;
                 while want > 0 && i < fifo.len() {
-                    let (maker_id, rem) = (&fifo[i].0, &mut fifo[i].1);
-                    let take = want.min(*rem);
+                    let (maker_id, rem_val) = {
+                        let (id_str, qty_ref) = &fifo[i];
+                        (id_str.clone(), *qty_ref)
+                    };
+                    let take = want.min(rem_val);
                     if take > 0 {
                         maker_slices.push(serde_json::json!({
                             "maker_order_id": maker_id,
@@ -328,9 +337,11 @@ pub fn submit_batch(symbol: String, orders: Vec<JsOrder>) -> napi::Result<String
                             "quantity": take as f64,
                             "maker": true
                         }));
-                        *rem -= take;
+
+                        // Mutate after releasing the immutable borrow
+                        fifo[i].1 -= take;
                         want -= take;
-                        if *rem == 0 { i += 1; } else { break; }
+                        if fifo[i].1 == 0 { i += 1; } else { break; }
                     } else {
                         i += 1;
                     }
