@@ -222,7 +222,9 @@ export class SocketManager {
             case OnEvents.CLOSE_ORDER:
                 case OnEvents.CLOSE_ORDER: {
                   const uuid = data.orderUUID;
+                  console.log('inside close '+uuid)
                   if (this._seenClose(ws, uuid)) break;   // drop duplicate
+                  console.log('handling it')
                   this.handleCloseOrder(ws, data);
                   break;
                 }
@@ -344,6 +346,7 @@ export class SocketManager {
     private handleCloseOrder(ws: HyperExpress.Websocket, data: any) {
         const id = (ws as any).id;
         const uuid = data.orderUUID;
+        console.log('inside handle close '+id +' '+uuid)
         orderbookManager.removeOrder(uuid, id);
         const openedOrders = orderbookManager.getOrdersBySocketId(id);
         const orderHistory = orderbookManager.getOrdersHistory();

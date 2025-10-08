@@ -262,6 +262,7 @@ export class Orderbook {
 
   public removeOrder(uuid: string, _socket_id?: string) {
     const idx = this._orders.findIndex((o) => o.uuid === uuid);
+    console.log('idx inside remove '+idx)
     if (idx >= 0) {
       const [removed] = this._orders.splice(idx, 1);
       this.byUuid.delete(uuid);

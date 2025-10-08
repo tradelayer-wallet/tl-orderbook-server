@@ -50,12 +50,12 @@ export class OrderbookManager {
     try {
       const orderbook = this.orderbooks.find(b => b.orders.find(o => o.uuid === uuid));
       if (!orderbook) throw new Error(`Order with uuid: ${uuid} dont exist`);
-
+      console.log('orderbook '+JSON.stringify(orderbook))
       const order = orderbook.orders.find(q => q.uuid === uuid);
       if (!order) throw new Error(`Order with uuid: ${uuid} dont exist`);
-
+      console.log('order '+JSON.stringify(order))
       const res = orderbook.removeOrder(uuid, socket_id);
-
+      console.log('res of remove '+JSON.stringify(res))
       // update logs as before
       updateOrderLog(orderbook.orderbookName, order.uuid, "CANCELED");
 
