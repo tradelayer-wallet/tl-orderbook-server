@@ -205,6 +205,25 @@ export class Orderbook {
     }
   }
 
+  private findByFilter (order: TOrder): IResult {
+    try {
+      if (this.props) throw new Error(`Props for this orderbook already exist`);
+
+      const { type } = order;
+      if (type === EOrderType.SPOT) {
+        const { id_desired, id_for_sale } = order.props as ISpotOrderProps;
+        this.props = { id_desired, id_for_sale } as ISpotOrderProps;
+      }
+      if (type === EOrderType.FUTURES) {
+        const { contract_id } = order.props as IFuturesOrderProps;
+        this.props = { contract_id } as IFuturesOrderProps;
+      }
+      return { data: true as any };
+    } catch (error: any) {
+      return { error: error.message };
+    }
+  }
+
   public checkCompatible(order: TOrder): boolean {
     const p = order.props as any;
     if (order.type !== this.type) return false;
@@ -245,7 +264,6 @@ export class Orderbook {
       }
       return false;
     }
-
 
   updatePlacedOrdersForSocketId(socketid: string) {
     try {
