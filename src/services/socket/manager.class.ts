@@ -53,6 +53,7 @@ export class SocketManager {
           const markets: Set<string> = (ws as any)._markets;
           if (mk && markets.size && !markets.has(mk)) return;
 
+          if (evt.socketId && evt.socketId === (ws as any).id) return;
           // de-dupe per socket (belt & suspenders)
           if (seenRecently(evt.orderUuid)) return;
 
@@ -137,20 +138,6 @@ export class SocketManager {
 
     addSession(id: string, ws: HyperExpress.Websocket) {
     this._liveSessions.set(id, ws);
-
-	    // listen for JOIN/LEAVE events from client
-	    ws.on('message', (raw: string) => {
-	      try {
-	        const msg = JSON.parse(raw);
-	        if (msg.event === 'ORDERBOOK_JOIN') {
-	          this.subscribeMarket(id, msg.marketKey,ws);
-	        } else if (msg.event === 'ORDERBOOK_LEAVE') {
-	          this.unsubscribeMarket(id, msg.marketKey);
-	        }
-	      } catch (err) {
-	        console.error('bad ws msg', err);
-	      }
-	    });
 	  }
 
 	  removeSession(id: string) {
@@ -220,14 +207,12 @@ export class SocketManager {
                 this.handleUpdateOrderbook(ws, data);
                 break;
             case OnEvents.CLOSE_ORDER:
-                case OnEvents.CLOSE_ORDER: {
                   const uuid = data.orderUUID;
                   console.log('inside close '+uuid)
                   if (this._seenClose(ws, uuid)) break;   // drop duplicate
                   console.log('handling it')
                   this.handleCloseOrder(ws, data);
                   break;
-                }
             case OnEvents.MANY_ORDERS:
                 this.handleManyOrders(ws, data);
                 break;
