@@ -23,6 +23,11 @@ export class SocketManager {
   private _marketSubs = new Map<string, Set<string>>();
   private _sessionSubs = new Map<string, Set<string>>();
 
+  private _dirty = new Set<string>();                 // markets needing a push
+  private _flushing = false;                          // gate the coalescer
+  private _coalesceMs = 50;                           // tweak as needed
+  private _depth = 40;                                // levels to send (lightweight)
+
   // local de-dupe for close-order spam per socket
   private _recentClose = new Map<string, Map<string, number>>();
 
@@ -33,49 +38,68 @@ export class SocketManager {
     { market: string; price?: number; quantity?: number }
   >();
 
+  private _tickHandle: NodeJS.Timeout | null = null;
+  private _lastNativeSnap = new Map<string, any>(); // marketKey -> latest snapshot
+
   constructor() {
-    // Wire native sinks → fanout & exec handling
-    registerNativeSinks({
-      onSnapshot: (market, snapshot) => {
-        this.broadcastToMarket(market, {
-          event: EmitEvents.ORDERBOOK_DATA,
-          marketKey: market,
-          native: snapshot,
-        });
-      },
-      onExecs: (market, execs) => {
-        // fire and forget; don’t block the sink
-        this._handleExecs(market, execs).catch((err) =>
-          console.warn('[exec sink err]', err)
-        );
-      },
-      onOrderEvent: (ev) => {
-        if (ev.type === 'ADDED' && ev.uuid) {
-          this._uuidToMarket.set(ev.uuid, ev.market);
-        }
-        if (ev.type === 'CANCELED' && ev.uuid) {
-          this._uuidToMarket.delete(ev.uuid);
-          this._byUuid.delete(ev.uuid);
-        }
-        if (ev.type === 'AMENDED' && ev.uuid) {
-          const cur = this._byUuid.get(ev.uuid);
-          if (cur) {
-            if (typeof ev.quantity === 'number') cur.quantity = ev.quantity;
-            if (typeof ev.price === 'number') cur.price = ev.price;
-            this._byUuid.set(ev.uuid, cur);
+  // start periodic broadcaster
+  this._tickHandle = setInterval(() => this.flushOrderbookData(), this._coalesceMs);
+
+  // Wire native sinks → cache + exec handling
+  registerNativeSinks({
+        onSnapshot: (market: string, snapshot: any) => {
+          // cache latest and mark dirty
+          this._lastNativeSnap.set(market, snapshot);
+          this._dirty.add(market);
+        },
+        onExecs: (market: string, execs: any[]) => {
+          // fire and forget; don’t block the sink
+          this._handleExecs?.(market, execs).catch((err: any) =>
+            console.warn('[exec sink err]', err)
+          );
+        },
+        onOrderEvent: (ev: any) => {
+          if (ev.type === 'ADDED' && ev.uuid) {
+            this._uuidToMarket.set(ev.uuid, ev.market);
           }
-        }
-      },
-    });
-  }
+          if (ev.type === 'CANCELED' && ev.uuid) {
+            this._uuidToMarket.delete(ev.uuid);
+            this._byUuid.delete(ev.uuid);
+          }
+          if (ev.type === 'AMENDED' && ev.uuid) {
+            const cur = this._byUuid.get(ev.uuid);
+            if (cur) {
+              if (typeof ev.quantity === 'number') cur.quantity = ev.quantity;
+              if (typeof ev.price === 'number') cur.price = ev.price;
+              this._byUuid.set(ev.uuid, cur);
+            }
+          }
+        },
+      });
+    }
+
+  private flushOrderbookData() {
+     if (this._dirty.size === 0) return;
+     const markets = Array.from(this._dirty);
+     this._dirty.clear();
+     for (const mk of markets) {
+       const native = this._lastNativeSnap.get(mk);
+       if (!native) continue;
+       this.broadcastToMarket(mk, {
+         event: EmitEvents.ORDERBOOK_DATA,
+         marketKey: mk,
+         native,
+       });
+     }
+   }
 
   spotKeyFromIds(a?: any, b?: any): string | null {
-  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
-  const x = Number(a), y = Number(b);
-  const base = Math.min(x, y);
-  const quote = Math.max(x, y);
-  return `${base}-${quote}`;            // canonical internal key
-}
+      if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+      const x = Number(a), y = Number(b);
+      const base = Math.min(x, y);
+      const quote = Math.max(x, y);
+      return `${base}-${quote}`;            // canonical internal key
+    }
 
 futKey(contractId?: any, expiry?: any): string | null {
   if (!contractId && !expiry) return null;
@@ -98,7 +122,6 @@ futKey(contractId?: any, expiry?: any): string | null {
     // initial hello (client will request market snapshots it cares about)
     ws.send(JSON.stringify({ event: 'connected', id }));
     // (optional) send a small hint to prompt the client to request a market
-    ws.send(JSON.stringify({ event: EmitEvents.UPDATE_ORDERS_REQUEST }));
 
     console.log(`[SM] OPEN ${id}, live=${this._liveSessions.size}`);
   };
@@ -116,7 +139,7 @@ futKey(contractId?: any, expiry?: any): string | null {
       console.error('[SM] Failed to parse WS message', e, message);
       return;
     }
-
+    console.log('incoming message '+JSON.stringify(data))
     switch (data.event) {
       case OnEvents.NEW_ORDER: {
         await this.handleNewOrder(ws, data);
@@ -200,46 +223,115 @@ futKey(contractId?: any, expiry?: any): string | null {
     }
   }
 
-  private async handleNewOrder(ws: WS, data: any) {
-    const sid = (ws as any).id as string;
-    const market = this.resolveMarket(ws, data);
-    if (!market) {
-      ws.send(
-        JSON.stringify({
-          event: OrderEmitEvents.ERROR,
-          message: 'Missing marketKey',
-        })
-      );
+  private async handleNewOrder(ws: HyperExpress.Websocket, data: any) {
+    // 🧱 1. Basic guards
+    if (!data.isLimitOrder) {
+      ws.send(JSON.stringify({
+        event: OrderEmitEvents.ERROR,
+        message: 'Market Orders Not allowed'
+      }));
       return;
     }
 
+    // --- FUTURES normalization ---
+    if (data?.type === 'FUTURES' && data?.props) {
+      if (data.props.contractId && !data.props.contract_id) {
+        data.props.contract_id = data.props.contractId;
+        delete data.props.contractId;
+      }
+    }
+
+    // --- SPOT normalization ---
+    if (data?.type === 'SPOT' && data?.props) {
+      const f = data.props.id_for_sale;
+      const d = data.props.id_desired;
+      if (f == null || d == null) {
+        ws.send(JSON.stringify({
+          event: OrderEmitEvents.ERROR,
+          message: 'Missing property IDs'
+        }));
+        return;
+      }
+      const baseId  = Math.min(f, d);
+      const quoteId = Math.max(f, d);
+      if (f === baseId && d === quoteId) data.props.side = 'BUY';
+      else if (f === quoteId && d === baseId) data.props.side = 'SELL';
+      else {
+        ws.send(JSON.stringify({
+          event: OrderEmitEvents.ERROR,
+          message: 'Invalid property ID pair'
+        }));
+        return;
+      }
+    }
+
+    // 🧭 2. Resolve market
+    const sid = (ws as any).id as string;
+    const market = this.resolveMarket(ws, data);
+    if (!market) {
+      ws.send(JSON.stringify({
+        event: OrderEmitEvents.ERROR,
+        message: 'Missing marketKey'
+      }));
+      return;
+    }
+
+    // ⚙️ 3. Normalize & ACK
     const order = this.normalizeOrder(data, sid) as NormalizedOrder;
     if (order.error) {
-      ws.send(
-        JSON.stringify({ event: OrderEmitEvents.ERROR, message: order.error })
-      );
+      ws.send(JSON.stringify({ event: OrderEmitEvents.ERROR, message: order.error }));
       return;
     }
 
     try {
-      // optimistic ACK
-      ws.send(
-        JSON.stringify({ event: OrderEmitEvents.SAVED, orderUuid: order.uuid })
-      );
+      ws.send(JSON.stringify({
+        event: OrderEmitEvents.SAVED,
+        orderUuid: order.uuid
+      }));
 
+      // 🔧 4. Submit to native engine
       native.submit(market, this.toJsOrder(order));
 
-      // ask clients in this market to refresh their opened/tray
-      this.broadcastToMarket(market, {
-        event: EmitEvents.UPDATE_ORDERS_REQUEST,
-      });
+      // 🧩 5. Immediate placed-orders tray
+      console.log('about to call orders '+sid+' '+market)
+      try {
+        const openedRaw =
+          (native as any).get_open_orders_by_socket?.(sid,market) ?? [];
+          console.log('fetched orders '+JSON.stringify(openedRaw))
+        const opened = Array.isArray(openedRaw) ? openedRaw : [];
+
+        const history =
+          (native as any).get_order_history_by_socket?.(market, sid) ??
+          [];
+
+        ws.send(JSON.stringify({
+          event: EmitEvents.PLACED_ORDERS,
+          openedOrders: opened,
+          orderHistory: history
+        }));
+      } catch (err) {
+        console.warn('[placed-orders err]', err);
+      }
+
+      // 📡 6. Broadcast snapshot to all subs
+      try {
+        const snap =
+          this._lastNativeSnap.get(market) ?? native.snapshot(market, 50);
+        if (snap) {
+          this.broadcastToMarket(market, {
+            event: EmitEvents.ORDERBOOK_DATA,
+            marketKey: market,
+            native: snap
+          });
+        }
+      } catch (err) {
+        console.warn('[snapshot broadcast err]', err);
+      }
     } catch (e: any) {
-      ws.send(
-        JSON.stringify({
-          event: OrderEmitEvents.ERROR,
-          message: e?.message || 'submit failed',
-        })
-      );
+      ws.send(JSON.stringify({
+        event: OrderEmitEvents.ERROR,
+        message: e?.message || 'submit failed'
+      }));
     }
   }
 
@@ -388,6 +480,7 @@ futKey(contractId?: any, expiry?: any): string | null {
       const ws = this._liveSessions.get(id);
       if (!ws) continue;
       try {
+        if ((ws as any).bufferedAmount && (ws as any).bufferedAmount > 1_000_000){continue};
         ws.send(str);
       } catch {}
     }
@@ -496,7 +589,7 @@ futKey(contractId?: any, expiry?: any): string | null {
 
   private deriveMarketFromOrder(data: any): string | null {
       const o = data?.order ?? data;
-
+      console.log('data in deriver market '+JSON.stringify(data))
       // explicit beats inference
       const mk =
         o?.marketKey ??
@@ -508,13 +601,13 @@ futKey(contractId?: any, expiry?: any): string | null {
       // SPOT inference by IDs → "min-max"
       const f = o?.props?.id_for_sale ?? o?.id_for_sale;
       const d = o?.props?.id_desired  ?? o?.id_desired;
-      const spot = spotKeyFromIds(f, d);
+      const spot = this.spotKeyFromIds(f, d);
       if (spot) return spot;
 
       // FUTURES inference
       const cid = o?.props?.contract_id ?? o?.props?.contractId;
       const exp = o?.props?.expiry ?? o?.props?.maturity_block;
-      const fut = futKey(cid, exp);
+      const fut = this.futKey(cid, exp);
       if (fut) return fut;
 
       return null;

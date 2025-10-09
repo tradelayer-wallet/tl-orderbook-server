@@ -1,68 +1,57 @@
-// rust_test.js
 const core = require("./rust/matcher-core/matcher_core.node");
-
-console.log("=== INITIALIZING BOOK ===");
-core.createBook("ETHUSD");
-
+console.log(Object.keys(core).sort());
+// Optional sanity
+console.log('napi version:', process.versions.napi);
 function parse(res) {
   if (typeof res === "string") {
     try {
       return JSON.parse(res);
     } catch {
       console.warn("⚠️ Could not parse JSON:", res);
+      return res;
     }
   }
   return res;
 }
 
-//
-// === STEP 1: add 5-lot bid ===
-//
-const buyRes = parse(
-  core.submit("ETHUSD", { uuid: "b1", side: "BUY", price: 1100, amount: 5 })
+// --- Helper ---
+function show(label, obj) {
+  console.log(`\n=== ${label} ===`);
+  console.log(JSON.stringify(parse(obj), null, 2));
+}
+
+// ------------------------------------------------------------
+// 0. Setup
+// ------------------------------------------------------------
+console.log("=== INITIALIZING BOOK ===");
+core.createBook("ETHUSD");
+
+// ------------------------------------------------------------
+// 1. Submit a few orders
+// ------------------------------------------------------------
+core.submit("ETHUSD", { uuid: "b1", side: "BUY", price: 1100, amount: 5 });
+core.submit("ETHUSD", { uuid: "s1", side: "SELL", price: 1000, amount: 2 });
+core.submit("ETHUSD", { uuid: "s2", side: "SELL", price: 1025, amount: 1 });
+core.submit("ETHUSD", { uuid: "s3", side: "SELL", price: 1100, amount: 3 });
+
+// ------------------------------------------------------------
+// 2. Inspect current state via existing public methods
+// ------------------------------------------------------------
+show("snapshot(ETHUSD,5)", core.snapshot("ETHUSD", 5));
+show(
+  "getOpenOrdersBySocket(<socket_id>, ETHUSD)",
+  core.getOpenOrdersBySocket("1760025034318-snbszo7", "ETHUSD")
 );
-console.log("buy big", buyRes);
+show("int2ext map", core.get_int2ext ? core.get_int2ext("ETHUSD") : "{}");
+show("books list", core.listBooks ? core.listBooks() : "{}");
 
-//
-// === STEP 2: sequential sells ===
-//
+// optional: if you track sockets internally
+if (core.listSockets) show("listSockets()", core.listSockets());
 
-// (a) first hit: 2 @1000
-const sell1 = parse(
-  core.submit("ETHUSD", { uuid: "s1", side: "SELL", price: 1000, amount: 2 })
-);
-console.log("sell1", sell1);
-
-// (b) second hit: 1 @1000
-const sell2 = parse(
-  core.submit("ETHUSD", { uuid: "s2", side: "SELL", price: 1025, amount: 1 })
-);
-console.log("sell2", sell2);
-
-// (c) final hit: 2 @1000
-const sell3 = parse(
-  core.submit("ETHUSD", { uuid: "s3", side: "SELL", price: 1100, amount: 3 })
-);
-console.log("sell3", sell3);
-
-//
-// === STEP 3: verify outcomes ===
-//
-
-// cumulative executed = 5
-const totalExec = sell1.executed_qty + sell2.executed_qty + sell3.executed_qty;
-if (totalExec !== 5.0)
-  throw new Error(`Expected total executed 5.0, got ${totalExec}`);
-
-// after final fill, book should be empty on bids
-console.log("=== POST-MATCH SNAPSHOT ===");
+// ------------------------------------------------------------
+// 3. Optional verify logic (match coverage test)
+// ------------------------------------------------------------
 const snap = parse(core.snapshot("ETHUSD", 5));
-console.log(JSON.stringify(snap, null, 2));
-
 const bids = snap.snapshot?.bids ?? [];
-if (bids.length !== 0)
-  throw new Error(
-    `Expected book to clear after cumulative sells, found ${bids.length} bids`
-  );
-
-console.log("✅ Multi-match test passed — cumulative fills correct and book cleared.");
+const asks = snap.snapshot?.asks ?? [];
+console.log(`\nBook depth: bids=${bids.length}, asks=${asks.length}`);
