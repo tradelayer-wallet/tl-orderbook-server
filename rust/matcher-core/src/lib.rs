@@ -19,8 +19,7 @@ fn log_line<S: AsRef<str>>(s: S) {
 }
 
 use orderbook_rs::prelude::{
-  BookManager, BookManagerStd, OrderBook, OrderId, Side, current_time_millis,
-  OrderType,
+  BookManager, BookManagerStd, OrderBook, OrderId, Side, current_time_millis,OrderType,
 };
 use std::sync::Arc;
 use uuid::Uuid;
@@ -39,7 +38,8 @@ pub struct JsOrder {
 #[derive(Default)]
 struct State {
   man: BookManagerStd<()>,
-  by_socket: HashMap<String, FastMap<String, Vec<String>>>, // symbol -> socket -> [orderIds]
+  // symbol -> socket -> [ids]; we store *both* engine id strings (Display/Debug) AND external uuids
+  by_socket: HashMap<String, FastMap<String, Vec<String>>>,
 }
 
 static STATE: Lazy<Mutex<State>> = Lazy::new(|| Mutex::new(State::default()));
@@ -117,12 +117,19 @@ pub fn create_book(symbol: String) -> bool {
   true
 }
 
+// Thin alias so TS can call native.init_market(...)
+#[napi]
+pub fn init_market(symbol: String) -> bool {
+  create_book(symbol)
+}
+
 #[napi]
 pub fn drop_book(symbol: String) -> bool {
   let mut s = STATE.lock().unwrap();
   s.by_socket.remove(&symbol);
   s.man.remove_book(&symbol).is_some()
 }
+
 #[napi]
 pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
     use orderbook_rs::{OrderType, prelude::TimeInForce};
@@ -321,6 +328,7 @@ pub struct BatchReq {
   pub place:  Option<Vec<JsOrder>>,
   pub snap_levels: Option<u32>,
 }
+
 #[napi]
 pub fn submit_batch(req: BatchReq) -> napi::Result<String> {
     let mut out_canceled: Vec<String> = Vec::new();
@@ -347,8 +355,7 @@ pub fn submit_batch(req: BatchReq) -> napi::Result<String> {
                     amount: o.amount,
                     side: o.side.clone(),
                     socket_id: o.socket_id.clone(),
-                    // if your JsOrder has extra fields, keep forwarding as needed:
-                    ..o.clone()
+                    // forward any extra fields if you extend JsOrder later
                 },
             )?;
             let parsed: serde_json::Value = serde_json::from_str(&s).unwrap_or(serde_json::json!({}));
@@ -406,6 +413,7 @@ pub fn cancel_all_by_socket(symbol: String, socket_id: String) -> u32 {
   }
   count
 }
+
 #[napi]
 pub fn edit(symbol: String, order_id: String, new_qty: Option<f64>, new_price: Option<f64>) -> napi::Result<bool> {
     use orderbook_rs::prelude::{Side, OrderId as EngOrderId};
@@ -568,4 +576,90 @@ pub fn stats(symbol: String) -> String {
   } else {
     "{}".into()
   }
+}
+
+/* ===== Added: open orders tray ===== */
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[napi(object)]
+pub struct JsOpenOrder {
+    pub uuid: String,
+    pub market: String,
+    pub side: String,
+    pub price: f64,
+    pub amount: f64,
+}
+
+/// Enumerate open orders belonging to a socket. If `market` is Some, restrict to that market.
+#[napi]
+pub fn get_open_orders_by_socket(socket_id: String, market: Option<String>) -> napi::Result<String> {
+    use orderbook_rs::prelude::Side;
+
+    let mut s = STATE.lock().unwrap();
+    let mut out: Vec<JsOpenOrder> = Vec::new();
+
+    // pick markets to scan
+    let symbols: Vec<String> = if let Some(m) = &market {
+        vec![m.clone()]
+    } else {
+        s.by_socket.keys().cloned().collect()
+    };
+
+    for symbol in symbols {
+        // list of ids (engine id Display/Debug and possibly external uuid)
+        let maybe_ids = s
+            .by_socket
+            .get(&symbol)
+            .and_then(|by_sock| by_sock.get(&socket_id))
+            .cloned();
+
+        if maybe_ids.is_none() { continue; }
+        let ids_vec = maybe_ids.unwrap();
+
+        // Need snapshot to get px/qty/side; use a reasonable depth
+        let Some(book) = s.man.get_book_mut(&symbol) else { continue; };
+        let snap = book.create_snapshot(512);
+
+        let mut push_found = |side: Side, px_u64: u64, qty_u64: u64, id: &orderbook_rs::prelude::OrderId| {
+            // Prefer an external uuid from ids_vec if present; else fallback to engine string
+            let id_str = id.to_string();
+            let id_dbg = format!("{:?}", id);
+            let ext_uuid = ids_vec.iter()
+                .find(|x| **x != id_str && **x != id_dbg)
+                .cloned()
+                .unwrap_or(id_str.clone());
+            out.push(JsOpenOrder {
+                uuid: ext_uuid,
+                market: symbol.clone(),
+                side: match side { Side::Buy => "BUY".into(), Side::Sell => "SELL".into() },
+                price: (px_u64 as f64) / 1e2, // keep in sync with PRICE_SCALE
+                amount: qty_u64 as f64,
+            });
+        };
+
+        for lvl in &snap.bids {
+            for ord in &lvl.orders {
+                if let orderbook_rs::OrderType::Standard { id, quantity, .. } = ord.as_ref() {
+                    let id_str = id.to_string();
+                    let id_dbg = format!("{:?}", id);
+                    if ids_vec.iter().any(|x| x == &id_str || x == &id_dbg) {
+                        push_found(Side::Buy, lvl.price, *quantity as u64, id);
+                    }
+                }
+            }
+        }
+        for lvl in &snap.asks {
+            for ord in &lvl.orders {
+                if let orderbook_rs::OrderType::Standard { id, quantity, .. } = ord.as_ref() {
+                    let id_str = id.to_string();
+                    let id_dbg = format!("{:?}", id);
+                    if ids_vec.iter().any(|x| x == &id_str || x == &id_dbg) {
+                        push_found(Side::Sell, lvl.price, *quantity as u64, id);
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(serde_json::to_string(&out).unwrap_or_else(|_| "[]".into()))
 }
