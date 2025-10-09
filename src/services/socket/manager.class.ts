@@ -1,189 +1,117 @@
 // src/services/socket/manager.class.ts
 import HyperExpress from 'hyper-express';
-import { native } from '../../native';
 import { EmitEvents, OnEvents, OrderEmitEvents } from './events';
-import { ChannelSwap } from '../../services/channel/ChannelSwap';
+import { native, registerNativeSinks, JsOrder, Exec } from '../../native';
 
-type Json = Record<string, any>;
+type WS = HyperExpress.Websocket;
 
-type NormalizedOrder =
-  | {
-      uuid: string;
-      socket_id: string;
-      side?: string;
-      type?: 'SPOT' | 'FUTURES';
-      action?: 'BUY' | 'SELL';
-      props?: any;
-      price: number;
-      amount: number;
-      quantity?: number; // tolerated inbound
-      keypair?: any;
-    }
-  | { error: string };
+type NormalizedOrder = {
+  uuid: string;
+  socket_id: string;
+  price: number;
+  amount: number;
+  side: 'BUY' | 'SELL';
+  type?: 'SPOT' | 'FUTURES';
+  action?: 'BUY' | 'SELL';
+  props?: any;
+  keypair?: any;
+  error?: string;
+};
 
 export class SocketManager {
-  private _liveSessions = new Map<string, HyperExpress.Websocket>();
-  private _marketSubs = new Map<string, Set<string>>();   // marketKey -> socketIds
-  private _sessionSubs = new Map<string, Set<string>>();  // socketId  -> marketKeys
-  private _attached = new WeakSet<HyperExpress.Websocket>();
-  private _recentClose = new Map<string, Map<string, number>>(); // socket -> (uuid -> ts)
+  private _liveSessions = new Map<string, WS>();
+  private _marketSubs = new Map<string, Set<string>>();
+  private _sessionSubs = new Map<string, Set<string>>();
+
+  // local de-dupe for close-order spam per socket
+  private _recentClose = new Map<string, Map<string, number>>();
+
+  // local cache (optional): uuid -> { market, price?, quantity? }
+  private _uuidToMarket = new Map<string, string>();
+  private _byUuid = new Map<
+    string,
+    { market: string; price?: number; quantity?: number }
+  >();
 
   constructor() {
-    // no servers here
-  }
-
-  // ---------------- lifecycle ----------------
-  handleOpen(ws: HyperExpress.Websocket) {
-    if (this._attached.has(ws)) return;
-    this._attached.add(ws);
-
-    const id = this.generateUniqueId();
-    (ws as any).id = id;
-    this._liveSessions.set(id, ws);
-
-    (ws as any)._markets = new Set<string>();
-
-    // client expects this exact event on connect
-    try {
-      ws.send(JSON.stringify({ event: 'connected', id }));
-    } catch {}
-
-    ws.on('message', (m) => this.handleMessage(ws, m));
-    ws.on('close',   ()  => this.handleClose(ws));
-
-    // Initial snapshot (empty/global for Rust path; clients will JOIN for market snapshots)
-    try {
-      ws.send(JSON.stringify({
-        event: EmitEvents.ORDERBOOK_DATA,
-        orders: [],
-        history: []
-      }));
-    } catch {}
-
-    console.log(`[SM] OPEN ${id}, live=${this._liveSessions.size}`);
-  }
-
-  private handleClose(ws: HyperExpress.Websocket) {
-    const id = (ws as any).id;
-    this._liveSessions.delete(id);
-    console.log(`[SM] Connection closed: ${id}`);
-
-    // unsubscribe from all markets
-    const subs = this._sessionSubs.get(id);
-    if (subs) {
-      for (const mk of subs) this._marketSubs.get(mk)?.delete(id);
-      this._sessionSubs.delete(id);
-    }
-
-    // If you expose native.cancel_all_by_socket, you can loop subs and call it here.
-  }
-
-  registerNativeSinks({
-    onSnapshot: (market, snapshot) => {
-        this.broadcastToMarket(market, { event: 'orderbook-data', marketKey: market, native: snapshot });
+    // Wire native sinks → fanout & exec handling
+    registerNativeSinks({
+      onSnapshot: (market, snapshot) => {
+        this.broadcastToMarket(market, {
+          event: EmitEvents.ORDERBOOK_DATA,
+          marketKey: market,
+          native: snapshot,
+        });
       },
       onExecs: (market, execs) => {
-        // fanout + channel creation
-        this._handleExecs(market, execs).catch(err => console.warn('[exec sink err]', err));
+        // fire and forget; don’t block the sink
+        this._handleExecs(market, execs).catch((err) =>
+          console.warn('[exec sink err]', err)
+        );
       },
       onOrderEvent: (ev) => {
-        if (ev.type === 'ADDED' && ev.uuid) this._uuidToMarket.set(ev.uuid, ev.market);
-        else if (ev.type === 'CANCELED' && ev.uuid) {
+        if (ev.type === 'ADDED' && ev.uuid) {
+          this._uuidToMarket.set(ev.uuid, ev.market);
+        }
+        if (ev.type === 'CANCELED' && ev.uuid) {
           this._uuidToMarket.delete(ev.uuid);
           this._byUuid.delete(ev.uuid);
-        } else if (ev.type === 'AMENDED' && ev.uuid) {
+        }
+        if (ev.type === 'AMENDED' && ev.uuid) {
           const cur = this._byUuid.get(ev.uuid);
           if (cur) {
             if (typeof ev.quantity === 'number') cur.quantity = ev.quantity;
-            if (typeof ev.price    === 'number') cur.price    = ev.price;
+            if (typeof ev.price === 'number') cur.price = ev.price;
             this._byUuid.set(ev.uuid, cur);
           }
         }
-      }
+      },
     });
+  }
 
-    /**
-     * Handle executions coming from native (rust). For each slice we:
-     *  - emit to taker + maker sockets
-     *  - build a TradeInfo-like object
-     *  - run ChannelSwap and persist to history
-     */
-    private async _handleExecs(
-      marketKey: string,
-      execs: Array<{
-        price: number;
-        quantity: number;
-        maker_socket_id?: string;
-        taker_socket_id?: string;
-        maker_ext_uuid?: string;
-        taker_ext_uuid?: string;
-      }>
-    ) {
-      for (const ex of execs) {
-        const makerSocket = ex.maker_socket_id ? this._liveSessions.get(ex.maker_socket_id) : undefined;
-        const takerSocket = ex.taker_socket_id ? this._liveSessions.get(ex.taker_socket_id) : undefined;
+  spotKeyFromIds(a?: any, b?: any): string | null {
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+  const x = Number(a), y = Number(b);
+  const base = Math.min(x, y);
+  const quote = Math.max(x, y);
+  return `${base}-${quote}`;            // canonical internal key
+}
 
-        // 1) WS fanout to both sides (non-fatal if either is gone)
-        const payload = {
-          event: EmitEvents.MATCHED,
-          marketKey,
-          price: ex.price,
-          quantity: ex.quantity,
-          makerUuid: ex.maker_ext_uuid,
-          takerUuid: ex.taker_ext_uuid
-        };
-        if (makerSocket) { try { makerSocket.send(JSON.stringify(payload)); } catch {} }
-        if (takerSocket) { try { takerSocket.send(JSON.stringify(payload)); } catch {} }
-
-        // 2) Build minimal "tradeInfo" compatible with your old ChannelSwap path
-        //    We only include what ChannelSwap actually uses (sockets + props).
-        if (makerSocket && takerSocket) {
-          const tradeInfo: any = {
-            type: 'SPOT',              // or infer from marketKey if you keep futures here
-            buyer:  { socketId: ex.taker_socket_id },
-            seller: { socketId: ex.maker_socket_id },
-            taker:  ex.taker_socket_id,
-            maker:  ex.maker_socket_id,
-            props: {
-              // fill what the channel needs – keep it numeric/simple
-              amountDesired: ex.quantity,
-              amountForSale: ex.quantity * ex.price,
-              price: ex.price,
-              sellerIsMaker: true,
-              transfer: false
-            }
-          };
-
-          // 3) Start the channel (legacy behavior) and persist history
-          try {
-            const channel = new ChannelSwap(takerSocket, makerSocket, tradeInfo, /*unfilled*/ null);
-            const res = await channel.onReady(); // returns { data?: { txid }, error?: string }
-            if (!res?.error && res?.data?.txid) {
-              const historyTrade = {
-                txid: res.data.txid,
-                time: Date.now(),
-                ...tradeInfo
-              };
-              saveToHistory(historyTrade);
-            }
-          } catch (err) {
-            console.warn('[channel error]', err);
-          }
-        }
-      }
-    }
+futKey(contractId?: any, expiry?: any): string | null {
+  if (!contractId && !expiry) return null;
+  const cid = String(contractId ?? '');
+  const exp = expiry == null ? 'perp' : String(expiry);
+  return `${cid}-${exp}`;
+}
 
 
-    private getSocketById(id?: string) {
-      return id ? this._liveSessions.get(id) : undefined;
-    }
+  // === Public API expected by index.ts ===
+  handleOpen = (ws: WS) => {
+    const id = this.generateUniqueId();
+    (ws as any).id = id;
+    (ws as any)._markets = new Set<string>();
+    this._liveSessions.set(id, ws);
 
+    ws.on('message', (m) => this.handleMessage(ws, m));
+    ws.on('close', () => this.handleClose(ws));
 
-  // --------------- routing -------------------
-  private async handleMessage(ws: HyperExpress.Websocket, message: ArrayBuffer | string) {
+    // initial hello (client will request market snapshots it cares about)
+    ws.send(JSON.stringify({ event: 'connected', id }));
+    // (optional) send a small hint to prompt the client to request a market
+    ws.send(JSON.stringify({ event: EmitEvents.UPDATE_ORDERS_REQUEST }));
+
+    console.log(`[SM] OPEN ${id}, live=${this._liveSessions.size}`);
+  };
+
+  // === Event handlers ===
+  private async handleMessage(ws: WS, message: ArrayBuffer | string) {
     let data: any;
     try {
-      data = JSON.parse(typeof message === 'string' ? message : Buffer.from(message).toString());
+      data = JSON.parse(
+        typeof message === 'string'
+          ? message
+          : Buffer.from(message).toString()
+      );
     } catch (e) {
       console.error('[SM] Failed to parse WS message', e, message);
       return;
@@ -201,8 +129,7 @@ export class SocketManager {
       case OnEvents.CLOSE_ORDER:
       case 'close-order': {
         const uuid = String(data.orderUUID || data.uuid || '');
-        if (!uuid) break;
-        if (this._seenClose(ws, uuid)) break;   // drop duplicate spam
+        if (this._seenClose(ws, uuid)) break; // drop duplicate spam
         this.handleCloseOrder(ws, data);
         break;
       }
@@ -210,172 +137,249 @@ export class SocketManager {
         await this.handleManyOrders(ws, data);
         break;
       }
-      case OnEvents.UPDATE_ORDERBOOK: {
-          // accept either {marketKey} or the old {filter:{marketKey}}
-          const mk =
-            String(data.marketKey ?? data?.filter?.marketKey ?? '') || '';
-          this.sendOrderbookSnapshot(ws, mk);
-          break;
-        }
+      case OnEvents.AMEND_ORDER: {
+      const uuid  = String(data.orderUUID || data.orderUuid || data.uuid || '');
+      const mk    = this.resolveMarket(ws, data);
+      const newQty = data.newAmount ?? data.newQty;
+      const newPx  = data.newPrice;
+
+      if (!uuid || !mk) {
+        ws.send(JSON.stringify({
+          event: OrderEmitEvents.ERROR,
+          message: !uuid ? 'Missing orderUUID' : 'Missing marketKey'
+        }));
+        break;
+      }
+
+      try {
+        native.init_market?.(mk);
+        // pass undefined for fields you aren't changing
+        native.edit(
+          mk,
+          uuid,
+          newQty != null ? Number(newQty) : undefined,
+          newPx  != null ? Number(newPx)  : undefined
+        );
+
+        // optional ack
+        ws.send(JSON.stringify({
+          event: 'amended',
+          orderUuid: uuid,
+          marketKey: mk,
+          newQty,
+          newPrice: newPx
+        }));
+
+        // nudge clients to refresh the book / opened orders
+        this.broadcastToMarket(mk, { event: EmitEvents.UPDATE_ORDERS_REQUEST, marketKey: mk });
+      } catch (e: any) {
+        ws.send(JSON.stringify({ event: OrderEmitEvents.ERROR, message: e?.message || 'amend failed' }));
+      }
+      break;
+    }
+
+      case OnEvents.ORDERBOOK_JOIN: {
+        const mk =
+          String(data.marketKey ?? data?.filter?.marketKey ?? '') || '';
+        if (mk) this.subscribeMarket((ws as any).id, mk, ws);
+        break;
+      }
+      case OnEvents.ORDERBOOK_LEAVE: {
+        const mk = String(data.marketKey ?? '') || '';
+        if (mk) this.unsubscribeMarket((ws as any).id, mk);
+        break;
+      }
       case OnEvents.DISCONNECT: {
         this.sweepOrders((ws as any).id, 'client-disconnect');
         ws.close();
         break;
       }
-      case OnEvents.ORDERBOOK_JOIN: {
-        if (data.marketKey) this.subscribeMarket((ws as any).id, String(data.marketKey), ws);
-        break;
-      }
-      case OnEvents.ORDERBOOK_LEAVE: {
-        if (data.marketKey) this.unsubscribeMarket((ws as any).id, String(data.marketKey));
-        break;
-      }
-      default:
+      default: {
         console.log(`[SM] Unknown event type: ${data.event}`);
+      }
     }
   }
 
-  // --------------- single order ---------------
-  private async handleNewOrder(ws: HyperExpress.Websocket, data: any) {
+  private async handleNewOrder(ws: WS, data: any) {
     const sid = (ws as any).id as string;
-    const market = this.resolveMarket(ws, data);    
+    const market = this.resolveMarket(ws, data);
     if (!market) {
-      ws.send(JSON.stringify({ event: OrderEmitEvents.ERROR, message: 'Missing marketKey' }));
+      ws.send(
+        JSON.stringify({
+          event: OrderEmitEvents.ERROR,
+          message: 'Missing marketKey',
+        })
+      );
       return;
     }
 
     const order = this.normalizeOrder(data, sid) as NormalizedOrder;
-
-    if ('error' in order) {
-      ws.send(JSON.stringify({ event: OrderEmitEvents.ERROR, message: order.error }));
+    if (order.error) {
+      ws.send(
+        JSON.stringify({ event: OrderEmitEvents.ERROR, message: order.error })
+      );
       return;
     }
 
-    // Fast confirmation your client expects
     try {
-      ws.send(JSON.stringify({ event: OrderEmitEvents.SAVED, orderUuid: order.uuid }));
-    } catch {}
+      // optimistic ACK
+      ws.send(
+        JSON.stringify({ event: OrderEmitEvents.SAVED, orderUuid: order.uuid })
+      );
 
-    // Submit to engine
-    try {
-        native.submit(market, this.toJsOrder(order));
-      // and prompt UIs to update
-      this.broadcastToMarket(market, { event: EmitEvents.UPDATE_ORDERS_REQUEST });
+      native.submit(market, this.toJsOrder(order));
+
+      // ask clients in this market to refresh their opened/tray
+      this.broadcastToMarket(market, {
+        event: EmitEvents.UPDATE_ORDERS_REQUEST,
+      });
     } catch (e: any) {
-      ws.send(JSON.stringify({ event: OrderEmitEvents.ERROR, message: e?.message || 'submit failed' }));
+      ws.send(
+        JSON.stringify({
+          event: OrderEmitEvents.ERROR,
+          message: e?.message || 'submit failed',
+        })
+      );
     }
   }
 
-  // --------------- batch orders ----------------
-  private async handleManyOrders(ws: HyperExpress.Websocket, data: any) {
+  private async handleManyOrders(ws: WS, data: any) {
     const sid = (ws as any).id as string;
-    const market = this.resolveMarket(ws, data);    
+    const market = this.resolveMarket(ws, data);
     if (!market) {
-      ws.send(JSON.stringify({ event: OrderEmitEvents.ERROR, message: 'Missing marketKey' }));
+      ws.send(
+        JSON.stringify({
+          event: OrderEmitEvents.ERROR,
+          message: 'Missing marketKey',
+        })
+      );
       return;
     }
 
     const rawOrders: any[] = Array.isArray(data.orders) ? data.orders : [];
-    const normalized = rawOrders.map(o => this.normalizeOrder(o, sid) as NormalizedOrder);
-
-    const orders = normalized.filter((o): o is Exclude<NormalizedOrder, {error: string}> => !('error' in o));
-
-    // Client expects placed-orders with openedOrders+orderHistory arrays;
-    // We don’t track them TS-side now, so return empty arrays (compatible).
-    try {
-      ws.send(JSON.stringify({
-        event: EmitEvents.PLACED_ORDERS,
-        openedOrders: [],
-        orderHistory: []
-      }));
-    } catch {}
+    const normalized = rawOrders.map(
+      (o) => this.normalizeOrder(o, sid) as NormalizedOrder
+    );
 
     try {
-     const jsOrders = orders.map(o => this.toJsOrder(o));
-        if ((native as any).submit_batch) {
-          (native as any).submit_batch({ market, place: jsOrders, snap_levels: 50 });
-        } else {
-          for (const o of jsOrders) native.submit(market, o);
-        }
+      // give per-order ACKs (client expects this)
+      for (const o of normalized) {
+        ws.send(
+          JSON.stringify({ event: OrderEmitEvents.SAVED, orderUuid: o.uuid })
+        );
+      }
 
-      this.broadcastToMarket(market, { event: EmitEvents.UPDATE_ORDERS_REQUEST });
+      const jsOrders = normalized.map((o) => this.toJsOrder(o));
+      // If you have native.submit_batch you can use it; otherwise loop:
+      for (const o of jsOrders) native.submit(market, o);
+
+      this.broadcastToMarket(market, {
+        event: EmitEvents.UPDATE_ORDERS_REQUEST,
+      });
     } catch (e: any) {
-      ws.send(JSON.stringify({ event: OrderEmitEvents.ERROR, message: e?.message || 'batch submit failed' }));
+      ws.send(
+        JSON.stringify({
+          event: OrderEmitEvents.ERROR,
+          message: e?.message || 'batch submit failed',
+        })
+      );
     }
   }
 
-  // --------------- cancel ----------------
-  private handleCloseOrder(ws: HyperExpress.Websocket, data: any) {
+  private handleCloseOrder(ws: WS, data: any) {
     const uuid = String(data.orderUUID || data.uuid || '');
-    const market = this.resolveMarket(ws, data);    if (!uuid) return;
+    const market = this.resolveMarket(ws, data);
+    if (!uuid) return;
+
     try {
       if (market) native.cancel(market, uuid);
-    } catch {}
 
-    // legacy client refresh payload shape
-    try {
-      ws.send(JSON.stringify({
-        event: EmitEvents.PLACED_ORDERS,
-        openedOrders: [],
-        orderHistory: []
-      }));
-    } catch {}
-
-    if (market) this.broadcastToMarket(market, { event: EmitEvents.UPDATE_ORDERS_REQUEST });
+      // return updated opened/history for this socket (if you want)
+      ws.send(
+        JSON.stringify({
+          event: EmitEvents.PLACED_ORDERS,
+          openedOrders: [], // optional: fill by calling native.get_open_orders_by_socket
+          orderHistory: [], // optional: your history store or future native hook
+        })
+      );
+    } finally {
+      if (market)
+        this.broadcastToMarket(market, {
+          event: EmitEvents.UPDATE_ORDERS_REQUEST,
+        });
+    }
   }
 
-  // --------------- snapshots ----------------
-  private handleUpdateOrderbook(ws: HyperExpress.Websocket, data: any) {
-    const mk = String(data.marketKey || data.symbol || '');
-    if (!mk || typeof native.snapshot !== 'function') {
-      try {
-        ws.send(JSON.stringify({ event: EmitEvents.ORDERBOOK_DATA, orders: [], history: [] }));
-      } catch {}
+  private handleUpdateOrderbook(ws: WS, data: any) {
+    // accept: {marketKey}, or {filter:{marketKey}}, or {symbol}
+    const mk = String(data.marketKey || data.symbol || '') || '';
+    if (!mk) {
+      ws.send(
+        JSON.stringify({
+          event: EmitEvents.ORDERBOOK_DATA,
+          orders: [],
+          history: [],
+        })
+      );
       return;
     }
+    this.sendOrderbookSnapshot(ws, mk);
+  }
 
-    try {
-      const snap = native.snapshot(mk, 50); // depth
-      ws.send(JSON.stringify({ event: EmitEvents.ORDERBOOK_DATA, native: snap, marketKey: mk }));
-    } catch {
-      try {
-        ws.send(JSON.stringify({ event: EmitEvents.ORDERBOOK_DATA, orders: [], history: [] }));
-      } catch {}
+  // === Native exec fanout ===
+  private async _handleExecs(
+    marketKey: string,
+    execs: Array<{
+      price: number;
+      quantity: number;
+      maker_socket_id?: string;
+      taker_socket_id?: string;
+      maker_ext_uuid?: string;
+      taker_ext_uuid?: string;
+    }>
+  ) {
+    
+    // 2) per-socket refresh (so their trays update)
+    const sockets = new Set<string>();
+    for (const ex of execs) {
+      if (ex.maker_socket_id) sockets.add(ex.maker_socket_id);
+      if (ex.taker_socket_id) sockets.add(ex.taker_socket_id);
+    }
+    for (const sid of sockets) {
+      const ws = this._liveSessions.get(sid);
+      if (!ws) continue;
+      ws.send(
+        JSON.stringify({
+          event: EmitEvents.UPDATE_ORDERS_REQUEST,
+          marketKey,
+        })
+      );
     }
   }
 
-  private subscribeMarket(socketId: string, marketKey: string, ws: HyperExpress.Websocket) {
-    if (!this._marketSubs.has(marketKey)) this._marketSubs.set(marketKey, new Set());
+  // === Market subscription helpers ===
+  private subscribeMarket(socketId: string, marketKey: string, ws: WS) {
+    if (!this._marketSubs.has(marketKey))
+      this._marketSubs.set(marketKey, new Set());
     this._marketSubs.get(marketKey)!.add(socketId);
 
-    if (!this._sessionSubs.has(socketId)) this._sessionSubs.set(socketId, new Set());
+    if (!this._sessionSubs.has(socketId))
+      this._sessionSubs.set(socketId, new Set());
     this._sessionSubs.get(socketId)!.add(marketKey);
 
     (ws as any)._markets.add(marketKey);
 
-    // send a one-shot snapshot for THIS market only (native)
-    if (typeof native.snapshot === 'function') {
-      try {
-        const snap = native.snapshot(marketKey, 50);
-        ws.send(JSON.stringify({ event: EmitEvents.ORDERBOOK_DATA, native: snap, marketKey }));
-      } catch {}
-    } else {
-      try {
-        ws.send(JSON.stringify({ event: EmitEvents.ORDERBOOK_DATA, orders: [], history: [], marketKey }));
-      } catch {}
-    }
+    // one-shot snapshot
+    this.sendOrderbookSnapshot(ws, marketKey);
   }
 
   private unsubscribeMarket(socketId: string, marketKey: string) {
     const ws = this._liveSessions.get(socketId);
-    if (!ws) return;
-
     this._marketSubs.get(marketKey)?.delete(socketId);
     this._sessionSubs.get(socketId)?.delete(marketKey);
-    (ws as any)._markets?.delete(marketKey);
+    (ws as any)?._markets?.delete(marketKey);
   }
 
-  // --------------- utilities ----------------
   public broadcastToMarket(marketKey: string, msg: object) {
     const ids = this._marketSubs.get(marketKey);
     if (!ids || ids.size === 0) return;
@@ -383,193 +387,226 @@ export class SocketManager {
     for (const id of ids) {
       const ws = this._liveSessions.get(id);
       if (!ws) continue;
-      try { ws.send(str); } catch {}
+      try {
+        ws.send(str);
+      } catch {}
     }
   }
 
   public broadcastToAll(msg: object) {
     const str = JSON.stringify(msg);
     for (const ws of this._liveSessions.values()) {
-      try { ws.send(str); } catch {}
+      try {
+        ws.send(str);
+      } catch {}
     }
   }
 
-  // Return a Map so routes can use .size
-  public get liveSessions() {
-    return this._liveSessions;
+  // === Snapshots/opened tray ===
+  private sendOrderbookSnapshot(ws: WS, marketKey: string) {
+    if (!marketKey) {
+      ws.send(
+        JSON.stringify({
+          event: EmitEvents.ORDERBOOK_DATA,
+          orders: [],
+          history: [],
+        })
+      );
+      return;
+    }
+
+    try {
+      const snapRaw = native.snapshot(marketKey, 50); // tune depth as needed
+
+      // optional: opened orders tray via native (if you added it)
+      const socketId = (ws as any).id as string;
+      let opened: any[] = [];
+      try {
+        if (
+          typeof (native as any).get_open_orders_by_socket === 'function' &&
+          marketKey
+        ) {
+          const openedRaw = (native as any).get_open_orders_by_socket(
+            marketKey,
+            socketId
+          );
+          opened = Array.isArray(openedRaw) ? openedRaw : [];
+        }
+      } catch {}
+
+      ws.send(
+        JSON.stringify({
+          event: EmitEvents.ORDERBOOK_DATA,
+          native: snapRaw,
+          marketKey,
+          openedOrders: opened,
+          history: [], // fill if/when you wire history
+        })
+      );
+    } catch (e) {
+      // fail safe (don’t kill socket)
+      ws.send(
+        JSON.stringify({
+          event: EmitEvents.ORDERBOOK_DATA,
+          orders: [],
+          history: [],
+          marketKey,
+        })
+      );
+    }
   }
 
-  private _seenClose(ws: HyperExpress.Websocket, uuid: string, ms = 1500) {
+  // === WS lifecycle ===
+  private handleClose(ws: WS) {
+    const id = (ws as any).id as string;
+
+    // clear subscription indices
+    const subs = this._sessionSubs.get(id);
+    if (subs) {
+      for (const mk of subs) this._marketSubs.get(mk)?.delete(id);
+      this._sessionSubs.delete(id);
+    }
+
+    this._liveSessions.delete(id);
+    console.log(`[SM] Connection closed: ${id}`);
+    this.sweepOrders(id, 'tcp-close');
+  }
+
+  private _seenClose(ws: WS, uuid: string, ms = 1500) {
     const sid = (ws as any).id as string;
     let byUuid = this._recentClose.get(sid);
     if (!byUuid) this._recentClose.set(sid, (byUuid = new Map()));
     const now = Date.now();
     const last = byUuid.get(uuid) || 0;
     byUuid.set(uuid, now);
-    return now - last < ms;
+    return now - last < ms; // true → seen very recently
   }
 
   private sweepOrders(id: string, reason = 'tcp-close') {
-    // With Rust engine we don’t track per-socket orders in TS.
+    // If you wire a native cancel-by-socket, call it here.
+    // native.cancel_all_by_socket(market, id) — per market if you add it.
     this._liveSessions.delete(id);
     console.log(`${id} disconnected (${reason})`);
   }
-// Derive a stable market key from the order itself (no mapping needed)
-private deriveMarketFromOrder(data: any): string | null {
-  const o = data?.order ?? data;
-  // SPOT: ids determine the book; use a stable textual key
-  if (o?.type === 'SPOT' && o?.props) {
-    const f = Number(o.props.id_for_sale);
-    const d = Number(o.props.id_desired);
-    if (Number.isFinite(f) && Number.isFinite(d)) {
-      const base  = Math.min(f, d);
-      const quote = Math.max(f, d);
-      return `spot-${base}-${quote}`;
-    }
-  }
-  // FUTURES: use contract_id as-is
-  if (o?.type === 'FUTURES' && o?.props?.contract_id) {
-    return `fut-${String(o.props.contract_id)}`;
-  }
-  return null;
-}
 
-// Accept common aliases; fallback to the one joined market; else derive from order
-private resolveMarket(ws: HyperExpress.Websocket, data: any): string | null {
-  const aliases = ['marketKey','market','symbol','orderbook','orderbookName','pair'];
-  for (const k of aliases) {
-    const v = data?.[k];
-    if (typeof v === 'string' && v.trim()) return v.trim();
-  }
-  const joined: Set<string> | undefined = (ws as any)._markets;
-  if (joined && joined.size === 1) return [...joined][0];
-  return this.deriveMarketFromOrder(data);
-}
-
-
+  // === Utilities ===
   private generateUniqueId(): string {
-    return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
   }
 
-  // -------- normalize order for Rust --------
+  private deriveMarketFromOrder(data: any): string | null {
+      const o = data?.order ?? data;
+
+      // explicit beats inference
+      const mk =
+        o?.marketKey ??
+        o?.symbol ??
+        o?.props?.marketKey ??
+        o?.props?.symbol;
+      if (mk) return String(mk);
+
+      // SPOT inference by IDs → "min-max"
+      const f = o?.props?.id_for_sale ?? o?.id_for_sale;
+      const d = o?.props?.id_desired  ?? o?.id_desired;
+      const spot = spotKeyFromIds(f, d);
+      if (spot) return spot;
+
+      // FUTURES inference
+      const cid = o?.props?.contract_id ?? o?.props?.contractId;
+      const exp = o?.props?.expiry ?? o?.props?.maturity_block;
+      const fut = futKey(cid, exp);
+      if (fut) return fut;
+
+      return null;
+    }
+
+    private resolveMarket(ws: HyperExpress.Websocket, data: any): string | null {
+      const mk =
+        data?.marketKey ??
+        data?.filter?.marketKey ??
+        this.deriveMarketFromOrder(data);
+      if (mk) return mk;
+      const joined: Set<string> | undefined = (ws as any)._markets;
+      if (joined && joined.size === 1) return Array.from(joined)[0];
+      return null;
+    }
+
   private normalizeOrder(raw: any, socketId: string): NormalizedOrder {
     const o: any = { ...(raw?.order ?? raw) };
 
-    // SPOT side derivation like your legacy code
-    if (o?.type === 'SPOT' && o?.props) {
-      const f = o.props.id_for_sale;
-      const d = o.props.id_desired;
-      if (f == null || d == null) return { error: 'Missing property IDs' };
-      const baseId = Math.min(f, d);
-      const quoteId = Math.max(f, d);
-      if (f === baseId && d === quoteId) o.props.side = 'BUY';
-      else if (f === quoteId && d === baseId) o.props.side = 'SELL';
-      else return { error: 'Invalid property ID pair' };
-    }
+    const uuid =
+      o.uuid ||
+      o.orderUUID ||
+      `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
-    // prefer explicit `side`, else from action/props.side
-    if (!o.side) o.side = o.action || o?.props?.side;
-    if (o.side) o.side = String(o.side).toUpperCase();
+    const sideStr =
+      (o.side || o.action || (o.props?.side as string) || 'BUY').toString();
+    const side = sideStr.toUpperCase() === 'SELL' ? 'SELL' : 'BUY';
 
-    // lift price/amount from props if nested
-    if (o.props) {
-      if (o.price == null && o.props.price != null)  o.price = o.props.price;
-      if (o.amount == null && o.props.amount != null) o.amount = o.props.amount;
-    }
-    if (o.amount == null && o.quantity != null) o.amount = o.quantity;
+    const price =
+      Number(o.price ?? o.props?.price ?? o.rate ?? o.limit_price) || 0;
+    const amount = Number(o.amount ?? o.props?.amount ?? o.quantity) || 0;
 
-    // ensure numeric
-    if (o.price == null || isNaN(Number(o.price))) return { error: 'Missing/invalid price' };
-    if (o.amount == null || isNaN(Number(o.amount))) return { error: 'Missing/invalid amount' };
-
-    o.price  = Number(o.price);
-    o.amount = Number(o.amount);
-
-    // uuid & socket
-    if (!o.uuid) o.uuid = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-    o.socket_id = socketId;
-
-    return o as NormalizedOrder;
-  }
-
-  // Coerce to the union type the native binding expects
-    private toJsOrder(o: {
-      uuid: string;
-      socket_id: string;
-      side?: string;
-      type?: 'SPOT' | 'FUTURES';
-      action?: 'BUY' | 'SELL';
-      props?: any;
-      price: number;
-      amount: number;
-      quantity?: number;
-      keypair?: any;
-    }) {
-      const side = (o.side || o.action || 'BUY').toUpperCase();
-      const literalSide = side === 'SELL' ? 'SELL' : 'BUY' as 'BUY' | 'SELL';
-
-      // Keep any extra fields your Rust bridge tolerates
+    if (!price || !amount) {
       return {
-        ...o,
-        side: literalSide,
+        uuid,
+        socket_id: socketId,
+        price,
+        amount,
+        side: side as 'BUY' | 'SELL',
+        error: 'Missing price/amount',
       };
     }
 
-    private sendOrderbookSnapshot(ws: HyperExpress.Websocket, marketKey: string) {
-      try {
-        if (!marketKey) {
-          ws.send(
-            JSON.stringify({
-              event: EmitEvents.ORDERBOOK_DATA,
-              orders: [],
-              history: [],
-              orderbook: null
-            })
-          );
-          return;
-        }
+    return {
+      uuid,
+      socket_id: socketId,
+      price,
+      amount,
+      side: side as 'BUY' | 'SELL',
+      type: o.type,
+      action: o.action,
+      props: o.props,
+      keypair: o.keypair,
+    };
+  }
 
-        // 1) Orderbook snapshot (native → JSON string)
-        const snapRaw = native.snapshot(marketKey, 50); // 50 levels; tune as needed
-        const snapshot = typeof snapRaw === 'string' ? JSON.parse(snapRaw || 'null') : snapRaw;
-
-        // 2) Opened orders tray for this socket & market (native helper)
-        const socketId = (ws as any).id as string;
-        let openedOrders: string[] = [];
-        if (typeof native.get_open_orders_by_socket === 'function') {
-          const openedRaw = native.get_open_orders_by_socket(marketKey, socketId);
-          openedOrders = JSON.parse(openedRaw || '[]');
-        }
-
-        // 3) History (keep legacy field for UI; fill later when you hook native)
-        const orderHistory: any[] = []; // or keep your old manager-based history if you still have it
-
-        // 4) Emit in the exact shape your FE expects
-        ws.send(
-          JSON.stringify({
-            event: EmitEvents.ORDERBOOK_DATA,
-            // keep legacy fields so existing UI renders:
-            orders: [],                // (legacy flat orders; we don’t build these now)
-            history: orderHistory,     // (legacy)
-            // new rich snapshot for book view:
-            orderbook: snapshot,
-            // opened tray (UUIDs):
-            openedOrders
-          })
-        );
-      } catch (err) {
-        console.error('[SM] sendOrderbookSnapshot error', err);
-        try {
-          ws.send(
-            JSON.stringify({
-              event: EmitEvents.ORDERBOOK_DATA,
-              orders: [],
-              history: [],
-              orderbook: null
-            })
-          );
-        } catch {}
+  private toJsOrder(o: {
+        uuid: string;
+        socket_id: string;
+        side?: string;
+        type?: 'SPOT' | 'FUTURES';
+        action?: 'BUY' | 'SELL';
+        props?: any;
+        price: number;
+        amount: number;
+        quantity?: number;
+        keypair?: any;
+      }): JsOrder {
+        const side = (o.side || o.action || 'BUY').toUpperCase();
+        return {
+          uuid: o.uuid,
+          socket_id: o.socket_id,
+          side: side === 'SELL' ? 'SELL' : 'BUY',
+          price: Number(o.price),
+          amount: Number(o.amount ?? o.quantity ?? 0),
+          // extra fields are carried in native.submit’s payload if your addon reads them
+          // (the JsOrder type in native.ts already allows optional props)
+          props: o.props,
+          keypair: o.keypair,
+          type: o.type,
+          action: o.action,
+        } as unknown as JsOrder;
       }
-    }
 
+      // === Debug helpers used by routes ===
+      public get liveSessions(): string[] {
+        return Array.from(this._liveSessions.keys());
+      }
+      public get sessionCount(): number {
+        return this._liveSessions.size;
+      }
 }
+
+// singleton export
+export const socketManager = new SocketManager();

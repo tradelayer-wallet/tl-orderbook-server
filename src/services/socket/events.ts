@@ -7,6 +7,7 @@ export const OnEvents = {
   CLOSE_ORDER: 'close-order',
   ORDERBOOK_JOIN: 'orderbook:join',
   ORDERBOOK_LEAVE: 'orderbook:leave',
+  AMEND_ORDER: 'amend-order' 
 };
 
 
