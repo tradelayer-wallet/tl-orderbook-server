@@ -1,18 +1,21 @@
 // lib.rs — matcher-core (drop-in)
+//
 // Features:
 // - per-market reverse id maps (ext<->int)
-// - by_socket ownership
+// - by_socket ownership (HashSet<String> of engine-id strings)
 // - STPF maker-bump (default) / neutralize-taker (runtime toggle)
-// - submit/cancel/edit/snapshot/stats/get_open_orders_by_socket
-// - UUID/ULID tolerant ids, integerized price
+// - submit / submit_batch / cancel / edit / cancel_all_by_socket
+// - snapshot / stats / get_open_orders_by_socket / get_order_history_by_socket
+// - UUID/ULID tolerant ids, integerized price, JSON payloads
+//
+// N-API exports are camelCased in JS by #[napi] (e.g., get_order_history_by_socket -> getOrderHistoryBySocket)
 
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use once_cell::sync::Lazy;
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use hashbrown::HashMap as FastMap;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Mutex;
 
 // ---------- logging ----------
@@ -40,24 +43,45 @@ use ulid::Ulid;
 #[napi(object)]
 pub struct JsOrder {
     pub uuid: String,
-    pub side: String,     // "BUY" | "SELL"
+    pub side: String,
     pub price: f64,
     pub amount: f64,
+    // accept either field name from JS
     pub socket_id: Option<String>,
+    pub socketId: Option<String>,
+}
+
+#[inline]
+fn order_socket_id(o: &JsOrder) -> Option<String> {
+    o.socket_id.clone().or(o.socketId.clone())
+}
+
+
+#[napi(object)]
+pub struct BatchReq {
+    pub market: String,
+    pub cancel: Option<Vec<String>>,
+    pub place:  Option<Vec<JsOrder>>,
+    pub snap_levels: Option<u32>,
 }
 
 // ---------- global state ----------
+use hashbrown::HashMap as FastMap;
+
 #[derive(Default)]
 struct State {
     man: BookManagerStd<()>,
 
-    // symbol -> socket -> [ids] (ids may be engine-id string or external uuid)
-    by_socket: HashMap<String, FastMap<String, Vec<String>>>,
+    // symbol -> socket -> {engine-id strings}
+    by_socket: HashMap<String, FastMap<String, HashSet<String>>>,
 
     // symbol -> external uuid -> engine-id (string form)
     ext2int: HashMap<String, FastMap<String, String>>,
     // symbol -> engine-id (string form) -> external uuid
     int2ext: HashMap<String, FastMap<String, String>>,
+
+    // symbol -> socket -> deque of events (JSON)
+    history: HashMap<String, HashMap<String, VecDeque<serde_json::Value>>>,
 }
 
 impl State {
@@ -65,24 +89,13 @@ impl State {
         self.by_socket.entry(symbol.to_string()).or_default();
         self.ext2int.entry(symbol.to_string()).or_default();
         self.int2ext.entry(symbol.to_string()).or_default();
+        self.history.entry(symbol.to_string()).or_default();
     }
-}
 
-static STATE: Lazy<Mutex<State>> = Lazy::new(|| Mutex::new(State::default()));
-use std::collections::{HashMap, VecDeque};
-
-const HISTORY_CAP: usize = 500; // per socket per symbol
-
-pub struct EngineState {
-    // existing fields...
-    pub history: HashMap<String, HashMap<String, VecDeque<serde_json::Value>>>, // symbol -> socket -> entries
-}
-
-impl EngineState {
-    pub fn push_hist(&mut self, symbol: &str, socket: &str, entry: serde_json::Value) {
-        let q = self.history
-            .entry(symbol.to_string())
-            .or_default()
+    fn push_hist(&mut self, symbol: &str, socket: &str, entry: serde_json::Value) {
+        const HISTORY_CAP: usize = 500;
+        let per_sym = self.history.entry(symbol.to_string()).or_default();
+        let q = per_sym
             .entry(socket.to_string())
             .or_insert_with(|| VecDeque::with_capacity(HISTORY_CAP));
         if q.len() == HISTORY_CAP { q.pop_front(); }
@@ -90,6 +103,7 @@ impl EngineState {
     }
 }
 
+static STATE: Lazy<Mutex<State>> = Lazy::new(|| Mutex::new(State::default()));
 
 // ---------- STPF policy ----------
 #[derive(Clone, Copy)]
@@ -117,20 +131,21 @@ fn parse_side(s: &str) -> Side {
     match s.to_ascii_lowercase().as_str() { "buy" | "b" => Side::Buy, _ => Side::Sell }
 }
 
+// replace your current to_order_id with this:
 fn to_order_id(s: &str) -> OrderId {
     if let Ok(u) = Uuid::parse_str(s) { return OrderId::Uuid(u); }
     if s.len() == 26 {
         if let Ok(u) = s.parse::<Ulid>() { return OrderId::Ulid(u); }
     }
-    // fall back to default; never crash on malformed
-    OrderId::default()
+    // fallback: generate a fresh unique ULID so every order has its own engine id
+    OrderId::Ulid(ulid::Ulid::new())
 }
 
 // Find which socket owns a given *string* id for a symbol
 fn socket_owner_of(s: &State, symbol: &str, id_str: &str) -> Option<String> {
     s.by_socket.get(symbol).and_then(|by_sock| {
         by_sock.iter().find_map(|(sock, ids)| {
-            if ids.iter().any(|x| x == id_str) { Some(sock.clone()) } else { None }
+            if ids.contains(id_str) { Some(sock.clone()) } else { None }
         })
     })
 }
@@ -140,7 +155,7 @@ fn sock_owns_engine_id(s: &State, symbol: &str, sock: &str, engine_id: &OrderId)
     let a = engine_id.to_string();
     let b = format!("{:?}", engine_id);
     if let Some(ids) = s.by_socket.get(symbol).and_then(|m| m.get(sock)) {
-        ids.iter().any(|x| x == &a || x == &b)
+        ids.contains(&a) || ids.contains(&b)
     } else { false }
 }
 
@@ -159,18 +174,17 @@ pub fn drop_book(symbol: String) -> bool {
     s.by_socket.remove(&symbol);
     s.ext2int.remove(&symbol);
     s.int2ext.remove(&symbol);
+    s.history.remove(&symbol);
     s.man.remove_book(&symbol).is_some()
 }
 
 // ---------- submit ----------
 #[napi]
 pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
-    use std::collections::{HashMap, HashSet};
+    use std::collections::HashMap;
 
     let mut s = STATE.lock().unwrap();
-    if !s.man.has_book(&symbol) {
-        s.man.add_book(&symbol);
-    }
+    if !s.man.has_book(&symbol) { s.man.add_book(&symbol); }
     s.ensure_maps(&symbol);
 
     // --- normalize inputs ---
@@ -268,11 +282,10 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
                     // Remove canceled makers from by_socket + int2ext
                     if let Some(m) = s.by_socket.get_mut(&symbol) {
                         if let Some(ids) = m.get_mut(taker_sock) {
-                            ids.retain(|stored| !to_cancel.iter().any(|oid| {
-                                let a = oid.to_string();
-                                let b = format!("{:?}", oid);
-                                stored == &a || stored == &b
-                            }));
+                            for oid in &to_cancel {
+                                ids.remove(&oid.to_string());
+                                ids.remove(&format!("{:?}", oid));
+                            }
                         }
                     }
                     if let Some(int2ext) = s.int2ext.get_mut(&symbol) {
@@ -293,7 +306,7 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
             .or_default()
             .entry(sock.clone())
             .or_default()
-            .insert(eng_str.clone()); // store internal id only
+            .insert(eng_str.clone()); // HashSet<String>::insert
     }
 
     let mr = {
@@ -330,7 +343,6 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
                 if let Some(set) = per_sock.get_mut(sock) {
                     set.remove(&eng_str);
                     set.remove(&format!("{:?}", eng_id)); // if ever stored debug fmt
-                    // set.remove(&ext_id); // only if you previously kept ext ids
                     if set.is_empty() { per_sock.remove(sock); }
                 }
             }
@@ -421,7 +433,7 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
                 "symbol": symbol
             }));
         }
-        if !mr.is_complete && mr.remaining_quantity > 0.0 {
+        if !mr.is_complete && mr.remaining_quantity > 0 {
             s.push_hist(&symbol, sock, serde_json::json!({
                 "ts": now,
                 "uuid": ext_id,
@@ -456,89 +468,80 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
     Ok(serde_json::to_string(&payload).unwrap_or_else(|_| "{}".into()))
 }
 
-
-
-// Fast path: reuse single submit() & cancel() to keep STPF + attribution logic identical.
-// Returns JSON string: { canceled:[], placed:[], execs:[], snapshot: <optional> }
+// ---------- submit_batch ----------
 #[napi]
 pub fn submit_batch(req: BatchReq) -> napi::Result<String> {
-  let mut out_canceled: Vec<String> = Vec::new();
-  let mut out_placed:  Vec<String> = Vec::new();
-  let mut out_execs:   Vec<serde_json::Value> = Vec::new();
+    let mut out_canceled: Vec<String> = Vec::new();
+    let mut out_placed:  Vec<String> = Vec::new();
+    let mut out_execs:   Vec<serde_json::Value> = Vec::new();
 
-  // 1) cancels
-  if let Some(list) = &req.cancel {
-    for uuid in list {
-      if cancel(req.market.clone(), uuid.clone()) {
-        out_canceled.push(uuid.clone());
-      }
-    }
-  }
-
-  // 2) places
-  if let Some(list) = &req.place {
-    for o in list {
-      // call your existing submit() so STPF & maker attribution stay consistent
-      let raw = submit(
-        req.market.clone(),
-        JsOrder {
-          uuid:      o.uuid.clone(),
-          side:      o.side.clone(),
-          price:     o.price,
-          amount:    o.amount,
-          socket_id: o.socket_id.clone(),
+    // 1) cancels
+    if let Some(list) = &req.cancel {
+        for uuid in list {
+            if cancel(req.market.clone(), uuid.clone()) {
+                out_canceled.push(uuid.clone());
+            }
         }
-      )?;
+    }
 
-      // pull any maker_slices into execs for the sink
-      if let Ok(val) = serde_json::from_str::<serde_json::Value>(&raw) {
-        if let Some(arr) = val.get("maker_slices").and_then(|x| x.as_array()) {
-          for e in arr { out_execs.push(e.clone()); }
+    // 2) places
+    if let Some(list) = &req.place {
+        for o in list {
+            // call existing submit() so STPF & maker attribution stay consistent
+            let raw = submit(
+                req.market.clone(),
+                JsOrder {
+                    uuid:      o.uuid.clone(),
+                    side:      o.side.clone(),
+                    price:     o.price,
+                    amount:    o.amount,
+                    socket_id: o.socket_id.clone(),
+                }
+            )?;
+
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&raw) {
+                if let Some(arr) = val.get("maker_slices").and_then(|x| x.as_array()) {
+                    for e in arr { out_execs.push(e.clone()); }
+                }
+            }
+
+            out_placed.push(o.uuid.clone());
         }
-      }
-
-      out_placed.push(o.uuid.clone());
     }
-  }
 
-  // 3) optional snapshot
-  let snapshot = if let Some(levels) = req.snap_levels {
-    let s = STATE.lock().unwrap(); // short immutable borrow
-    if let Some(book) = s.man.get_book(&req.market) {
-      let snap = book.create_snapshot(levels as usize);
-      Some(serde_json::to_value(snap).unwrap_or(serde_json::Value::Null))
-    } else {
-      None
-    }
-  } else { None };
+    // 3) optional snapshot
+    let snapshot = if let Some(levels) = req.snap_levels {
+        let s = STATE.lock().unwrap();
+        if let Some(book) = s.man.get_book(&req.market) {
+            let snap = book.create_snapshot(levels as usize);
+            Some(serde_json::to_value(snap).unwrap_or(serde_json::Value::Null))
+        } else {
+            None
+        }
+    } else { None };
 
-  let payload = serde_json::json!({
-    "canceled": out_canceled,
-    "placed":   out_placed,
-    "execs":    out_execs,
-    "snapshot": snapshot
-  });
+    let payload = serde_json::json!({
+        "canceled": out_canceled,
+        "placed":   out_placed,
+        "execs":    out_execs,
+        "snapshot": snapshot
+    });
 
-  Ok(serde_json::to_string(&payload).unwrap_or_else(|_| "{}".into()))
+    Ok(serde_json::to_string(&payload).unwrap_or_else(|_| "{}".into()))
 }
 
-
-// ---------- cancel ----------//#[napi]
+// ---------- cancel ----------
+#[napi]
 pub fn cancel(symbol: String, order_id: String) -> bool {
-    use std::collections::HashSet;
-
     let mut s = STATE.lock().unwrap();
     s.ensure_maps(&symbol);
 
-    // Resolve internal and external IDs
-    // If the caller passed an external UUID, translate it.
-    // If they passed an internal id string, use that as-is.
+    // Resolve internal & external IDs (order_id can be ext or int)
     let (eng_str, ext_id) = {
         if let Some(m) = s.ext2int.get(&symbol) {
             if let Some(int_id) = m.get(&order_id) {
-                (int_id.clone(), order_id.clone())       // order_id was external
+                (int_id.clone(), order_id.clone()) // caller passed external
             } else {
-                // Otherwise treat order_id as internal & try to find its ext
                 let ext = s.int2ext
                     .get(&symbol)
                     .and_then(|m2| m2.get(&order_id))
@@ -547,7 +550,6 @@ pub fn cancel(symbol: String, order_id: String) -> bool {
                 (order_id.clone(), ext)
             }
         } else {
-            // ext2int not present for symbol; treat as internal and try reverse
             let ext = s.int2ext
                 .get(&symbol)
                 .and_then(|m2| m2.get(&order_id))
@@ -563,29 +565,20 @@ pub fn cancel(symbol: String, order_id: String) -> bool {
     let ok = {
         if let Some(book) = s.man.get_book_mut(&symbol) {
             book.cancel_order(eng.clone()).is_ok()
-        } else {
-            false
-        }
+        } else { false }
     };
-    if !ok {
-        return false;
-    }
+    if !ok { return false; }
 
     // Clean reverse maps
-    if let Some(m) = s.int2ext.get_mut(&symbol) {
-        let _ = m.remove(&eng_str);
-    }
-    if let Some(m) = s.ext2int.get_mut(&symbol) {
-        let _ = m.remove(&ext_id);
-    }
+    if let Some(m) = s.int2ext.get_mut(&symbol) { let _ = m.remove(&eng_str); }
+    if let Some(m) = s.ext2int.get_mut(&symbol) { let _ = m.remove(&ext_id); }
 
-    // Remove internal id from by_socket (all sockets just in case)
+    // Remove internal id from by_socket (all sockets)
     if let Some(per_sock) = s.by_socket.get_mut(&symbol) {
         for (_sock, ids) in per_sock.iter_mut() {
             ids.remove(&eng_str);
         }
-        // Optional: prune empty socket entries
-        per_sock.retain(|_, ids: &mut HashSet<String>| !ids.is_empty());
+        per_sock.retain(|_, ids| !ids.is_empty());
     }
 
     // Push history for the owner socket (if we can find it)
@@ -601,7 +594,7 @@ pub fn cancel(symbol: String, order_id: String) -> bool {
     true
 }
 
-// ---------- edit (cancel+readd with plan; maker-bump for price edits) ----------//
+// ---------- edit (cancel+readd with plan; maker-bump for price edits) ----------
 #[napi]
 pub fn edit(
     symbol: String,
@@ -609,21 +602,18 @@ pub fn edit(
     new_qty: Option<f64>,
     new_price: Option<f64>
 ) -> napi::Result<bool> {
-    use std::collections::HashSet;
-    use orderbook_rs::prelude::{Side, TimeInForce};
+    use orderbook_rs::prelude::Side;
 
     let mut s = STATE.lock().unwrap();
     s.ensure_maps(&symbol);
 
-    // Resolve internal id from the given order_id
+    // Resolve internal id string from the given order_id
     let eng_str = if let Some(m) = s.ext2int.get(&symbol) {
         m.get(&order_id).cloned().unwrap_or(order_id.clone())
-    } else {
-        order_id.clone()
-    };
+    } else { order_id.clone() };
     let eng_id = to_order_id(&eng_str);
 
-    // Owner socket (no book borrow)
+    // Owner socket
     let owner_sock: Option<String> = socket_owner_of(&s, &symbol, &eng_str);
 
     // Snapshot to locate current side/px/qty
@@ -658,11 +648,10 @@ pub fn edit(
     let tgt_qty = new_qty.map(to_qty_u64).unwrap_or(cur_qty);
     let tgt_px  = new_price.map(to_price_u64).unwrap_or(cur_px);
 
-    // Plan STPF cancels for price edits
+    // Plan STPF cancels for price edits (self-makers that would cross new price)
     let mut stpf_to_cancel: Vec<orderbook_rs::prelude::OrderId> = Vec::new();
     if new_price.is_some() {
         if let Some(ref taker_sock) = owner_sock {
-            // need a snapshot; borrow ended above
             let opp_levels = {
                 let Some(book) = s.man.get_book_mut(&symbol) else { return Ok(false) };
                 let snap = book.create_snapshot(512);
@@ -716,17 +705,27 @@ pub fn edit(
             for (_sock, ids) in per_sock.iter_mut() {
                 for oid in &stpf_to_cancel {
                     ids.remove(&oid.to_string());
+                    ids.remove(&format!("{:?}", oid));
                 }
             }
         }
     }
 
-    // History: AMENDED record
+    // History: AMENDED records
     if ok {
         if let Some(sock) = owner_sock {
+            // compute once with an immutable borrow, then drop it
+            let amended_uuid = s
+                .int2ext
+                .get(&symbol)
+                .and_then(|m| m.get(&eng_str))
+                .cloned()
+                .unwrap_or(order_id.clone());
+
+            // now the only borrow is the &mut for push_hist
             s.push_hist(&symbol, &sock, serde_json::json!({
                 "ts": current_time_millis(),
-                "uuid": s.int2ext.get(&symbol).and_then(|m| m.get(&eng_str)).cloned().unwrap_or(order_id),
+                "uuid": amended_uuid,
                 "event": "AMENDED",
                 "symbol": symbol,
                 "old_price": (cur_px as f64) / PRICE_SCALE,
@@ -740,40 +739,31 @@ pub fn edit(
     Ok(ok)
 }
 
-// Add near your other #[napi(object)] types
-#[napi(object)]
-pub struct BatchReq {
-  pub market: String,
-  pub cancel: Option<Vec<String>>,
-  pub place:  Option<Vec<JsOrder>>,
-  pub snap_levels: Option<u32>,
-}
-
 // Cancel everything owned by a given socket in a market.
 // Returns number of orders successfully canceled.
 #[napi]
 pub fn cancel_all_by_socket(symbol: String, socket_id: String) -> u32 {
-  let mut s = STATE.lock().unwrap();
+    let mut s = STATE.lock().unwrap();
 
-  // 1) Detach the list of ids first (avoid holding two borrows at once)
-  let ids: Vec<String> = s
-    .by_socket
-    .get_mut(&symbol)
-    .and_then(|per_socket| per_socket.remove(&socket_id))
-    .unwrap_or_default();
+    // 1) Detach the list of ids first (avoid holding two borrows at once)
+    let ids: Vec<String> = s
+        .by_socket
+        .get_mut(&symbol)
+        .and_then(|per_socket| per_socket.remove(&socket_id))
+        .map(|set| set.into_iter().collect())
+        .unwrap_or_default();
 
-  // 2) Cancel on the book
-  let mut n = 0u32;
-  if let Some(book) = s.man.get_book_mut(&symbol) {
-    for oid_str in ids {
-      let oid = to_order_id(&oid_str);
-      if book.cancel_order(oid).is_ok() { n += 1; }
+    // 2) Cancel on the book
+    let mut n = 0u32;
+    if let Some(book) = s.man.get_book_mut(&symbol) {
+        for oid_str in ids {
+            let oid = to_order_id(&oid_str);
+            if book.cancel_order(oid).is_ok() { n += 1; }
+        }
     }
-  }
 
-  n
+    n
 }
-
 
 // ---------- snapshots / stats ----------
 #[napi]
@@ -801,7 +791,7 @@ pub fn stats(symbol: String) -> String {
     } else { "{}".into() }
 }
 
-// ---------- FE tray helper ----------
+// ---------- FE tray helpers ----------
 #[napi]
 pub fn get_open_orders_by_socket(socket_id: String, symbol: String) -> String {
     let s = STATE.lock().unwrap();
@@ -819,8 +809,9 @@ pub fn get_open_orders_by_socket(socket_id: String, symbol: String) -> String {
     serde_json::to_string(&out).unwrap_or_else(|_| "[]".into())
 }
 
+// NOTE: JS name becomes getOrderHistoryBySocket(symbol, socketId, limit?)
 #[napi]
-pub fn get_order_history_by_socket(socket_id: String, symbol: String, limit: Option<u32>) -> String {
+pub fn get_order_history_by_socket(symbol: String, socket_id: String, limit: Option<u32>) -> String {
     let s = STATE.lock().unwrap();
     let lim = limit.unwrap_or(200) as usize;
     let mut out: Vec<serde_json::Value> = Vec::new();
@@ -834,4 +825,25 @@ pub fn get_order_history_by_socket(socket_id: String, symbol: String, limit: Opt
     serde_json::to_string(&out).unwrap_or_else(|_| "[]".into())
 }
 
-
+#[napi]
+pub fn debug_socket(symbol: String, socket_id: String) -> String {
+    let s = STATE.lock().unwrap();
+    let mut ids: Vec<String> = Vec::new();
+    if let Some(per) = s.by_socket.get(&symbol) {
+        if let Some(set) = per.get(&socket_id) {
+            ids.extend(set.iter().cloned());
+        }
+    }
+    let mut mapped: Vec<(String,String)> = Vec::new();
+    if let Some(int2ext) = s.int2ext.get(&symbol) {
+        for k in &ids {
+            if let Some(ext) = int2ext.get(k) {
+                mapped.push((k.clone(), ext.clone()));
+            }
+        }
+    }
+    serde_json::to_string(&serde_json::json!({
+        "by_socket_ids": ids,
+        "int2ext_hits": mapped
+    })).unwrap_or("{}".into())
+}
