@@ -162,7 +162,8 @@ pub fn drop_book(symbol: String) -> bool {
     s.man.remove_book(&symbol).is_some()
 }
 
-// ---------- submit ----------#[napi]
+// ---------- submit ----------
+#[napi]
 pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
     use std::collections::{HashMap, HashSet};
 
@@ -180,26 +181,14 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
     let qty     = to_qty_u64(order.amount);
     let side    = parse_side(&order.side);
     let sock_id = order.socket_id.clone(); // Option<String>
+    let now     = current_time_millis();
 
     log_line(format!(
         "[SUBMIT] {symbol} {:?} px={} qty={} ext={} int={}",
         side, price, qty, ext_id, eng_str
     ));
 
-    // ----------------------------------------------------------------
-    // 0) Ownership maps (record early so STPF + maker attr can use them)
-    // ----------------------------------------------------------------
-    // We track by internal IDs in by_socket; int<->ext mapping is set on resting.
-    if let Some(ref sock) = sock_id {
-        s.by_socket
-            .entry(symbol.clone())
-            .or_default()
-            .entry(sock.clone())
-            .or_default()
-            .insert(eng_str.clone());
-    }
-
-    let now = current_time_millis();
+    // History: SUBMIT_ACK (for taker)
     if let Some(sock) = order.socket_id.as_ref() {
         s.push_hist(&symbol, sock, serde_json::json!({
             "ts": now, "uuid": ext_id, "side": order.side, "price": order.price,
@@ -207,9 +196,8 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
         }));
     }
 
-
     // ----------------------------------------------------------------
-    // 1) Pre-snapshot FIFO for maker attribution (only opposite side levels)
+    // 1) Pre-snapshot FIFO for maker attribution (only opposite side)
     // ----------------------------------------------------------------
     let maker_side = match side { Side::Buy => Side::Sell, Side::Sell => Side::Buy };
     let mut pre_fifo: HashMap<u64, Vec<(String, u64)>> = HashMap::new();
@@ -297,8 +285,17 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
     }
 
     // ----------------------------------------------------------------
-    // 3) Match the taker slice
+    // 3) Record ownership (AFTER STPF passes), then match the taker slice
     // ----------------------------------------------------------------
+    if let Some(ref sock) = sock_id {
+        s.by_socket
+            .entry(symbol.clone())
+            .or_default()
+            .entry(sock.clone())
+            .or_default()
+            .insert(eng_str.clone()); // store internal id only
+    }
+
     let mr = {
         let book = s.man.get_book_mut(&symbol).expect("book exists");
         book
@@ -332,9 +329,8 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
             if let Some(per_sock) = s.by_socket.get_mut(&symbol) {
                 if let Some(set) = per_sock.get_mut(sock) {
                     set.remove(&eng_str);
-                    set.remove(&format!("{:?}", eng_id));
-                    // if you ever stored ext uuids in by_socket, also:
-                    set.remove(&ext_id);
+                    set.remove(&format!("{:?}", eng_id)); // if ever stored debug fmt
+                    // set.remove(&ext_id); // only if you previously kept ext ids
                     if set.is_empty() { per_sock.remove(sock); }
                 }
             }
@@ -342,20 +338,35 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
     }
 
     // ----------------------------------------------------------------
-    // 5) Maker attribution from snapshot FIFO
+    // 5) Maker attribution from snapshot FIFO + taker/maker MATCH logs
     // ----------------------------------------------------------------
     let mut maker_slices: Vec<serde_json::Value> = Vec::new();
-    for tx in mr.transactions.as_vec().iter() {
-        let p = tx.price;
-        let mut want = tx.quantity;
+    let mut sum_qty = 0f64;
+    let mut sum_notional = 0f64;
 
-        if let Some(fifo) = pre_fifo.get_mut(&p) {
+    for tx in mr.transactions.as_vec().iter() {
+        let px = (tx.price as f64) / PRICE_SCALE;
+        let q  = tx.quantity as f64;
+        sum_qty += q;
+        sum_notional += q * px;
+
+        // taker history
+        if let Some(sock) = order.socket_id.as_ref() {
+            s.push_hist(&symbol, sock, serde_json::json!({
+                "ts": now, "uuid": ext_id, "side": order.side,
+                "price": px, "qty": q, "event": "MATCH", "role": "taker", "symbol": symbol
+            }));
+        }
+
+        // maker-side attribution
+        if let Some(fifo) = pre_fifo.get_mut(&tx.price) {
+            let mut want = tx.quantity;
             let mut i = 0usize;
             while want > 0 && i < fifo.len() {
-                let (maker_id, rem_val) = { let (id_s, q) = &fifo[i]; (id_s.clone(), *q) };
+                let (maker_id, rem_val) = { let (id_s, q2) = &fifo[i]; (id_s.clone(), *q2) };
                 let take = want.min(rem_val);
                 if take > 0 {
-                    // Skip self-attribution
+                    // skip self
                     let is_self = sock_id
                         .as_ref()
                         .and_then(|sock| socket_owner_of(&s, &symbol, &maker_id).map(|o| o == *sock))
@@ -364,25 +375,64 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
                         maker_slices.push(serde_json::json!({
                             "maker_order_id": maker_id,
                             "taker_order_id": format!("{:?}", eng_id),
-                            "price": (p as f64) / PRICE_SCALE,
+                            "price": px,
                             "quantity": take as f64,
                             "maker": true
                         }));
+                        // maker history (owner)
+                        if let Some(maker_sock) = socket_owner_of(&s, &symbol, &maker_id) {
+                            let ext = s.int2ext
+                                .get(&symbol).and_then(|m| m.get(&maker_id)).cloned().unwrap_or_default();
+                            s.push_hist(&symbol, &maker_sock, serde_json::json!({
+                                "ts": now, "uuid": ext,
+                                "side": match order.side.as_str() { "BUY" => "SELL", _ => "BUY" },
+                                "price": px, "qty": take as f64,
+                                "event": "MATCH", "role": "maker", "symbol": symbol
+                            }));
+                        }
                     }
                     fifo[i].1 -= take;
                     want -= take;
                     if fifo[i].1 == 0 { i += 1; } else { break; }
-                } else {
-                    i += 1;
-                }
+                } else { i += 1; }
             }
             fifo.drain(..i);
         }
     }
 
     // ----------------------------------------------------------------
-    // 6) Build response payload
+    // 6) Build response payload (+ history summary)
     // ----------------------------------------------------------------
+    let avg_px = if sum_qty > 0.0 { sum_notional / sum_qty } else { 0.0 };
+    let exec = mr.executed_quantity() as f64;
+    let rem  = mr.remaining_quantity as f64;
+    let filled = mr.is_complete && exec > 0.0;
+
+    if let Some(sock) = order.socket_id.as_ref() {
+        if exec > 0.0 {
+            s.push_hist(&symbol, sock, serde_json::json!({
+                "ts": now,
+                "uuid": ext_id,
+                "side": order.side,
+                "event": if filled { "FILLED" } else { "PARTIAL_FILL" },
+                "executed_qty": exec,
+                "remaining_qty": rem,
+                "avg_price": avg_px,
+                "symbol": symbol
+            }));
+        }
+        if !mr.is_complete && mr.remaining_quantity > 0.0 {
+            s.push_hist(&symbol, sock, serde_json::json!({
+                "ts": now,
+                "uuid": ext_id,
+                "side": order.side,
+                "event": "RESTED",
+                "resting_qty": rem,
+                "symbol": symbol
+            }));
+        }
+    }
+
     let txns = mr.transactions.as_vec().iter().map(|tx| {
         serde_json::json!({
             "quantity": (tx.quantity as f64),
@@ -397,66 +447,15 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
         "executed_qty": (mr.executed_quantity() as f64),
         "remaining_qty": (mr.remaining_quantity as f64),
         "is_complete": mr.is_complete,
+        "avg_price": avg_px,
         "transactions": txns,
         "maker_slices": maker_slices,
         "filled_order_ids": mr.filled_order_ids.iter().map(|fid| format!("{:?}", fid)).collect::<Vec<_>>()
     });
 
-    //7 update order history with filled/pt
-
-    for tx in mr.transactions.as_vec().iter() {
-        if let Some(sock) = order.socket_id.as_ref() {
-            s.push_hist(&symbol, sock, serde_json::json!({
-                "ts": now, "uuid": ext_id, "side": order.side,
-                "price": (tx.price as f64) / PRICE_SCALE,
-                "qty": tx.quantity as f64, "event": "MATCH", "role": "taker", "symbol": symbol
-            }));
-        }
-        // Optional: attribute maker side to the maker’s owner socket if you can resolve it
-        if let Some(maker_sock) = socket_owner_of(&s, &symbol, &format!("{:?}", tx.maker_order_id)) {
-            s.push_hist(&symbol, &maker_sock, serde_json::json!({
-                "ts": now, "uuid": s.int2ext.get(&symbol)
-                        .and_then(|m| m.get(&format!("{:?}", tx.maker_order_id))).cloned().unwrap_or_default(),
-                "side": match order.side.as_str() { "BUY" => "SELL", _ => "BUY" },
-                "price": (tx.price as f64) / PRICE_SCALE, "qty": tx.quantity as f64,
-                "event": "MATCH", "role": "maker", "symbol": symbol
-            }));
-        }
-    }
-
-    let exec = mr.executed_quantity() as f64;
-    let rem  = mr.remaining_quantity as f64;
-    let filled = mr.is_complete && exec > 0.0;
-
-    if let Some(sock) = order.socket_id.as_ref() {
-        if exec > 0.0 {
-            // summary event for this submit
-            s.push_hist(&symbol, sock, serde_json::json!({
-                "ts": now,
-                "uuid": ext_id,
-                "side": order.side,
-                "event": if filled { "FILLED" } else { "PARTIAL_FILL" },
-                "executed_qty": exec,
-                "remaining_qty": rem,
-                "symbol": symbol
-            }));
-        }
-
-        // if a remainder rests on the book, log that explicitly
-        if !mr.is_complete && mr.remaining_quantity > 0 {
-            s.push_hist(&symbol, sock, serde_json::json!({
-                "ts": now,
-                "uuid": ext_id,
-                "side": order.side,
-                "event": "RESTED",
-                "resting_qty": rem,
-                "symbol": symbol
-            }));
-        }
-    }
-
     Ok(serde_json::to_string(&payload).unwrap_or_else(|_| "{}".into()))
 }
+
 
 
 // Fast path: reuse single submit() & cancel() to keep STPF + attribution logic identical.
@@ -524,20 +523,43 @@ pub fn submit_batch(req: BatchReq) -> napi::Result<String> {
 }
 
 
-// ---------- cancel ----------#[napi]
+// ---------- cancel ----------//#[napi]
 pub fn cancel(symbol: String, order_id: String) -> bool {
+    use std::collections::HashSet;
+
     let mut s = STATE.lock().unwrap();
     s.ensure_maps(&symbol);
 
-    // Resolve engine id string: prefer ext2int, else treat order_id as engine string
-    let eng_str = s
-        .ext2int
-        .get(&symbol)
-        .and_then(|m| m.get(&order_id).cloned())
-        .unwrap_or_else(|| order_id.clone());
+    // Resolve internal and external IDs
+    // If the caller passed an external UUID, translate it.
+    // If they passed an internal id string, use that as-is.
+    let (eng_str, ext_id) = {
+        if let Some(m) = s.ext2int.get(&symbol) {
+            if let Some(int_id) = m.get(&order_id) {
+                (int_id.clone(), order_id.clone())       // order_id was external
+            } else {
+                // Otherwise treat order_id as internal & try to find its ext
+                let ext = s.int2ext
+                    .get(&symbol)
+                    .and_then(|m2| m2.get(&order_id))
+                    .cloned()
+                    .unwrap_or_else(|| order_id.clone());
+                (order_id.clone(), ext)
+            }
+        } else {
+            // ext2int not present for symbol; treat as internal and try reverse
+            let ext = s.int2ext
+                .get(&symbol)
+                .and_then(|m2| m2.get(&order_id))
+                .cloned()
+                .unwrap_or_else(|| order_id.clone());
+            (order_id.clone(), ext)
+        }
+    };
+
     let eng = to_order_id(&eng_str);
 
-    // Cancel in the book (separate scope to avoid overlapping borrows)
+    // Cancel in the book
     let ok = {
         if let Some(book) = s.man.get_book_mut(&symbol) {
             book.cancel_order(eng.clone()).is_ok()
@@ -549,87 +571,65 @@ pub fn cancel(symbol: String, order_id: String) -> bool {
         return false;
     }
 
-    // Clean reverse maps without overlapping borrows.
-
-    // 1) Try direct ext -> int removal first
-    let direct_removed = {
-        if let Some(m) = s.ext2int.get_mut(&symbol) {
-            m.remove(&order_id).is_some()
-        } else {
-            false
-        }
-    };
-
-    if !direct_removed {
-        // 2) If not found, remove int -> ext and then remove that ext in ext2int
-        let removed_ext = {
-            if let Some(m) = s.int2ext.get_mut(&symbol) {
-                m.remove(&eng_str)
-            } else {
-                None
-            }
-        };
-        if let Some(ext) = removed_ext {
-            if let Some(m) = s.ext2int.get_mut(&symbol) {
-                let _ = m.remove(&ext);
-            }
-        }
-    } else {
-        // If we removed ext->int, also drop the int->ext entry
-        if let Some(m) = s.int2ext.get_mut(&symbol) {
-            let _ = m.remove(&eng_str);
-        }
+    // Clean reverse maps
+    if let Some(m) = s.int2ext.get_mut(&symbol) {
+        let _ = m.remove(&eng_str);
+    }
+    if let Some(m) = s.ext2int.get_mut(&symbol) {
+        let _ = m.remove(&ext_id);
     }
 
-    // 3) Remove both forms from by_socket
+    // Remove internal id from by_socket (all sockets just in case)
     if let Some(per_sock) = s.by_socket.get_mut(&symbol) {
         for (_sock, ids) in per_sock.iter_mut() {
-            ids.retain(|x| x != &eng_str && x != &order_id);
+            ids.remove(&eng_str);
         }
+        // Optional: prune empty socket entries
+        per_sock.retain(|_, ids: &mut HashSet<String>| !ids.is_empty());
     }
 
-    if let Some(sock) = owner_sock_of_eng_id(&s, &symbol, &eng_id) {
+    // Push history for the owner socket (if we can find it)
+    if let Some(sock) = socket_owner_of(&s, &symbol, &eng_str) {
         s.push_hist(&symbol, &sock, serde_json::json!({
-            "ts": current_time_millis(), "uuid": ext_id, "event": "CANCELLED", "symbol": symbol
+            "ts": current_time_millis(),
+            "uuid": ext_id,
+            "event": "CANCELLED",
+            "symbol": symbol
         }));
     }
+
     true
 }
 
-// ---------- edit (cancel+readd with plan; maker-bump for price edits) ----------#[napi]
+// ---------- edit (cancel+readd with plan; maker-bump for price edits) ----------//
+#[napi]
 pub fn edit(
     symbol: String,
-    order_id: String,
+    order_id: String,     // can be external UUID or internal id string
     new_qty: Option<f64>,
     new_price: Option<f64>
 ) -> napi::Result<bool> {
-    use orderbook_rs::prelude::Side;
-
-    let eng_id = to_order_id(&order_id);
-    let eng_id_str = eng_id.to_string();
-    let eng_id_dbg = format!("{:?}", eng_id);
+    use std::collections::HashSet;
+    use orderbook_rs::prelude::{Side, TimeInForce};
 
     let mut s = STATE.lock().unwrap();
     s.ensure_maps(&symbol);
 
-    // Owner socket (no book borrow)
-    let taker_sock: Option<String> = s
-        .by_socket
-        .get(&symbol)
-        .and_then(|per_sock| {
-            for (sock, ids) in per_sock {
-                if ids.iter().any(|x| x == &eng_id_str || x == &eng_id_dbg) {
-                    return Some(sock.clone());
-                }
-            }
-            None
-        });
+    // Resolve internal id from the given order_id
+    let eng_str = if let Some(m) = s.ext2int.get(&symbol) {
+        m.get(&order_id).cloned().unwrap_or(order_id.clone())
+    } else {
+        order_id.clone()
+    };
+    let eng_id = to_order_id(&eng_str);
 
-    // Snapshot to locate the edited order's side/px/qty (short book borrow)
-    let (snap, cur_side, cur_px, cur_qty) = {
+    // Owner socket (no book borrow)
+    let owner_sock: Option<String> = socket_owner_of(&s, &symbol, &eng_str);
+
+    // Snapshot to locate current side/px/qty
+    let (snap_side, cur_px, cur_qty) = {
         let Some(book) = s.man.get_book_mut(&symbol) else { return Ok(false) };
-        let depth = 512usize;
-        let snap = book.create_snapshot(depth);
+        let snap = book.create_snapshot(512);
 
         let mut cs: Option<Side> = None;
         let mut px: Option<u64> = None;
@@ -651,20 +651,25 @@ pub fn edit(
                 }
             }
         }
-        let (Some(cs), Some(px), Some(q)) = (cs, px, q) else { return Ok(false); };
-        (snap, cs, px, q)
+        let (Some(cs), Some(px), Some(q)) = (cs, px, q) else { return Ok(false) };
+        (cs, px, q)
     };
 
     let tgt_qty = new_qty.map(to_qty_u64).unwrap_or(cur_qty);
     let tgt_px  = new_price.map(to_price_u64).unwrap_or(cur_px);
 
-    // Plan STPF cancels for price edits (no book borrow)
+    // Plan STPF cancels for price edits
     let mut stpf_to_cancel: Vec<orderbook_rs::prelude::OrderId> = Vec::new();
     if new_price.is_some() {
-        if let Some(ref taker_sock) = taker_sock {
-            let opp = match cur_side { Side::Buy => &snap.asks, Side::Sell => &snap.bids };
-            for lvl in opp.iter() {
-                let crosses = match cur_side { Side::Buy => lvl.price <= tgt_px, Side::Sell => lvl.price >= tgt_px };
+        if let Some(ref taker_sock) = owner_sock {
+            // need a snapshot; borrow ended above
+            let opp_levels = {
+                let Some(book) = s.man.get_book_mut(&symbol) else { return Ok(false) };
+                let snap = book.create_snapshot(512);
+                match snap_side { Side::Buy => snap.asks, Side::Sell => snap.bids }
+            };
+            for lvl in opp_levels.iter() {
+                let crosses = match snap_side { Side::Buy => lvl.price <= tgt_px, Side::Sell => lvl.price >= tgt_px };
                 if !crosses { break; }
                 for ord in &lvl.orders {
                     if let orderbook_rs::OrderType::Standard { id, .. } = ord.as_ref() {
@@ -677,14 +682,11 @@ pub fn edit(
         }
     }
 
-    // Collect the engine-id strings that we will cancel (for map cleanup later)
-    let canceled_self_eng_strings: Vec<String> = stpf_to_cancel.iter().map(|oid| oid.to_string()).collect();
-
-    // Apply to the book under a short borrow scope
+    // Cancel & re-add under a short borrow
     let ok = {
         let Some(book) = s.man.get_book_mut(&symbol) else { return Ok(false) };
 
-        // Cancel STPF conflicts
+        // STPF cancels (self makers that would cross new price)
         for oid in &stpf_to_cancel {
             let _ = book.cancel_order(oid.clone());
         }
@@ -695,7 +697,7 @@ pub fn edit(
             id: eng_id.clone(),
             price: tgt_px,
             quantity: tgt_qty,
-            side: cur_side,
+            side: snap_side,
             timestamp: current_time_millis(),
             time_in_force: TimeInForce::Gtc,
             extra_fields: (),
@@ -703,18 +705,35 @@ pub fn edit(
         book.add_order(add).is_ok()
     };
 
-    // Now that the book borrow is released, clean maps
-    if !canceled_self_eng_strings.is_empty() {
+    // Clean maps for STPF-canceled makers
+    if !stpf_to_cancel.is_empty() {
         if let Some(int2ext) = s.int2ext.get_mut(&symbol) {
-            for eng_str in &canceled_self_eng_strings {
-                let _ = int2ext.remove(eng_str);
+            for oid in &stpf_to_cancel {
+                let _ = int2ext.remove(&oid.to_string());
             }
         }
-        // Optional: also scrub from by_socket if you want immediate consistency
         if let Some(per_sock) = s.by_socket.get_mut(&symbol) {
             for (_sock, ids) in per_sock.iter_mut() {
-                ids.retain(|x| !canceled_self_eng_strings.iter().any(|e| e == x));
+                for oid in &stpf_to_cancel {
+                    ids.remove(&oid.to_string());
+                }
             }
+        }
+    }
+
+    // History: AMENDED record
+    if ok {
+        if let Some(sock) = owner_sock {
+            s.push_hist(&symbol, &sock, serde_json::json!({
+                "ts": current_time_millis(),
+                "uuid": s.int2ext.get(&symbol).and_then(|m| m.get(&eng_str)).cloned().unwrap_or(order_id),
+                "event": "AMENDED",
+                "symbol": symbol,
+                "old_price": (cur_px as f64) / PRICE_SCALE,
+                "old_qty":   (cur_qty as f64),
+                "new_price": (tgt_px as f64) / PRICE_SCALE,
+                "new_qty":   (tgt_qty as f64)
+            }));
         }
     }
 

@@ -301,7 +301,7 @@ futKey(contractId?: any, expiry?: any): string | null {
         const opened = Array.isArray(openedRaw) ? openedRaw : [];
 
         const history =
-          (native as any).get_order_history_by_socket?.(market, sid) ??
+          (native as any).getOrderHistoryBySocket?.(market, sid) ??
           [];
 
         ws.send(JSON.stringify({
