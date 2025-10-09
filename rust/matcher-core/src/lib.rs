@@ -792,67 +792,91 @@ pub fn stats(symbol: String) -> String {
     } else { "{}".into() }
 }
 
-// ---------- FE tray helpers ----------
+// ---------- FE tray helpers ----------//
 #[napi]
-pub fn get_open_orders_by_socket(socket_id: String, symbol: String) -> napi::Result<String> {
-    let s = STATE.lock().unwrap();
+pub fn get_open_orders_by_socket(socket_id: String, symbol: String) -> String {
+    use serde_json::json;
 
+    let s = STATE.lock().unwrap();
     let mut out: Vec<serde_json::Value> = Vec::new();
 
-    if let Some(per_symbol) = s.by_socket.get(&symbol) {
-        if let Some(set) = per_symbol.get(&socket_id) {
-            if let Some(book) = s.man.get_book(&symbol) {
-                for oid in set {
-                    // look up external id if available
+    // quick exits if we don't have the book or indices
+    let Some(book) = s.man.get_book(&symbol) else {
+        return "[]".into();
+    };
+    let Some(per_sock) = s.by_socket.get(&symbol) else {
+        return "[]".into();
+    };
+    let Some(id_set) = per_sock.get(&socket_id) else {
+        return "[]".into();
+    };
+
+    // for each engine-id string owned by this socket, try to fetch the resting order
+    for eng_str in id_set.iter() {
+        let oid = to_order_id(eng_str);
+        if let Some(arc_ord) = book.get_order(oid.clone()) {
+            match arc_ord.as_ref() {
+                orderbook_rs::OrderType::Standard {
+                    id: _,
+                    price,
+                    quantity,
+                    side,
+                    timestamp,
+                    ..
+                } => {
+                    // map engine-id → external uuid (fallback to engine-id string if missing)
                     let ext = s.int2ext
                         .get(&symbol)
-                        .and_then(|m| m.get(oid))
+                        .and_then(|m| m.get(eng_str))
                         .cloned()
-                        .unwrap_or_else(|| oid.clone());
+                        .unwrap_or_else(|| eng_str.clone());
 
-                    // try to find order details in the book
-                    if let Some(o) = book.find_order(&to_order_id(oid)) {
-                        if let OrderType::Standard { price, quantity, side, timestamp, .. } = o.as_ref() {
-                            out.push(serde_json::json!({
-                                "uuid": ext,
-                                "price": (*price as f64) / PRICE_SCALE,
-                                "amount": *quantity as f64,
-                                "side": format!("{:?}", side),
-                                "timestamp": timestamp,
-                                "symbol": symbol
-                            }));
-                        }
-                    } else {
-                        // fallback if order no longer in book
-                        out.push(serde_json::json!({
-                            "uuid": ext,
-                            "symbol": symbol,
-                            "note": "not found in book (maybe filled or canceled)"
-                        }));
-                    }
+                    let side_str = match side {
+                        orderbook_rs::prelude::Side::Buy  => "BUY",
+                        orderbook_rs::prelude::Side::Sell => "SELL",
+                    };
+
+                    out.push(json!({
+                        "uuid":        ext,                         // external id for FE
+                        "engine_id":   eng_str,                     // internal id string
+                        "symbol":      symbol,
+                        "side":        side_str,
+                        "price":       (*price as f64) / PRICE_SCALE,
+                        "amount":      *quantity as f64,
+                        "timestamp":   *timestamp,
+                    }));
                 }
+                // if you have Hidden/Iceberg variants and want to expose them, handle here
+                _ => {}
             }
         }
     }
 
-    Ok(serde_json::to_string(&out).unwrap_or_else(|_| "[]".into()))
+    serde_json::to_string(&out).unwrap_or_else(|_| "[]".into())
 }
 
-// NOTE: JS name becomes getOrderHistoryBySocket(symbol, socketId, limit?)
-#[napi]
-pub fn get_order_history_by_socket(symbol: String, socket_id: String, limit: Option<u32>) -> String {
+// JS will see: getOrderHistoryBySocket(market: string, socketId: string, limit?: number): string
+#[napi(js_name = "getOrderHistoryBySocket")]
+pub fn get_order_history_by_socket(
+    market: String,
+    socket_id: String,
+    limit: Option<u32>,
+) -> String {
     let s = STATE.lock().unwrap();
     let lim = limit.unwrap_or(200) as usize;
+
     let mut out: Vec<serde_json::Value> = Vec::new();
-    if let Some(per_sock) = s.history.get(&symbol) {
+    if let Some(per_sock) = s.history.get(&market) {
         if let Some(q) = per_sock.get(&socket_id) {
             let n = q.len();
             let start = n.saturating_sub(lim);
             out.extend(q.iter().skip(start).cloned());
         }
     }
+
     serde_json::to_string(&out).unwrap_or_else(|_| "[]".into())
 }
+
 
 #[napi]
 pub fn debug_socket(symbol: String, socket_id: String) -> String {

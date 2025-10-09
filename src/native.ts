@@ -77,10 +77,10 @@ export const native = {
     nat.snapshot?.(market, levels ?? 50),
 
   get_open_orders_by_socket: (socketId: string, market?: string): string =>
-    nat.get_open_orders_by_socket?.(socketId, market) ?? '[]',
+    nat.getOpenOrdersBySocket?.(socketId, market) ?? '[]',
 
   getOrderHistoryBySocket: (socketId: string, market: string, limit?: number): string =>
-    (nat as any).getOrderHistoryBySocket?.(socketId, market, limit ?? 200) ?? '[]',
+    (nat as any).getOrderHistoryBySocket?.(market, socketId, limit ?? 200) ?? '[]',
 
   cancel_all_by_socket: (market: string, socketId: string): number =>
     nat.cancel_all_by_socket?.(market, socketId) ?? 0,

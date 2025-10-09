@@ -31,6 +31,9 @@ show("debug_socket(ETHUSD, TAKER_SOCK)",
 show("getOpenOrdersBySocket(TAKER_SOCK, ETHUSD)", core.getOpenOrdersBySocket(TAKER_SOCK, "ETHUSD"));
 
 // If you want history:
-if (core.getOrderHistoryBySocket) {
-  show("getOrderHistoryBySocket(TAKER_SOCK, ETHUSD, 50)", core.getOrderHistoryBySocket(TAKER_SOCK, "ETHUSD", 50));
+if (core.getOrderHistoryBySocket) {// correct order: (market, socketId, limit)
+show(
+  "getOrderHistoryBySocket(TAKER_SOCK, ETHUSD, 50)",
+  core.getOrderHistoryBySocket("ETHUSD", TAKER_SOCK, 50)
+);
 }

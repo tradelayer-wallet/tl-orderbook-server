@@ -7,7 +7,7 @@ type WS = HyperExpress.Websocket;
 
 type NormalizedOrder = {
   uuid: string;
-  socket_id: string;
+  socketId: string;
   price: number;
   amount: number;
   side: 'BUY' | 'SELL';
@@ -282,7 +282,7 @@ futKey(contractId?: any, expiry?: any): string | null {
       ws.send(JSON.stringify({ event: OrderEmitEvents.ERROR, message: order.error }));
       return;
     }
-
+    console.log('order before sub '+JSON.stringify(order))
     try {
       ws.send(JSON.stringify({
         event: OrderEmitEvents.SAVED,
@@ -293,40 +293,72 @@ futKey(contractId?: any, expiry?: any): string | null {
       native.submit(market, this.toJsOrder(order));
 
       // 🧩 5. Immediate placed-orders tray
-      console.log('about to call orders '+sid+' '+market)
+      console.log('about to call orders ' + sid + ' ' + market);
       try {
-        const openedRaw =
-          (native as any).get_open_orders_by_socket?.(sid,market) ?? [];
-          console.log('fetched orders '+JSON.stringify(openedRaw))
-        const opened = Array.isArray(openedRaw) ? openedRaw : [];
+        const openedRaw = (native as any).get_open_orders_by_socket?.(sid, market);
+        console.log('fetched orders ' + JSON.stringify(openedRaw));
 
-        const history =
-          (native as any).getOrderHistoryBySocket?.(market, sid) ??
-          [];
+        const historyRaw = (native as any).getOrderHistoryBySocket?.(sid, market);
+        console.log('order history ' + JSON.stringify(historyRaw));
+
+        const opened = typeof openedRaw === 'string'
+          ? JSON.parse(openedRaw)
+          : (Array.isArray(openedRaw) ? openedRaw : []);
+
+        const orderHistory = typeof historyRaw === 'string'
+          ? JSON.parse(historyRaw)
+          : (Array.isArray(historyRaw) ? historyRaw : []);
 
         ws.send(JSON.stringify({
           event: EmitEvents.PLACED_ORDERS,
           openedOrders: opened,
-          orderHistory: history
+          orderHistory
         }));
       } catch (err) {
         console.warn('[placed-orders err]', err);
       }
 
       // 📡 6. Broadcast snapshot to all subs
-      try {
-        const snap =
-          this._lastNativeSnap.get(market) ?? native.snapshot(market, 50);
-        if (snap) {
-          this.broadcastToMarket(market, {
-            event: EmitEvents.ORDERBOOK_DATA,
-            marketKey: market,
-            native: snap
-          });
-        }
-      } catch (err) {
-        console.warn('[snapshot broadcast err]', err);
-      }
+      
+      const snapRaw = (native as any).get_market_snapshot?.(market);
+
+      console.log('market snapshot ' + JSON.stringify(snapRaw));
+
+      const snapObj = typeof snapRaw === 'string'
+        ? JSON.parse(snapRaw)
+        : (snapRaw ?? null);
+
+      // OPTIONAL: price scale normalization (engine ticks -> UI units)
+      // If your engine stores price=100 but UI expects 1.00, set PRICE_SCALE accordingly.
+      // Derive from market metadata if you have it.
+      const PRICE_SCALE = 100; // <-- set/mechanize as needed
+
+      const normalized =
+        snapObj && snapObj.snapshot
+          ? {
+              symbol: snapObj.snapshot.symbol,
+              timestamp: snapObj.snapshot.timestamp,
+              bids: (snapObj.snapshot.bids ?? []).map((b: any) => ({
+                price: PRICE_SCALE ? b.price / PRICE_SCALE : b.price,
+                amount: b.visible_quantity,
+                count: b.order_count,
+              })),
+              asks: (snapObj.snapshot.asks ?? []).map((a: any) => ({
+                price: PRICE_SCALE ? a.price / PRICE_SCALE : a.price,
+                amount: a.visible_quantity,
+                count: a.order_count,
+              })),
+              checksum: snapObj.checksum,
+            }
+          : null;
+
+      // Send a real object, not a string
+      ws.send(JSON.stringify({
+        event: EmitEvents.ORDERBOOK_DATA,
+        orders: normalized,       // or snapObj if you don't want to reshape/scale
+        isDelta: false,
+        history: 0,
+      }));
     } catch (e: any) {
       ws.send(JSON.stringify({
         event: OrderEmitEvents.ERROR,
@@ -424,8 +456,8 @@ futKey(contractId?: any, expiry?: any): string | null {
     execs: Array<{
       price: number;
       quantity: number;
-      maker_socket_id?: string;
-      taker_socket_id?: string;
+      maker_socketId?: string;
+      taker_socketId?: string;
       maker_ext_uuid?: string;
       taker_ext_uuid?: string;
     }>
@@ -434,8 +466,8 @@ futKey(contractId?: any, expiry?: any): string | null {
     // 2) per-socket refresh (so their trays update)
     const sockets = new Set<string>();
     for (const ex of execs) {
-      if (ex.maker_socket_id) sockets.add(ex.maker_socket_id);
-      if (ex.taker_socket_id) sockets.add(ex.taker_socket_id);
+      if (ex.maker_socketId) sockets.add(ex.maker_socketId);
+      if (ex.taker_socketId) sockets.add(ex.taker_socketId);
     }
     for (const sid of sockets) {
       const ws = this._liveSessions.get(sid);
@@ -643,7 +675,7 @@ futKey(contractId?: any, expiry?: any): string | null {
     if (!price || !amount) {
       return {
         uuid,
-        socket_id: socketId,
+        socketId: socketId,
         price,
         amount,
         side: side as 'BUY' | 'SELL',
@@ -653,7 +685,7 @@ futKey(contractId?: any, expiry?: any): string | null {
 
     return {
       uuid,
-      socket_id: socketId,
+      socketId: socketId,
       price,
       amount,
       side: side as 'BUY' | 'SELL',
@@ -666,7 +698,7 @@ futKey(contractId?: any, expiry?: any): string | null {
 
   private toJsOrder(o: {
         uuid: string;
-        socket_id: string;
+        socketId: string;
         side?: string;
         type?: 'SPOT' | 'FUTURES';
         action?: 'BUY' | 'SELL';
@@ -679,7 +711,7 @@ futKey(contractId?: any, expiry?: any): string | null {
         const side = (o.side || o.action || 'BUY').toUpperCase();
         return {
           uuid: o.uuid,
-          socket_id: o.socket_id,
+          socketId: o.socketId,
           side: side === 'SELL' ? 'SELL' : 'BUY',
           price: Number(o.price),
           amount: Number(o.amount ?? o.quantity ?? 0),
