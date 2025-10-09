@@ -14,12 +14,12 @@ const MAKER_SOCK = "sock-maker-1";
 const TAKER_SOCK = "sock-taker-1";
 
 // 1) place a 5-lot bid (maker) — give it a socket id too if you want ownership
-core.submit("ETHUSD", { uuid: "b1", side: "BUY",  price: 1100, amount: 5, socket_id: MAKER_SOCK });
+core.submit("ETHUSD", { uuid: "b1", side: "BUY",  price: 1100, amount: 5, socketId: MAKER_SOCK });
 
 // 2) three sells; the last one will leave 1 resting on the ask
-core.submit("ETHUSD", { uuid: "s1", side: "SELL", price: 1000, amount: 2, socket_id: TAKER_SOCK });
-core.submit("ETHUSD", { uuid: "s2", side: "SELL", price: 1025, amount: 1, socket_id: TAKER_SOCK });
-core.submit("ETHUSD", { uuid: "s3", side: "SELL", price: 1100, amount: 3, socket_id: TAKER_SOCK });
+core.submit("ETHUSD", { uuid: "s1", side: "SELL", price: 1000, amount: 2, socketId: TAKER_SOCK });
+core.submit("ETHUSD", { uuid: "s2", side: "SELL", price: 1025, amount: 1, socketId: TAKER_SOCK });
+core.submit("ETHUSD", { uuid: "s3", side: "SELL", price: 1100, amount: 3, socketId: TAKER_SOCK });
 
 // Inspect
 show("snapshot(ETHUSD,5)", core.snapshot("ETHUSD", 5));

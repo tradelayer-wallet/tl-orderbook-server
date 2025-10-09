@@ -40,20 +40,23 @@ use ulid::Ulid;
 
 // ---------- API types ----------
 #[derive(Debug, Clone, Serialize, Deserialize)]
+
 #[napi(object)]
 pub struct JsOrder {
     pub uuid: String,
-    pub side: String,
+    pub side: String,     // "BUY" | "SELL"
     pub price: f64,
     pub amount: f64,
-    // accept either field name from JS
+
+    // Accept either `socket_id` or `socketId` from JS; store as `socket_id`
+    #[serde(alias = "socket_id", alias = "socketId")]
     pub socket_id: Option<String>,
-    pub socketId: Option<String>,
 }
+
 
 #[inline]
 fn order_socket_id(o: &JsOrder) -> Option<String> {
-    o.socket_id.clone().or(o.socketId.clone())
+    o.socket_id.clone()
 }
 
 
@@ -178,7 +181,7 @@ pub fn drop_book(symbol: String) -> bool {
     s.man.remove_book(&symbol).is_some()
 }
 
-// ---------- submit ----------
+// ---------- submit ----------//
 #[napi]
 pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
     use std::collections::HashMap;
@@ -194,7 +197,12 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
     let price   = to_price_u64(order.price);
     let qty     = to_qty_u64(order.amount);
     let side    = parse_side(&order.side);
+
+    // IMPORTANT: capture socket id once; use everywhere after this.
+    // (If you also added `socketId` to JsOrder, change to:
+    //  let sock_id = order.socket_id.clone().or(order.socketId.clone());)
     let sock_id = order.socket_id.clone(); // Option<String>
+
     let now     = current_time_millis();
 
     log_line(format!(
@@ -203,7 +211,7 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
     ));
 
     // History: SUBMIT_ACK (for taker)
-    if let Some(sock) = order.socket_id.as_ref() {
+    if let Some(sock) = sock_id.as_ref() {
         s.push_hist(&symbol, sock, serde_json::json!({
             "ts": now, "uuid": ext_id, "side": order.side, "price": order.price,
             "qty": order.amount, "event": "SUBMIT_ACK", "symbol": symbol
@@ -363,7 +371,7 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
         sum_notional += q * px;
 
         // taker history
-        if let Some(sock) = order.socket_id.as_ref() {
+        if let Some(sock) = sock_id.as_ref() {
             s.push_hist(&symbol, sock, serde_json::json!({
                 "ts": now, "uuid": ext_id, "side": order.side,
                 "price": px, "qty": q, "event": "MATCH", "role": "taker", "symbol": symbol
@@ -420,7 +428,7 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
     let rem  = mr.remaining_quantity as f64;
     let filled = mr.is_complete && exec > 0.0;
 
-    if let Some(sock) = order.socket_id.as_ref() {
+    if let Some(sock) = sock_id.as_ref() {
         if exec > 0.0 {
             s.push_hist(&symbol, sock, serde_json::json!({
                 "ts": now,
@@ -468,6 +476,7 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
     Ok(serde_json::to_string(&payload).unwrap_or_else(|_| "{}".into()))
 }
 
+
 // ---------- submit_batch ----------
 #[napi]
 pub fn submit_batch(req: BatchReq) -> napi::Result<String> {
@@ -487,18 +496,10 @@ pub fn submit_batch(req: BatchReq) -> napi::Result<String> {
     // 2) places
     if let Some(list) = &req.place {
         for o in list {
-            // call existing submit() so STPF & maker attribution stay consistent
-            let raw = submit(
-                req.market.clone(),
-                JsOrder {
-                    uuid:      o.uuid.clone(),
-                    side:      o.side.clone(),
-                    price:     o.price,
-                    amount:    o.amount,
-                    socket_id: o.socket_id.clone(),
-                }
-            )?;
+            // Pass the incoming order straight through so we don't have to re-specify fields like socketId/socket_id
+            let raw = submit(req.market.clone(), o.clone())?;
 
+            // pull any maker_slices into execs for the sink
             if let Ok(val) = serde_json::from_str::<serde_json::Value>(&raw) {
                 if let Some(arr) = val.get("maker_slices").and_then(|x| x.as_array()) {
                     for e in arr { out_execs.push(e.clone()); }
@@ -511,7 +512,7 @@ pub fn submit_batch(req: BatchReq) -> napi::Result<String> {
 
     // 3) optional snapshot
     let snapshot = if let Some(levels) = req.snap_levels {
-        let s = STATE.lock().unwrap();
+        let s = STATE.lock().unwrap(); // short immutable borrow
         if let Some(book) = s.man.get_book(&req.market) {
             let snap = book.create_snapshot(levels as usize);
             Some(serde_json::to_value(snap).unwrap_or(serde_json::Value::Null))
@@ -793,20 +794,48 @@ pub fn stats(symbol: String) -> String {
 
 // ---------- FE tray helpers ----------
 #[napi]
-pub fn get_open_orders_by_socket(socket_id: String, symbol: String) -> String {
+pub fn get_open_orders_by_socket(socket_id: String, symbol: String) -> napi::Result<String> {
     let s = STATE.lock().unwrap();
-    let mut out: Vec<String> = Vec::new();
 
-    if let (Some(per_sock), Some(int2ext)) = (s.by_socket.get(&symbol), s.int2ext.get(&symbol)) {
-        if let Some(eng_ids) = per_sock.get(&socket_id) {
-            for eng in eng_ids {
-                if let Some(ext) = int2ext.get(eng) {
-                    out.push(ext.clone()); // only currently resting orders
+    let mut out: Vec<serde_json::Value> = Vec::new();
+
+    if let Some(per_symbol) = s.by_socket.get(&symbol) {
+        if let Some(set) = per_symbol.get(&socket_id) {
+            if let Some(book) = s.man.get_book(&symbol) {
+                for oid in set {
+                    // look up external id if available
+                    let ext = s.int2ext
+                        .get(&symbol)
+                        .and_then(|m| m.get(oid))
+                        .cloned()
+                        .unwrap_or_else(|| oid.clone());
+
+                    // try to find order details in the book
+                    if let Some(o) = book.find_order(&to_order_id(oid)) {
+                        if let OrderType::Standard { price, quantity, side, timestamp, .. } = o.as_ref() {
+                            out.push(serde_json::json!({
+                                "uuid": ext,
+                                "price": (*price as f64) / PRICE_SCALE,
+                                "amount": *quantity as f64,
+                                "side": format!("{:?}", side),
+                                "timestamp": timestamp,
+                                "symbol": symbol
+                            }));
+                        }
+                    } else {
+                        // fallback if order no longer in book
+                        out.push(serde_json::json!({
+                            "uuid": ext,
+                            "symbol": symbol,
+                            "note": "not found in book (maybe filled or canceled)"
+                        }));
+                    }
                 }
             }
         }
     }
-    serde_json::to_string(&out).unwrap_or_else(|_| "[]".into())
+
+    Ok(serde_json::to_string(&out).unwrap_or_else(|_| "[]".into()))
 }
 
 // NOTE: JS name becomes getOrderHistoryBySocket(symbol, socketId, limit?)
