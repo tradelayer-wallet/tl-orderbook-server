@@ -320,7 +320,7 @@ futKey(contractId?: any, expiry?: any): string | null {
 
       // 📡 6. Broadcast snapshot to all subs
       
-      const snapRaw = (native as any).get_market_snapshot?.(market);
+      const snapRaw = (native as any).snapshot?.(market);
 
       console.log('market snapshot ' + JSON.stringify(snapRaw));
 
