@@ -193,26 +193,24 @@ pub fn drop_book(symbol: String) -> bool {
     s.man.remove_book(&symbol).is_some()
 }
 
-// ---------- submit ----------//
 #[napi]
 pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
     use std::collections::HashMap;
 
+    // use 1e8 scaling for SPOT qty
+    const QTY_SCALE: f64 = 100_000_000.0;
+
     let mut s = STATE.lock().unwrap();
     if !s.man.has_book(&symbol) { s.man.add_book(&symbol); }
     s.ensure_maps(&symbol);
-
-    // 🛡 ignore duplicate UUIDs
-    if s.man.order_exists(&order.uuid) {
-        return Ok(order.uuid.clone());
-    }
 
     // --- normalize inputs ---
     let ext_id  = order.uuid.clone();
     let eng_id  = to_order_id(&ext_id);
     let eng_str = eng_id.to_string();
     let price   = to_price_u64(order.price);
-    let qty     = to_qty_u64(order.amount);
+    // CHANGED: scale external float amount to internal u64 satoshis
+    let qty     = ((order.amount.max(0.0)) * QTY_SCALE).round() as u64;
     let side    = parse_side(&order.side);
 
     // IMPORTANT: capture socket id once; use everywhere after this.
@@ -223,7 +221,7 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
     let now     = current_time_millis();
 
     log_line(format!(
-        "[SUBMIT] {symbol} {:?} px={} qty={} ext={} int={}",
+        "[SUBMIT] {symbol} {:?} px={} qty_int={} ext={} int={}",
         side, price, qty, ext_id, eng_str
     ));
 
@@ -383,7 +381,8 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
 
     for tx in mr.transactions.as_vec().iter() {
         let px = (tx.price as f64) / PRICE_SCALE;
-        let q  = tx.quantity as f64;
+        // CHANGED: convert internal qty (u64) back to external float
+        let q  = (tx.quantity as f64) / QTY_SCALE;
         sum_qty += q;
         sum_notional += q * px;
 
@@ -413,7 +412,8 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
                             "maker_order_id": maker_id,
                             "taker_order_id": format!("{:?}", eng_id),
                             "price": px,
-                            "quantity": take as f64,
+                            // CHANGED: internal -> external for maker slice qty
+                            "quantity": (take as f64) / QTY_SCALE,
                             "maker": true
                         }));
                         // maker history (owner)
@@ -423,7 +423,9 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
                             s.push_hist(&symbol, &maker_sock, serde_json::json!({
                                 "ts": now, "uuid": ext,
                                 "side": match order.side.as_str() { "BUY" => "SELL", _ => "BUY" },
-                                "price": px, "qty": take as f64,
+                                "price": px,
+                                // CHANGED: internal -> external
+                                "qty": (take as f64) / QTY_SCALE,
                                 "event": "MATCH", "role": "maker", "symbol": symbol
                             }));
                         }
@@ -441,8 +443,9 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
     // 6) Build response payload (+ history summary)
     // ----------------------------------------------------------------
     let avg_px = if sum_qty > 0.0 { sum_notional / sum_qty } else { 0.0 };
-    let exec = mr.executed_quantity() as f64;
-    let rem  = mr.remaining_quantity as f64;
+    // CHANGED: internal -> external for executed & remaining
+    let exec = (mr.executed_quantity() as f64) / QTY_SCALE;
+    let rem  = (mr.remaining_quantity as f64) / QTY_SCALE;
     let filled = mr.is_complete && exec > 0.0;
 
     if let Some(sock) = sock_id.as_ref() {
@@ -472,7 +475,8 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
 
     let txns = mr.transactions.as_vec().iter().map(|tx| {
         serde_json::json!({
-            "quantity": (tx.quantity as f64),
+            // CHANGED: internal -> external
+            "quantity": (tx.quantity as f64) / QTY_SCALE,
             "price": (tx.price as f64) / PRICE_SCALE,
             "transaction_id": tx.transaction_id,
             "maker": false
@@ -481,8 +485,9 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
 
     let payload = serde_json::json!({
         "order_id": format!("{:?}", mr.order_id),
-        "executed_qty": (mr.executed_quantity() as f64),
-        "remaining_qty": (mr.remaining_quantity as f64),
+        // CHANGED: internal -> external
+        "executed_qty": (mr.executed_quantity() as f64) / QTY_SCALE,
+        "remaining_qty": (mr.remaining_quantity as f64) / QTY_SCALE,
         "is_complete": mr.is_complete,
         "avg_price": avg_px,
         "transactions": txns,
@@ -492,7 +497,6 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
 
     Ok(serde_json::to_string(&payload).unwrap_or_else(|_| "{}".into()))
 }
-
 
 // ---------- submit_batch ----------
 #[napi]
