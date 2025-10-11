@@ -127,7 +127,19 @@ pub fn set_stpf_policy(policy: String) -> bool {
 // ---------- helpers ----------
 const PRICE_SCALE: f64 = 1e2; // adjust if engine uses a different scale
 #[inline] fn to_price_u64(px: f64) -> u64 { ((px * PRICE_SCALE).round()).max(0.0) as u64 }
-#[inline] fn to_qty_u64(q: f64) -> u64 { (q.round()).max(0.0) as u64 }
+const QTY_SCALE: u64 = 100_000_000; // 1e8
+
+#[inline]
+fn to_qty_u64(q: f64) -> u64 {
+    // convert external float units -> internal integer satoshis
+    ((q.max(0.0)) * (QTY_SCALE as f64)).round() as u64
+}
+
+#[inline]
+fn from_qty_u64(q: u64) -> f64 {
+    // internal satoshis -> external float units
+    (q as f64) / (QTY_SCALE as f64)
+}
 
 #[inline]
 fn parse_side(s: &str) -> Side {
@@ -189,6 +201,11 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
     let mut s = STATE.lock().unwrap();
     if !s.man.has_book(&symbol) { s.man.add_book(&symbol); }
     s.ensure_maps(&symbol);
+
+    // 🛡 ignore duplicate UUIDs
+    if s.man.order_exists(&order.uuid) {
+        return Ok(order.uuid.clone());
+    }
 
     // --- normalize inputs ---
     let ext_id  = order.uuid.clone();

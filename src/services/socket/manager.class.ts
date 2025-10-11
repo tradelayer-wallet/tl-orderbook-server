@@ -18,6 +18,38 @@ type NormalizedOrder = {
   error?: string;
 };
 
+// --- helpers (top of file or near other utils) ---
+function parseMaybeJson<T = any>(x: unknown, fallback: T): T {
+  if (x == null) return fallback;
+  if (typeof x !== 'string') return x as T;
+  try { return JSON.parse(x) as T; } catch { return fallback; }
+}
+
+function normalizeSnapshotToRows(snapObj: any, PRICE_SCALE = 100) {
+  const snap = snapObj?.snapshot ?? snapObj;
+  if (!snap || ( !Array.isArray(snap.bids) && !Array.isArray(snap.asks) )) return [];
+
+  const rows: Array<{ price:number; amount:number; side:'BUY'|'SELL'; isBuy:boolean }> = [];
+
+  for (const b of (snap.bids ?? [])) {
+    rows.push({
+      price: PRICE_SCALE ? (Number(b.price) / PRICE_SCALE) : Number(b.price),
+      amount: Number(b.amount ?? b.visible_quantity ?? 0),
+      side: 'BUY',
+      isBuy: true,
+    });
+  }
+  for (const a of (snap.asks ?? [])) {
+    rows.push({
+      price: PRICE_SCALE ? (Number(a.price) / PRICE_SCALE) : Number(a.price),
+      amount: Number(a.amount ?? a.visible_quantity ?? 0),
+      side: 'SELL',
+      isBuy: false,
+    });
+  }
+  return rows;
+}
+
 export class SocketManager {
   private _liveSessions = new Map<string, WS>();
   private _marketSubs = new Map<string, Set<string>>();
@@ -412,25 +444,60 @@ futKey(contractId?: any, expiry?: any): string | null {
 
   private handleCloseOrder(ws: WS, data: any) {
     const uuid = String(data.orderUUID || data.uuid || '');
-    const market = this.resolveMarket(ws, data);
     if (!uuid) return;
 
-    try {
-      if (market) native.cancel(market, uuid);
+    const sid    = (ws as any).id as string;
+    const market = this.resolveMarket(ws, data);
+    console.log('uuid', uuid, market);
 
-      // return updated opened/history for this socket (if you want)
-      ws.send(
-        JSON.stringify({
-          event: EmitEvents.PLACED_ORDERS,
-          openedOrders: [], // optional: fill by calling native.get_open_orders_by_socket
-          orderHistory: [], // optional: your history store or future native hook
-        })
-      );
-    } finally {
-      if (market)
-        this.broadcastToMarket(market, {
-          event: EmitEvents.UPDATE_ORDERS_REQUEST,
-        });
+    if (!market) {
+      console.warn('[close-order] missing marketKey for uuid', uuid);
+      return;
+    }
+
+    try {
+      // cancel on the engine
+      (native as any).cancel?.(market, uuid);
+    } catch (e) {
+      console.warn('[close-order] cancel error', e);
+    }
+
+
+    setTimeout(() => {
+      console.log('sending snapshot after cancel')
+      try {
+        this.sendOrderbookSnapshot(ws, market);
+      } catch (e) {
+        console.warn('[close-order] snapshot send error', e);
+      }
+    }, 1)
+    // optionally re-broadcast fresh snapshot to this socket
+    
+    // fetch latest opened orders + history for THIS socket & market
+    try {
+      const openedRaw  = (native as any).get_open_orders_by_socket?.(sid, market);
+      const historyRaw = (native as any).getOrderHistoryBySocket?.(sid, market);
+
+      const opened = typeof openedRaw  === 'string'
+        ? JSON.parse(openedRaw)
+        : (Array.isArray(openedRaw) ? openedRaw : []);
+
+      const orderHistory = typeof historyRaw === 'string'
+        ? JSON.parse(historyRaw)
+        : (Array.isArray(historyRaw) ? historyRaw : []);
+
+      ws.send(JSON.stringify({
+        event: EmitEvents.PLACED_ORDERS,
+        openedOrders: opened,
+        orderHistory,
+      }));
+    } catch (err) {
+      console.warn('[close-order] post-cancel fetch/send err', err);
+      ws.send(JSON.stringify({
+        event: EmitEvents.PLACED_ORDERS,
+        openedOrders: [],
+        orderHistory: [],
+      }));
     }
   }
 
@@ -527,57 +594,60 @@ futKey(contractId?: any, expiry?: any): string | null {
     }
   }
 
-  // === Snapshots/opened tray ===
-  private sendOrderbookSnapshot(ws: WS, marketKey: string) {
+    // === Snapshots/opened tray ===
+  private sendOrderbookSnapshot(ws: WS, marketKey: string, depth = 50) {
     if (!marketKey) {
-      ws.send(
-        JSON.stringify({
-          event: EmitEvents.ORDERBOOK_DATA,
-          orders: [],
-          history: [],
-        })
-      );
+      ws.send(JSON.stringify({
+        event: EmitEvents.ORDERBOOK_DATA,
+        orders: [],
+        isDelta: false,
+        history: [],
+      }));
       return;
     }
 
     try {
-      const snapRaw = native.snapshot(marketKey, 50); // tune depth as needed
+      const snapRaw = (native as any).snapshot?.(marketKey, depth);
+      const snapObj = parseMaybeJson<any>(snapRaw, null);
+      const orders = normalizeSnapshotToRows(snapObj, /* PRICE_SCALE */ 100);
 
-      // optional: opened orders tray via native (if you added it)
+      // Opened orders tray (support both arg orders just in case)
       const socketId = (ws as any).id as string;
       let opened: any[] = [];
       try {
-        if (
-          typeof (native as any).get_open_orders_by_socket === 'function' &&
-          marketKey
-        ) {
-          const openedRaw = (native as any).get_open_orders_by_socket(
-            marketKey,
-            socketId
-          );
+        if (typeof (native as any).get_open_orders_by_socket === 'function') {
+          // try (sid, market) first
+          let openedRaw = (native as any).get_open_orders_by_socket(socketId, marketKey);
+          if (!Array.isArray(openedRaw)) {
+            // some builds are (market, sid)
+            openedRaw = (native as any).get_open_orders_by_socket(marketKey, socketId);
+          }
           opened = Array.isArray(openedRaw) ? openedRaw : [];
         }
       } catch {}
 
-      ws.send(
-        JSON.stringify({
-          event: EmitEvents.ORDERBOOK_DATA,
-          native: snapRaw,
-          marketKey,
-          openedOrders: opened,
-          history: [], // fill if/when you wire history
-        })
-      );
-    } catch (e) {
-      // fail safe (don’t kill socket)
-      ws.send(
-        JSON.stringify({
-          event: EmitEvents.ORDERBOOK_DATA,
-          orders: [],
-          history: [],
-          marketKey,
-        })
-      );
+      const payload = {
+        event: EmitEvents.ORDERBOOK_DATA,
+        marketKey,
+        orders,           // <-- always present, [] when empty
+        isDelta: false,
+        openedOrders: opened,
+        history: [],
+      };
+
+      // send to caller
+      ws.send(JSON.stringify(payload));
+      // and to anyone joined on this market (so all views update)
+      this.broadcastToMarket(marketKey, payload);
+
+    } catch {
+      ws.send(JSON.stringify({
+        event: EmitEvents.ORDERBOOK_DATA,
+        marketKey,
+        orders: [],
+        isDelta: false,
+        history: [],
+      }));
     }
   }
 
@@ -599,17 +669,35 @@ futKey(contractId?: any, expiry?: any): string | null {
 
   private _seenClose(ws: WS, uuid: string, ms = 1500) {
     const sid = (ws as any).id as string;
+    if (!uuid) return false; // don’t block if input is bad
+
     let byUuid = this._recentClose.get(sid);
-    if (!byUuid) this._recentClose.set(sid, (byUuid = new Map()));
-    const now = Date.now();
-    const last = byUuid.get(uuid) || 0;
+    if (!byUuid) this._recentClose.set(sid, (byUuid = new Map<string, number>()));
+
+    const now  = Date.now();
+    const prev = byUuid.get(uuid);   // ← undefined on first sighting
     byUuid.set(uuid, now);
-    return now - last < ms; // true → seen very recently
+    console.log('dupe cancel? '+prev+' '+now+' '+prev+' '+Boolean(prev != null && (now - prev) < ms))
+    // only treat as dup if we actually saw it before
+    return prev != null && (now - prev) < ms;
   }
+
+  /** Return all market keys this socket is currently subscribed to */
+  public listJoinedMarkets(socketId: string): string[] {
+    return Array.from(this._sessionSubs.get(socketId) ?? []);
+  }
+
 
   private sweepOrders(id: string, reason = 'tcp-close') {
     // If you wire a native cancel-by-socket, call it here.
-    // native.cancel_all_by_socket(market, id) — per market if you add it.
+      // or, if you only have “by market”:
+    try{
+      for (const market of this.listJoinedMarkets(id)) {
+        (native as any).cancel_all_by_socket?.(market,id);
+      }
+    } catch (e) {
+      console.warn('[ws close purge err]', e);
+    }
     this._liveSessions.delete(id);
     console.log(`${id} disconnected (${reason})`);
   }
