@@ -18,23 +18,26 @@ type NormalizedOrder = {
   error?: string;
 };
 
+const PRICE_SCALE = 100;       // engine ticks -> UI price
+const QTY_SCALE   = 1e8;       // engine sats  -> UI amount
+
 // --- helpers (top of file or near other utils) ---
 function parseMaybeJson<T = any>(x: unknown, fallback: T): T {
   if (x == null) return fallback;
   if (typeof x !== 'string') return x as T;
   try { return JSON.parse(x) as T; } catch { return fallback; }
 }
-
-function normalizeSnapshotToRows(snapObj: any, PRICE_SCALE = 100) {
+// add qty scale; keep price scale as-is
+function normalizeSnapshotToRows(snapObj: any, PRICE_SCALE = 100, QTY_SCALE = 1e8) {
   const snap = snapObj?.snapshot ?? snapObj;
-  if (!snap || ( !Array.isArray(snap.bids) && !Array.isArray(snap.asks) )) return [];
+  if (!snap || (!Array.isArray(snap.bids) && !Array.isArray(snap.asks))) return [];
 
   const rows: Array<{ price:number; amount:number; side:'BUY'|'SELL'; isBuy:boolean }> = [];
 
   for (const b of (snap.bids ?? [])) {
     rows.push({
       price: PRICE_SCALE ? (Number(b.price) / PRICE_SCALE) : Number(b.price),
-      amount: Number(b.amount ?? b.visible_quantity ?? 0),
+      amount: (Number(b.amount ?? b.visible_quantity ?? 0)) / QTY_SCALE,  // ← scale
       side: 'BUY',
       isBuy: true,
     });
@@ -42,7 +45,7 @@ function normalizeSnapshotToRows(snapObj: any, PRICE_SCALE = 100) {
   for (const a of (snap.asks ?? [])) {
     rows.push({
       price: PRICE_SCALE ? (Number(a.price) / PRICE_SCALE) : Number(a.price),
-      amount: Number(a.amount ?? a.visible_quantity ?? 0),
+      amount: (Number(a.amount ?? a.visible_quantity ?? 0)) / QTY_SCALE,  // ← scale
       side: 'SELL',
       isBuy: false,
     });
@@ -363,26 +366,25 @@ futKey(contractId?: any, expiry?: any): string | null {
       // OPTIONAL: price scale normalization (engine ticks -> UI units)
       // If your engine stores price=100 but UI expects 1.00, set PRICE_SCALE accordingly.
       // Derive from market metadata if you have it.
-      const PRICE_SCALE = 100; // <-- set/mechanize as needed
-
       const normalized =
-        snapObj && snapObj.snapshot
-          ? {
-              symbol: snapObj.snapshot.symbol,
-              timestamp: snapObj.snapshot.timestamp,
-              bids: (snapObj.snapshot.bids ?? []).map((b: any) => ({
-                price: PRICE_SCALE ? b.price / PRICE_SCALE : b.price,
-                amount: b.visible_quantity,
-                count: b.order_count,
-              })),
-              asks: (snapObj.snapshot.asks ?? []).map((a: any) => ({
-                price: PRICE_SCALE ? a.price / PRICE_SCALE : a.price,
-                amount: a.visible_quantity,
-                count: a.order_count,
-              })),
-              checksum: snapObj.checksum,
-            }
-          : null;
+          snapObj && snapObj.snapshot
+            ? {
+                symbol: snapObj.snapshot.symbol,
+                timestamp: snapObj.snapshot.timestamp,
+                bids: (snapObj.snapshot.bids ?? []).map((b: any) => ({
+                  price: PRICE_SCALE ? b.price / PRICE_SCALE : b.price,
+                  amount: (b.visible_quantity ?? 0) / QTY_SCALE,   // <-- FIX
+                  count: b.order_count,
+                })),
+                asks: (snapObj.snapshot.asks ?? []).map((a: any) => ({
+                  price: PRICE_SCALE ? a.price / PRICE_SCALE : a.price,
+                  amount: (a.visible_quantity ?? 0) / QTY_SCALE,   // <-- FIX
+                  count: a.order_count,
+                })),
+                checksum: snapObj.checksum,
+              }
+            : null;
+
 
       // Send a real object, not a string
       ws.send(JSON.stringify({
