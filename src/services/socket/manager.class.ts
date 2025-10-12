@@ -89,19 +89,22 @@ export class SocketManager {
     let _sinksBound = false;
 
     function safeJson<T>(v: any, fallback: T): T {
-      if (typeof v !== 'string') return v as T;
-      try { return JSON.parse(v) as T; } catch { return fallback; }
+      if (v == null) return fallback;            // handle null/undefined
+      if (typeof v === 'string') {
+        try { return JSON.parse(v) as T; } catch { return fallback; }
+      }
+      return v as T;                              // tolerate old nativeive builds passing objects/arrays
     }
 
     /** Bind native sinks exactly once and fan them into your SocketManager callbacks. */
-    export function registerNativeSinks(sinks: Sinks) {
+    function registerNativeSinks(sinks: Sinks) {
       if (_sinksBound) return; // idempotent
       _sinksBound = true;
 
       // Map possible export names (camelCase from napi or legacy snake_case)
-      const setExecSink      = nat.setExecSink      || nat.set_exec_sink;
-      const setSnapshotSink  = nat.setSnapshotSink  || nat.set_snapshot_sink;
-      const setOrderEvtSink  = nat.setOrderEventSink|| nat.set_order_event_sink;
+// use only wrapper’s camelCase API
+      const { setExecSink, setSnapshotSink, setOrderEventSink } = native as any;
+
 
       // Execs → _handleExecs (via sinks.onExecs)
       if (typeof setExecSink === 'function' && typeof sinks.onExecs === 'function') {
@@ -121,18 +124,19 @@ export class SocketManager {
       }
 
       // Order events → book/order-state updates (via sinks.onOrderEvent)
-      if (typeof setOrderEvtSink === 'function' && typeof sinks.onOrderEvent === 'function') {
-        setOrderEvtSink((ev: any | string) => {
+      if (typeof setOrderEventSink === 'function' && typeof sinks.onOrderEvent === 'function') {
+        setOrderEventSink((ev: any | string) => {
           const obj = safeJson<any>(ev, null);
           if (obj != null) queueMicrotask(() => sinks.onOrderEvent!(obj));
         });
       }
 
       // Optional: log build id for sanity
-      if (typeof nat.nativeBuildId === 'function') {
-        try { console.log('[native build]', nat.nativeBuildId()); } catch {}
+      if (typeof native.nativeBuildId === 'function') {
+        try { console.log('[native build]', native.nativeBuildId()); } catch {}
       }
     }
+  }
 
 
   private flushOrderbookData() {

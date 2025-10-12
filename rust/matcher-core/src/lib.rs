@@ -18,7 +18,7 @@ use napi::threadsafe_function::{ThreadsafeFunction, ThreadsafeFunctionCallMode, 
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Mutex;
-
+use napi::JsUnknown;
 // ---------- logging ----------
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -50,20 +50,26 @@ struct ExecMsg {
 
 // Global threadsafe sink for execs (symbol, execs[])
 static mut EXECS_SINK: Option<
-    ThreadsafeFunction<(String, Vec<ExecMsg>), ErrorStrategy::CalleeHandled>
+    ThreadsafeFunction<(String, String), ErrorStrategy::CalleeHandled>
 > = None;
 
 #[napi]
 pub fn set_exec_sink(env: Env, cb: JsFunction) -> napi::Result<()> {
-    // JS callback signature: (symbol: string, execs: ExecMsg[]) => void
-    let tsfn: ThreadsafeFunction<(String, Vec<ExecMsg>), ErrorStrategy::CalleeHandled> =
+    // JS: (symbol: string, execsJson: string) => void
+    let tsfn: ThreadsafeFunction<(String, String), ErrorStrategy::CalleeHandled> =
         cb.create_threadsafe_function(0, |ctx| {
-            let (sym, execs) = ctx.value;
-            let js_sym = ctx.env.create_string(&sym)?;
-            // requires `napi` with serde feature; else stringify and pass as string
-            let js_execs = ctx.env.to_js_value(&execs)?;
-            Ok(vec![js_sym, js_execs])
+            // Force owned types so Rust doesn't infer `str`
+            let (sym, execs_json): (String, String) = ctx.value;
+
+            let js_sym   = ctx.env.create_string(&sym)?;
+            let js_execs = ctx.env.create_string(&execs_json)?;
+
+            // Return Vec<JsUnknown> (convert via into_unknown)
+            let a: JsUnknown = js_sym.into_unknown();
+            let b: JsUnknown = js_execs.into_unknown();
+            Ok(vec![a, b])
         })?;
+
     unsafe { EXECS_SINK = Some(tsfn); }
     Ok(())
 }
@@ -493,15 +499,15 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
             }
         }
         unsafe {
-            if !execs.is_empty() {
-                if let Some(sink) = &EXECS_SINK {
-                    let _ = sink.call(
-                        Ok((symbol.clone(), execs)),
-                        ThreadsafeFunctionCallMode::NonBlocking,
-                    );
-                }
+            if let Some(sink) = &EXECS_SINK {
+                let execs_json = serde_json::to_string(&execs).unwrap_or_else(|_| "[]".into());
+                let _ = sink.call(
+                    Ok((symbol.clone(), execs_json)),
+                    ThreadsafeFunctionCallMode::NonBlocking,
+                );
             }
         }
+
 
     // ----------------------------------------------------------------
     // 7) Build response payload (+ history summary)

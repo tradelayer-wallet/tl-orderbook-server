@@ -82,6 +82,20 @@ export const native = {
   snapshot: (market: string, levels?: number) =>
     nat.snapshot?.(market, levels ?? 50),
 
+    // sink setters (pass-through to the raw addon)
+  setExecSink: (cb: (symbol: string, execsJson: string) => void) =>
+    (nat as any).setExecSink?.(cb) ?? (nat as any).set_exec_sink?.(cb),
+
+  setSnapshotSink: (cb: (market: string, snapshotJson: string) => void) =>
+    (nat as any).setSnapshotSink?.(cb) ?? (nat as any).set_snapshot_sink?.(cb),
+
+  setOrderEventSink: (cb: (eventJson: string) => void) =>
+    (nat as any).setOrderEventSink?.(cb) ?? (nat as any).set_order_event_sink?.(cb),
+
+  nativeBuildId: () =>
+    (nat as any).nativeBuildId?.(),
+
+    
   get_open_orders_by_socket: (socketId: string, market?: string): string =>
     nat.getOpenOrdersBySocket?.(socketId, market) ?? '[]',
 
