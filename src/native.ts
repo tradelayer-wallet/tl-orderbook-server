@@ -14,6 +14,12 @@ function loadNative() {
   throw new Error('Cannot load native addon (matcher-core.node). Tried: ' + candidates.join(' , '));
 }
 
+function assertFn(fn: any, name: string) {
+  if (typeof fn !== 'function') {
+    throw new Error(`native export missing: ${name}`);
+  }
+}
+
 const nat = loadNative();
 
 // ---------- types used by TS callers ----------
@@ -82,8 +88,17 @@ export const native = {
   getOrderHistoryBySocket: (socketId: string, market: string, limit?: number): string =>
     (nat as any).getOrderHistoryBySocket?.(market, socketId, limit ?? 200) ?? '[]',
 
-  cancel_all_by_socket: (market: string, socketId: string): number =>
-    nat.cancel_all_by_socket?.(market, socketId) ?? 0,
+    cancel_all_by_socket: (market: string, socketId: string): number => {
+      const fn = (nat as any).cancelAllBySocket;   // no optional chaining
+      assertFn(fn, 'cancelAllBySocket');
+      return fn(market, socketId);
+    },
+
+    cancel_all_by_socket_global: (socketId: string): number => {
+      const fn = (nat as any).cancelAllBySocketGlobal;  // no optional chaining
+      assertFn(fn, 'cancelAllBySocketGlobal');
+      return fn(socketId);
+    },
 
   // single ops
   submit: (market: string, order: JsOrder) => {

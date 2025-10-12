@@ -763,41 +763,176 @@ pub fn edit(
 
 #[napi]
 pub fn cancel_all_by_socket(symbol: String, socket_id: String) -> u32 {
+    // lock once
     let mut s = STATE.lock().unwrap();
 
-    // 0) try exact symbol first
-    let mut ids: Vec<String> = s
+    log_line(format!(
+        "[CANCEL_BY_SOCK_IN] sym='{}' sock='{}'",
+        &symbol, &socket_id
+    ));
+
+    // 1) Collect engine-id strings immutably (no book borrow yet)
+    let ids: Vec<String> = s
         .by_socket
-        .get_mut(&symbol)
-        .and_then(|per| per.remove(&socket_id))
-        .map(|set| set.into_iter().collect())
+        .get(&symbol)
+        .and_then(|per| per.get(&socket_id))
+        .map(|set| set.iter().cloned().collect())
         .unwrap_or_default();
 
-    // 0b) fallback: if empty, scan all books for this socket_id
+    log_line(format!(
+        "[CANCEL_BY_SOCK_IDS] sym='{}' sock='{}' ids={}",
+        &symbol, &socket_id, ids.len()
+    ));
+
     if ids.is_empty() {
-        if let Some(per_symbol) = s.by_socket.values_mut().find_map(|per| per.remove(&socket_id)) {
-            ids = per_symbol.into_iter().collect();
-        }
+        log_line(format!(
+            "[CANCEL_BY_SOCK_OUT] sym='{}' sock='{}' canceled=0 (no ids)",
+            &symbol, &socket_id
+        ));
+        return 0;
     }
 
-    // 1) cancel
-    let mut n = 0u32;
-    if let Some(book) = s.man.get_book_mut(&symbol) {
-        for oid_str in ids {
-            let oid = to_order_id(&oid_str);
-            if book.cancel_order(oid).is_ok() { n += 1; }
+    // 2) Cancel with a scoped mutable borrow of the book only
+    let mut canceled: Vec<String> = Vec::new();
+    {
+        let Some(book) = s.man.get_book_mut(&symbol) else {
+            log_line(format!(
+                "[CANCEL_BY_SOCK_BOOKMISS] sym='{}' sock='{}'",
+                &symbol, &socket_id
+            ));
+            return 0;
+        };
+
+        for eng_str in &ids {
+            let oid = to_order_id(eng_str);
+            let ok = book.cancel_order(oid).is_ok();
+            log_line(format!(
+                "[CANCEL_BY_SOCK_ATTEMPT] sym='{}' sock='{}' eng='{}' -> {}",
+                &symbol,
+                &socket_id,
+                eng_str,
+                if ok { "OK" } else { "MISS" }
+            ));
+            if ok {
+                canceled.push(eng_str.clone());
+            }
         }
-    } else {
-        // last-resort: if symbol key is off, sweep all books for these oids
-        for oid_str in ids {
-            let oid = to_order_id(&oid_str);
-            for book in s.man.books_mut() {
-                if book.cancel_order(oid).is_ok() { n += 1; break; }
+    } // <-- book mutable borrow ends here
+
+    // 3) Cleanup indices (separate borrows)
+    if !canceled.is_empty() {
+        if let Some(per) = s.by_socket.get_mut(&symbol) {
+            if let Some(set) = per.get_mut(&socket_id) {
+                for eng_str in &canceled {
+                    set.remove(eng_str);
+                }
+                if set.is_empty() {
+                    per.remove(&socket_id);
+                }
+            }
+        }
+        if let Some(int2ext) = s.int2ext.get_mut(&symbol) {
+            for eng_str in &canceled {
+                int2ext.remove(eng_str);
             }
         }
     }
 
-    n
+    log_line(format!(
+        "[CANCEL_BY_SOCK_OUT] sym='{}' sock='{}' canceled={}",
+        &symbol, &socket_id, canceled.len()
+    ));
+
+    canceled.len() as u32
+}
+
+#[napi]
+pub fn cancel_all_by_socket_global(socket_id: String) -> u32 {
+    let mut s = STATE.lock().unwrap();
+
+    log_line(format!(
+        "[CANCEL_BY_SOCK_GLOBAL_IN] sock='{}'",
+        &socket_id
+    ));
+
+    // 1) Build worklist: for each symbol, collect engine-id strings owned by this socket
+    let mut work: Vec<(String, Vec<String>)> = Vec::new();
+    for (sym, per_sock) in s.by_socket.iter() {
+        if let Some(id_set) = per_sock.get(&socket_id) {
+            let ids: Vec<String> = id_set.iter().cloned().collect();
+            if !ids.is_empty() {
+                log_line(format!(
+                    "[CANCEL_BY_SOCK_GLOBAL_COLLECT] sym='{}' sock='{}' ids={}",
+                    sym, &socket_id, ids.len()
+                ));
+                work.push((sym.clone(), ids));
+            }
+        }
+    }
+
+    if work.is_empty() {
+        log_line(format!(
+            "[CANCEL_BY_SOCK_GLOBAL_OUT] sock='{}' canceled=0 (no symbols/ids)",
+            &socket_id
+        ));
+        return 0;
+    }
+
+    // 2) For each symbol, cancel with a scoped mutable borrow of its book
+    let mut total_canceled: u32 = 0;
+    for (sym, ids) in &work {
+        let mut canceled_here: Vec<String> = Vec::new();
+        {
+            if let Some(book) = s.man.get_book_mut(sym) {
+                for eng_str in ids {
+                    let oid = to_order_id(eng_str);
+                    let ok = book.cancel_order(oid).is_ok();
+                    log_line(format!(
+                        "[CANCEL_BY_SOCK_GLOBAL_ATTEMPT] sym='{}' sock='{}' eng='{}' -> {}",
+                        sym,
+                        &socket_id,
+                        eng_str,
+                        if ok { "OK" } else { "MISS" }
+                    ));
+                    if ok {
+                        canceled_here.push(eng_str.clone());
+                        total_canceled += 1;
+                    }
+                }
+            } else {
+                log_line(format!(
+                    "[CANCEL_BY_SOCK_GLOBAL_BOOKMISS] sym='{}' sock='{}'",
+                    sym, &socket_id
+                ));
+            }
+        } // <-- book mutable borrow ends here
+
+        // 3) Cleanup indices for this symbol (separate mutable borrows)
+        if !canceled_here.is_empty() {
+            if let Some(per) = s.by_socket.get_mut(sym) {
+                if let Some(set) = per.get_mut(&socket_id) {
+                    for eng_str in &canceled_here {
+                        set.remove(eng_str);
+                    }
+                    if set.is_empty() {
+                        per.remove(&socket_id);
+                    }
+                }
+            }
+            if let Some(int2ext) = s.int2ext.get_mut(sym) {
+                for eng_str in &canceled_here {
+                    int2ext.remove(eng_str);
+                }
+            }
+        }
+    }
+
+    log_line(format!(
+        "[CANCEL_BY_SOCK_GLOBAL_OUT] sock='{}' canceled={}",
+        &socket_id, total_canceled
+    ));
+
+    total_canceled
 }
 
 

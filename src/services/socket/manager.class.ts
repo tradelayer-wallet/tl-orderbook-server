@@ -717,6 +717,16 @@ private ensureSocketMarketIndex(socketId: string, marketKey: string) {
     return Array.from(this._sessionSubs.get(socketId) ?? []);
   }
 
+  private callPerMarket = (mk: string, id: string) => {
+    const f = (native as any).cancel_all_by_socket;
+    console.log('[typeof cancel_all_by_socket]', typeof f);
+    if (typeof f !== 'function') {
+      throw new Error('native.cancel_all_by_socket is missing on this object');
+    }
+    const r = f(mk, id);
+    console.log('[sweep] cancel_all_by_socket(', mk, ',', id, ') ->', r);
+    return r;
+  };
 
  private sweepOrders(id: string, reason = 'tcp-close', markets?: Set<string> | string[]) {
     let list: string[] =
@@ -730,9 +740,15 @@ private ensureSocketMarketIndex(socketId: string, marketKey: string) {
 
     try {
       for (const mk of list) {
-        const res = (native as any).cancel_all_by_socket?.(mk, id);
-        // if you suspect arg order issues, try both if res === 0
-        if (res === 0) { (native as any).cancel_all_by_socket?.(id, mk); }
+        console.log('about to cancel all '+mk+' '+id)
+        console.log('[native keys]', Object.keys(native));
+        console.log(
+          '[typeof cancel_all_by_socket_global]',
+          typeof (native as any).cancel_all_by_socket_global
+        );
+
+        const res = this.callPerMarket(mk, id);
+        console.log('res '+res)
       }
     } catch (e) {
       console.warn('[ws close purge err]', e);
