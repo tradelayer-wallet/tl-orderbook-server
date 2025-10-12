@@ -58,10 +58,10 @@ export class SocketManager {
   private _marketSubs = new Map<string, Set<string>>();
   private _sessionSubs = new Map<string, Set<string>>();
 
-  private _dirty = new Set<string>();                 // markets needing a push
-  private _flushing = false;                          // gate the coalescer
-  private _coalesceMs = 50;                           // tweak as needed
-  private _depth = 40;                                // levels to send (lightweight)
+  private _dirty = new Set<string>();                 
+  private _flushing = false;                          
+  private _coalesceMs = 50;                           
+  private _depth = 40;                             
 
   // local de-dupe for close-order spam per socket
   private _recentClose = new Map<string, Map<string, number>>();
@@ -79,39 +79,61 @@ export class SocketManager {
   constructor() {
   // start periodic broadcaster
   this._tickHandle = setInterval(() => this.flushOrderbookData(), this._coalesceMs);
+    // native.ts (or wherever you wire the addon)
+    type Sinks = {
+      onSnapshot?: (market: string, snapshot: any) => void;
+      onExecs?: (market: string, execs: any[]) => void;
+      onOrderEvent?: (ev: any) => void;
+    };
 
-  // Wire native sinks → cache + exec handling
-  registerNativeSinks({
-        onSnapshot: (market: string, snapshot: any) => {
-          // cache latest and mark dirty
-          this._lastNativeSnap.set(market, snapshot);
-          this._dirty.add(market);
-        },
-        onExecs: (market: string, execs: any[]) => {
-          // fire and forget; don’t block the sink
-          this._handleExecs?.(market, execs).catch((err: any) =>
-            console.warn('[exec sink err]', err)
-          );
-        },
-        onOrderEvent: (ev: any) => {
-          if (ev.type === 'ADDED' && ev.uuid) {
-            this._uuidToMarket.set(ev.uuid, ev.market);
-          }
-          if (ev.type === 'CANCELED' && ev.uuid) {
-            this._uuidToMarket.delete(ev.uuid);
-            this._byUuid.delete(ev.uuid);
-          }
-          if (ev.type === 'AMENDED' && ev.uuid) {
-            const cur = this._byUuid.get(ev.uuid);
-            if (cur) {
-              if (typeof ev.quantity === 'number') cur.quantity = ev.quantity;
-              if (typeof ev.price === 'number') cur.price = ev.price;
-              this._byUuid.set(ev.uuid, cur);
-            }
-          }
-        },
-      });
+    let _sinksBound = false;
+
+    function safeJson<T>(v: any, fallback: T): T {
+      if (typeof v !== 'string') return v as T;
+      try { return JSON.parse(v) as T; } catch { return fallback; }
     }
+
+    /** Bind native sinks exactly once and fan them into your SocketManager callbacks. */
+    export function registerNativeSinks(sinks: Sinks) {
+      if (_sinksBound) return; // idempotent
+      _sinksBound = true;
+
+      // Map possible export names (camelCase from napi or legacy snake_case)
+      const setExecSink      = nat.setExecSink      || nat.set_exec_sink;
+      const setSnapshotSink  = nat.setSnapshotSink  || nat.set_snapshot_sink;
+      const setOrderEvtSink  = nat.setOrderEventSink|| nat.set_order_event_sink;
+
+      // Execs → _handleExecs (via sinks.onExecs)
+      if (typeof setExecSink === 'function' && typeof sinks.onExecs === 'function') {
+        setExecSink((symbol: string, execs: any[] | string) => {
+          const payload = safeJson<any[]>(execs, []);
+          // don’t block native thread; nudge to microtask
+          queueMicrotask(() => sinks.onExecs!(symbol, payload));
+        });
+      }
+
+      // Snapshots → cache/dirty (via sinks.onSnapshot)
+      if (typeof setSnapshotSink === 'function' && typeof sinks.onSnapshot === 'function') {
+        setSnapshotSink((symbol: string, snapshot: any | string) => {
+          const obj = safeJson<any>(snapshot, null);
+          if (obj != null) queueMicrotask(() => sinks.onSnapshot!(symbol, obj));
+        });
+      }
+
+      // Order events → book/order-state updates (via sinks.onOrderEvent)
+      if (typeof setOrderEvtSink === 'function' && typeof sinks.onOrderEvent === 'function') {
+        setOrderEvtSink((ev: any | string) => {
+          const obj = safeJson<any>(ev, null);
+          if (obj != null) queueMicrotask(() => sinks.onOrderEvent!(obj));
+        });
+      }
+
+      // Optional: log build id for sanity
+      if (typeof nat.nativeBuildId === 'function') {
+        try { console.log('[native build]', nat.nativeBuildId()); } catch {}
+      }
+    }
+
 
   private flushOrderbookData() {
      if (this._dirty.size === 0) return;

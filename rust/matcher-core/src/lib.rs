@@ -13,7 +13,8 @@
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use once_cell::sync::Lazy;
-use napi::threadsafe_function::ThreadsafeFunctionCallMode;
+use napi::{Env, JsFunction};
+use napi::threadsafe_function::{ThreadsafeFunction, ThreadsafeFunctionCallMode, ErrorStrategy};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Mutex;
@@ -29,6 +30,42 @@ fn log_line<S: AsRef<str>>(s: S) {
     if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(LOG_PATH) {
         let _ = writeln!(f, "[{}] {}", now, s.as_ref());
     }
+}
+
+
+#[derive(Serialize)]
+struct ExecMsg {
+    price: f64,
+    quantity: f64,
+    // match the JS field names your TS expects:
+    #[serde(rename = "maker_socketId")]
+    maker_socket_id: Option<String>,
+    #[serde(rename = "taker_socketId")]
+    taker_socket_id: Option<String>,
+    #[serde(rename = "maker_ext_uuid")]
+    maker_ext_uuid: Option<String>,
+    #[serde(rename = "taker_ext_uuid")]
+    taker_ext_uuid: Option<String>,
+}
+
+// Global threadsafe sink for execs (symbol, execs[])
+static mut EXECS_SINK: Option<
+    ThreadsafeFunction<(String, Vec<ExecMsg>), ErrorStrategy::CalleeHandled>
+> = None;
+
+#[napi]
+pub fn set_exec_sink(env: Env, cb: JsFunction) -> napi::Result<()> {
+    // JS callback signature: (symbol: string, execs: ExecMsg[]) => void
+    let tsfn: ThreadsafeFunction<(String, Vec<ExecMsg>), ErrorStrategy::CalleeHandled> =
+        cb.create_threadsafe_function(0, |ctx| {
+            let (sym, execs) = ctx.value;
+            let js_sym = ctx.env.create_string(&sym)?;
+            // requires `napi` with serde feature; else stringify and pass as string
+            let js_execs = ctx.env.to_js_value(&execs)?;
+            Ok(vec![js_sym, js_execs])
+        })?;
+    unsafe { EXECS_SINK = Some(tsfn); }
+    Ok(())
 }
 
 // ---------- engine ----------
@@ -440,40 +477,31 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
     }
 
          // ---- 6 tab executions after matching ----
-
         let mut execs: Vec<ExecMsg> = Vec::new();
         if let Some(ref taker_sock) = sock_id {
             for tx in mr.transactions.as_vec().iter() {
-                let price = (tx.price as f64) / PRICE_SCALE;
+                let price    = (tx.price as f64) / PRICE_SCALE;
                 let quantity = (tx.quantity as f64) / QTY_SCALE;
-
-                // maker socket (best-effort): use your pre_fifo attribution if available,
-                // else fall back to unknown. If you want stronger attribution,
-                // keep using the pre_fifo logic you already wrote.
-                let maker_socket = None::<String>; // or Some(owner) if you keep a mapping per tx
-                
-                execs.push(ExecMsg{
+                execs.push(ExecMsg {
                     price,
                     quantity,
-                    maker_socketId: maker_socket,
-                    taker_socketId: Some(taker_sock.clone()),
+                    maker_socket_id: None,                  // or Some(owner) if you attribute
+                    taker_socket_id: Some(taker_sock.clone()),
                     maker_ext_uuid: None,
                     taker_ext_uuid: Some(ext_id.clone()),
                 });
             }
         }
-
         unsafe {
             if !execs.is_empty() {
                 if let Some(sink) = &EXECS_SINK {
                     let _ = sink.call(
                         Ok((symbol.clone(), execs)),
-                        ThreadsafeFunctionCallMode::NonBlocking
+                        ThreadsafeFunctionCallMode::NonBlocking,
                     );
                 }
             }
         }
-
 
     // ----------------------------------------------------------------
     // 7) Build response payload (+ history summary)
