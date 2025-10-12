@@ -13,7 +13,7 @@
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use once_cell::sync::Lazy;
-
+use napi::threadsafe_function::ThreadsafeFunctionCallMode;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Mutex;
@@ -439,12 +439,48 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
         }
     }
 
+         // ---- 6 tab executions after matching ----
+
+        let mut execs: Vec<ExecMsg> = Vec::new();
+        if let Some(ref taker_sock) = sock_id {
+            for tx in mr.transactions.as_vec().iter() {
+                let price = (tx.price as f64) / PRICE_SCALE;
+                let quantity = (tx.quantity as f64) / QTY_SCALE;
+
+                // maker socket (best-effort): use your pre_fifo attribution if available,
+                // else fall back to unknown. If you want stronger attribution,
+                // keep using the pre_fifo logic you already wrote.
+                let maker_socket = None::<String>; // or Some(owner) if you keep a mapping per tx
+                
+                execs.push(ExecMsg{
+                    price,
+                    quantity,
+                    maker_socketId: maker_socket,
+                    taker_socketId: Some(taker_sock.clone()),
+                    maker_ext_uuid: None,
+                    taker_ext_uuid: Some(ext_id.clone()),
+                });
+            }
+        }
+
+        unsafe {
+            if !execs.is_empty() {
+                if let Some(sink) = &EXECS_SINK {
+                    let _ = sink.call(
+                        Ok((symbol.clone(), execs)),
+                        ThreadsafeFunctionCallMode::NonBlocking
+                    );
+                }
+            }
+        }
+
+
     // ----------------------------------------------------------------
-    // 6) Build response payload (+ history summary)
+    // 7) Build response payload (+ history summary)
     // ----------------------------------------------------------------
-    let avg_px = if sum_qty > 0.0 { sum_notional / sum_qty } else { 0.0 };
-    // CHANGED: internal -> external for executed & remaining
-    let exec = (mr.executed_quantity() as f64) / QTY_SCALE;
+    // Use the already-normalized totals from section 5
+    let exec = sum_qty; // Σ(tx.quantity) / QTY_SCALE from above
+    let avg_px = if exec > 0.0 { sum_notional / exec } else { 0.0 };
     let rem  = (mr.remaining_quantity as f64) / QTY_SCALE;
     let filled = mr.is_complete && exec > 0.0;
 
@@ -455,8 +491,8 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
                 "uuid": ext_id,
                 "side": order.side,
                 "event": if filled { "FILLED" } else { "PARTIAL_FILL" },
-                "executed_qty": exec,
-                "remaining_qty": rem,
+                "executed_qty": exec,    // ← normalized
+                "remaining_qty": rem,    // ← normalized
                 "avg_price": avg_px,
                 "symbol": symbol
             }));
@@ -467,7 +503,7 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
                 "uuid": ext_id,
                 "side": order.side,
                 "event": "RESTED",
-                "resting_qty": rem,
+                "resting_qty": rem,      // ← normalized
                 "symbol": symbol
             }));
         }
@@ -475,9 +511,8 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
 
     let txns = mr.transactions.as_vec().iter().map(|tx| {
         serde_json::json!({
-            // CHANGED: internal -> external
-            "quantity": (tx.quantity as f64) / QTY_SCALE,
-            "price": (tx.price as f64) / PRICE_SCALE,
+            "quantity": (tx.quantity as f64) / QTY_SCALE,  // normalized
+            "price":    (tx.price    as f64) / PRICE_SCALE,
             "transaction_id": tx.transaction_id,
             "maker": false
         })
@@ -485,9 +520,8 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
 
     let payload = serde_json::json!({
         "order_id": format!("{:?}", mr.order_id),
-        // CHANGED: internal -> external
-        "executed_qty": (mr.executed_quantity() as f64) / QTY_SCALE,
-        "remaining_qty": (mr.remaining_quantity as f64) / QTY_SCALE,
+        "executed_qty": exec,  // ← normalized total
+        "remaining_qty": rem,  // ← normalized
         "is_complete": mr.is_complete,
         "avg_price": avg_px,
         "transactions": txns,
