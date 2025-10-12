@@ -761,31 +761,45 @@ pub fn edit(
     Ok(ok)
 }
 
-// Cancel everything owned by a given socket in a market.
-// Returns number of orders successfully canceled.
 #[napi]
 pub fn cancel_all_by_socket(symbol: String, socket_id: String) -> u32 {
     let mut s = STATE.lock().unwrap();
 
-    // 1) Detach the list of ids first (avoid holding two borrows at once)
-    let ids: Vec<String> = s
+    // 0) try exact symbol first
+    let mut ids: Vec<String> = s
         .by_socket
         .get_mut(&symbol)
-        .and_then(|per_socket| per_socket.remove(&socket_id))
+        .and_then(|per| per.remove(&socket_id))
         .map(|set| set.into_iter().collect())
         .unwrap_or_default();
 
-    // 2) Cancel on the book
+    // 0b) fallback: if empty, scan all books for this socket_id
+    if ids.is_empty() {
+        if let Some(per_symbol) = s.by_socket.values_mut().find_map(|per| per.remove(&socket_id)) {
+            ids = per_symbol.into_iter().collect();
+        }
+    }
+
+    // 1) cancel
     let mut n = 0u32;
     if let Some(book) = s.man.get_book_mut(&symbol) {
         for oid_str in ids {
             let oid = to_order_id(&oid_str);
             if book.cancel_order(oid).is_ok() { n += 1; }
         }
+    } else {
+        // last-resort: if symbol key is off, sweep all books for these oids
+        for oid_str in ids {
+            let oid = to_order_id(&oid_str);
+            for book in s.man.books_mut() {
+                if book.cancel_order(oid).is_ok() { n += 1; break; }
+            }
+        }
     }
 
     n
 }
+
 
 // ---------- snapshots / stats ----------
 #[napi]

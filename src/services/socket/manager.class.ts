@@ -718,35 +718,48 @@ private ensureSocketMarketIndex(socketId: string, marketKey: string) {
   }
 
 
-  private sweepOrders(
-    id: string,
-    reason = 'tcp-close',
-    markets?: Set<string> | string[]
-  ) {
-    // build a robust list of markets to sweep
-    const ws = this._liveSessions.get(id) as any;
+ private sweepOrders(id: string, reason = 'tcp-close', markets?: Set<string> | string[]) {
     let list: string[] =
       (Array.isArray(markets) ? markets :
-      markets instanceof Set ? Array.from(markets) : null) ||
-      Array.from(this._sessionSubs.get(id) ?? []) ||
-      Array.from(ws?._markets ?? []);
+      markets instanceof Set ? Array.from(markets) :
+      Array.from(this._sessionSubs.get(id) ?? []));
 
-    // last-resort: sweep every known market for this socket id
     if (list.length === 0) list = Array.from(this._marketSubs.keys());
 
     console.log('sweepOrders markets', list.length, list);
 
     try {
       for (const mk of list) {
-        console.log('inside for loop in sweepOrders', mk, id);
-        (native as any).cancel_all_by_socket?.(mk, id) 
+        const res = (native as any).cancel_all_by_socket?.(mk, id);
+        // if you suspect arg order issues, try both if res === 0
+        if (res === 0) { (native as any).cancel_all_by_socket?.(id, mk); }
+      }
     } catch (e) {
       console.warn('[ws close purge err]', e);
+    }
+
+    // NEW: broadcast a fresh snapshot to all subs for each market
+    for (const mk of list) {
+      try {
+        const snapRaw = (native as any).snapshot?.(mk, this._depth);
+        const snapObj = parseMaybeJson<any>(snapRaw, null);
+        const orders  = normalizeSnapshotToRows(snapObj, 100, 1e8);
+        this.broadcastToMarket(mk, {
+          event: EmitEvents.ORDERBOOK_DATA,
+          marketKey: mk,
+          orders,
+          isDelta: false,
+          history: [],
+        });
+      } catch (e) {
+        console.warn('[sweep snapshot err]', mk, e);
+      }
     }
 
     this._liveSessions.delete(id);
     console.log(`${id} disconnected (${reason})`);
   }
+
 
   // === Utilities ===
   private generateUniqueId(): string {
