@@ -237,8 +237,7 @@ futKey(contractId?: any, expiry?: any): string | null {
     }
 
       case OnEvents.ORDERBOOK_JOIN: {
-        const mk =
-          String(data.marketKey ?? data?.filter?.marketKey ?? '') || '';
+        const mk = this.resolveMarket(ws, data)
         if (mk) this.subscribeMarket((ws as any).id, mk, ws);
         break;
       }
@@ -303,6 +302,7 @@ futKey(contractId?: any, expiry?: any): string | null {
     // 🧭 2. Resolve market
     const sid = (ws as any).id as string;
     const market = this.resolveMarket(ws, data);
+    this.ensureSocketMarketIndex(sid, market);
     if (!market) {
       ws.send(JSON.stringify({
         event: OrderEmitEvents.ERROR,
@@ -373,18 +373,24 @@ futKey(contractId?: any, expiry?: any): string | null {
                 timestamp: snapObj.snapshot.timestamp,
                 bids: (snapObj.snapshot.bids ?? []).map((b: any) => ({
                   price: PRICE_SCALE ? b.price / PRICE_SCALE : b.price,
-                  amount: (b.visible_quantity ?? 0) / QTY_SCALE,   // <-- FIX
+                  amount: (b.visible_quantity ?? 0) / QTY_SCALE,  
                   count: b.order_count,
                 })),
                 asks: (snapObj.snapshot.asks ?? []).map((a: any) => ({
                   price: PRICE_SCALE ? a.price / PRICE_SCALE : a.price,
-                  amount: (a.visible_quantity ?? 0) / QTY_SCALE,   // <-- FIX
+                  amount: (a.visible_quantity ?? 0) / QTY_SCALE,   
                   count: a.order_count,
                 })),
                 checksum: snapObj.checksum,
               }
             : null;
 
+          this.broadcastToMarket(market,{
+            event: EmitEvents.ORDERBOOK_DATA,
+            orders: normalized,
+            isDelta: false,
+            history: 0,
+          });
 
       // Send a real object, not a string
       ws.send(JSON.stringify({
@@ -404,6 +410,7 @@ futKey(contractId?: any, expiry?: any): string | null {
   private async handleManyOrders(ws: WS, data: any) {
     const sid = (ws as any).id as string;
     const market = this.resolveMarket(ws, data);
+    this.ensureSocketMarketIndex(sid, market);
     if (!market) {
       ws.send(
         JSON.stringify({
@@ -418,6 +425,7 @@ futKey(contractId?: any, expiry?: any): string | null {
     const normalized = rawOrders.map(
       (o) => this.normalizeOrder(o, sid) as NormalizedOrder
     );
+
 
     try {
       // give per-order ACKs (client expects this)
@@ -451,6 +459,7 @@ futKey(contractId?: any, expiry?: any): string | null {
     const sid    = (ws as any).id as string;
     const market = this.resolveMarket(ws, data);
     console.log('uuid', uuid, market);
+    this.ensureSocketMarketIndex(sid, market);
 
     if (!market) {
       console.warn('[close-order] missing marketKey for uuid', uuid);
@@ -561,6 +570,7 @@ futKey(contractId?: any, expiry?: any): string | null {
     this._sessionSubs.get(socketId)!.add(marketKey);
 
     (ws as any)._markets.add(marketKey);
+    console.log('[sub] add', socketId, marketKey, 'size=', this._sessionSubs.get(socketId)?.size);
 
     // one-shot snapshot
     this.sendOrderbookSnapshot(ws, marketKey);
@@ -571,7 +581,21 @@ futKey(contractId?: any, expiry?: any): string | null {
     this._marketSubs.get(marketKey)?.delete(socketId);
     this._sessionSubs.get(socketId)?.delete(marketKey);
     (ws as any)?._markets?.delete(marketKey);
+      console.log('[sub] del', socketId, marketKey, 'size=', this._sessionSubs.get(socketId)?.size);
   }
+
+  // ensure socket↔market is indexed even if client never "joined"
+private ensureSocketMarketIndex(socketId: string, marketKey: string) {
+  if (!this._sessionSubs.has(socketId)) this._sessionSubs.set(socketId, new Set());
+  this._sessionSubs.get(socketId)!.add(marketKey);
+
+  if (!this._marketSubs.has(marketKey)) this._marketSubs.set(marketKey, new Set());
+  this._marketSubs.get(marketKey)!.add(socketId);
+
+  const ws = this._liveSessions.get(socketId) as any;
+  if (ws?._markets instanceof Set) ws._markets.add(marketKey);
+}
+
 
   public broadcastToMarket(marketKey: string, msg: object) {
     const ids = this._marketSubs.get(marketKey);
@@ -657,16 +681,20 @@ futKey(contractId?: any, expiry?: any): string | null {
   private handleClose(ws: WS) {
     const id = (ws as any).id as string;
 
-    // clear subscription indices
-    const subs = this._sessionSubs.get(id);
-    if (subs) {
-      for (const mk of subs) this._marketSubs.get(mk)?.delete(id);
-      this._sessionSubs.delete(id);
-    }
+    // Capture markets BEFORE mutating indices
+    const joined = new Set(this._sessionSubs.get(id) ?? []);
 
+    // Do the sweep first so listJoinedMarkets (or the captured set) has data
+    this.sweepOrders(id, 'tcp-close', joined);
+
+    // Now clean indices
+    if (joined.size) {
+      for (const mk of joined) this._marketSubs.get(mk)?.delete(id);
+    }
+    this._sessionSubs.delete(id);
     this._liveSessions.delete(id);
+
     console.log(`[SM] Connection closed: ${id}`);
-    this.sweepOrders(id, 'tcp-close');
   }
 
   private _seenClose(ws: WS, uuid: string, ms = 1500) {
@@ -690,16 +718,32 @@ futKey(contractId?: any, expiry?: any): string | null {
   }
 
 
-  private sweepOrders(id: string, reason = 'tcp-close') {
-    // If you wire a native cancel-by-socket, call it here.
-      // or, if you only have “by market”:
-    try{
-      for (const market of this.listJoinedMarkets(id)) {
-        (native as any).cancel_all_by_socket?.(market,id);
-      }
+  private sweepOrders(
+    id: string,
+    reason = 'tcp-close',
+    markets?: Set<string> | string[]
+  ) {
+    // build a robust list of markets to sweep
+    const ws = this._liveSessions.get(id) as any;
+    let list: string[] =
+      (Array.isArray(markets) ? markets :
+      markets instanceof Set ? Array.from(markets) : null) ||
+      Array.from(this._sessionSubs.get(id) ?? []) ||
+      Array.from(ws?._markets ?? []);
+
+    // last-resort: sweep every known market for this socket id
+    if (list.length === 0) list = Array.from(this._marketSubs.keys());
+
+    console.log('sweepOrders markets', list.length, list);
+
+    try {
+      for (const mk of list) {
+        console.log('inside for loop in sweepOrders', mk, id);
+        (native as any).cancel_all_by_socket?.(mk, id) 
     } catch (e) {
       console.warn('[ws close purge err]', e);
     }
+
     this._liveSessions.delete(id);
     console.log(`${id} disconnected (${reason})`);
   }
