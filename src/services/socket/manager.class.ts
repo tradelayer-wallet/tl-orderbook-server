@@ -78,6 +78,7 @@ function normalizeSnapshotToRows(snapObj: any, PRICE_SCALE = 100, QTY_SCALE = 1e
       isBuy: true,
     });
   }
+
   for (const a of (snap.asks ?? [])) {
     rows.push({
       price: PRICE_SCALE ? (Number(a.price) / PRICE_SCALE) : Number(a.price),
@@ -663,12 +664,16 @@ export class SocketManager {
           continue;
         }
 
-        // market meta (ids) if you keep them
-        const meta = this._marketMeta?.get?.(marketKey) || { baseId: 0, quoteId: 0 };
-
         // (optional) session keypairs; if not needed, pass {}
-        const buyerKey  = (this as any)._sessionMeta?.get?.(buyerSocketId)?.keypair ?? {};
-        const sellerKey = (this as any)._sessionMeta?.get?.(sellerSocketId)?.keypair ?? {};
+        const buyerKey = {
+          address: raw.taker_address,
+          pubkey:  raw.taker_pubkey,
+        };
+
+        const sellerKey = {
+          address: raw.maker_address,
+          pubkey:  raw.maker_pubkey,
+        };
 
         const tradeInfo: ITradeInfo = {
           type: EOrderType.SPOT, // or infer per market
@@ -979,9 +984,6 @@ private ensureSocketMarketIndex(socketId: string, marketKey: string) {
         data?.filter?.marketKey ??
         this.deriveMarketFromOrder(data);
       if (mk) return mk;
-      const joined: Set<string> | undefined = (ws as any)._markets;
-      if (joined && joined.size === 1) return Array.from(joined)[0];
-      return null;
     }
 
   private normalizeOrder(raw: any, socketId: string): NormalizedOrder {
