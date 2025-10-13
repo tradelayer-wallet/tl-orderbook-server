@@ -34,24 +34,29 @@ fn log_line<S: AsRef<str>>(s: S) {
 
 
 #[derive(Serialize)]
-struct ExecMsg {
-    price: f64,
-    quantity: f64,
-    // match the JS field names your TS expects:
-    #[serde(rename = "maker_socketId")]
-    maker_socket_id: Option<String>,
-    #[serde(rename = "taker_socketId")]
-    taker_socket_id: Option<String>,
-    #[serde(rename = "maker_ext_uuid")]
-    maker_ext_uuid: Option<String>,
-    #[serde(rename = "taker_ext_uuid")]
-    taker_ext_uuid: Option<String>,
+#[derive(serde::Serialize)]
+pub struct ExecMsg {
+    pub price: f64,
+    pub quantity: f64,
+
+    pub maker_socket_id: Option<String>,
+    pub taker_socket_id: Option<String>,
+    pub maker_ext_uuid:  Option<String>,
+    pub taker_ext_uuid:  Option<String>,
+
+    // ➕ extra context so TS can route without guessing
+    pub side_of_taker: Option<String>,        // "BUY" | "SELL"
+    pub r#type:       Option<String>,         // "SPOT" | "FUTURES"
+    pub market_key:   Option<String>,         // the `symbol` you called submit() with
+    pub props:        Option<serde_json::Value>, // echo original order props when available
 }
 
-// Global threadsafe sink for execs (symbol, execs[])
-static mut EXECS_SINK: Option<
-    ThreadsafeFunction<(String, String), ErrorStrategy::CalleeHandled>
-> = None;
+
+use std::sync::RwLock;
+
+type ExecSinkType = ThreadsafeFunction<(String, String), ErrorStrategy::CalleeHandled>;
+
+static EXECS_SINK: RwLock<Option<ExecSinkType>> = RwLock::new(None);
 
 #[napi]
 pub fn set_exec_sink(env: Env, cb: JsFunction) -> napi::Result<()> {
@@ -70,7 +75,10 @@ pub fn set_exec_sink(env: Env, cb: JsFunction) -> napi::Result<()> {
             Ok(vec![a, b])
         })?;
 
-    unsafe { EXECS_SINK = Some(tsfn); }
+    {
+         let mut guard = EXECS_SINK.write().unwrap();
+         *guard = Some(tsfn);
+    }
     Ok(())
 }
 
@@ -498,14 +506,14 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
                 });
             }
         }
-        unsafe {
-            if let Some(sink) = &EXECS_SINK {
-                let execs_json = serde_json::to_string(&execs).unwrap_or_else(|_| "[]".into());
-                let _ = sink.call(
-                    Ok((symbol.clone(), execs_json)),
-                    ThreadsafeFunctionCallMode::NonBlocking,
-                );
-            }
+        
+        {
+             // Broadcast execs to JS sink (non-blocking); safe read of RwLock
+             let execs_json = serde_json::to_string(&execs).unwrap_or_else(|_| "[]".into());
+             if let Some(sink) = EXECS_SINK.read().unwrap().as_ref() {
+                 let _ = sink.call(Ok((symbol.clone(), execs_json)),
+                                   ThreadsafeFunctionCallMode::NonBlocking);
+             }
         }
 
 
@@ -1034,6 +1042,7 @@ pub fn stats(symbol: String) -> String {
 #[napi]
 pub fn get_open_orders_by_socket(socket_id: String, symbol: String) -> String {
     use serde_json::json;
+    const QTY_SCALE_F64: f64 = QTY_SCALE as f64;
 
     let s = STATE.lock().unwrap();
     let mut out: Vec<serde_json::Value> = Vec::new();
@@ -1074,13 +1083,14 @@ pub fn get_open_orders_by_socket(socket_id: String, symbol: String) -> String {
                         orderbook_rs::prelude::Side::Sell => "SELL",
                     };
 
+                
                     out.push(json!({
                         "uuid":        ext,                         // external id for FE
                         "engine_id":   eng_str,                     // internal id string
                         "symbol":      symbol,
                         "side":        side_str,
                         "price":       (*price as f64) / PRICE_SCALE,
-                        "amount":      *quantity as f64,
+                        "amount":      *quantity as f64 / QTY_SCALE_F64,
                         "timestamp":   *timestamp,
                     }));
                 }

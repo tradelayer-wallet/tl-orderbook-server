@@ -2,8 +2,44 @@
 import HyperExpress from 'hyper-express';
 import { EmitEvents, OnEvents, OrderEmitEvents } from './events';
 import { native, registerNativeSinks, JsOrder, Exec } from '../../native';
+import { ChannelSwap } from "../channel-swap/channel-swap.class";
+
+import {
+  ITradeInfo,
+  TOrder,
+  EOrderType,
+  EOrderAction,
+  ISpotOrderProps,
+  IFuturesOrderProps,
+} from '../../utils/types/orderbook.types';
 
 type WS = HyperExpress.Websocket;
+
+type UUID = string;
+
+export type OrderAction = 'BUY' | 'SELL';
+export type OrderTypeKind = 'SPOT' | 'FUTURES';
+
+const toEOrderType = (t: unknown): EOrderType => {
+  if (t === EOrderType.FUTURES || t === 'FUTURES') return EOrderType.FUTURES;
+  // default / anything else -> SPOT
+  return EOrderType.SPOT;
+};
+
+
+
+export interface IResult<T> { data?: T; error?: string }
+export interface IResultChannelSwap extends IResult<{ txid: string }> {}
+
+export function safeNumber(x: number): number {
+  return Number.isFinite(x) ? x : 0;
+}
+
+interface IHistoryTrade extends ITradeInfo {
+  txid: string;
+  time: number;
+}
+
 
 type NormalizedOrder = {
   uuid: string;
@@ -77,9 +113,9 @@ export class SocketManager {
   private _lastNativeSnap = new Map<string, any>(); // marketKey -> latest snapshot
 
   constructor() {
-  // start periodic broadcaster
-  this._tickHandle = setInterval(() => this.flushOrderbookData(), this._coalesceMs);
-    // native.ts (or wherever you wire the addon)
+    // start periodic broadcaster
+    this._tickHandle = setInterval(() => this.flushOrderbookData(), this._coalesceMs);
+
     type Sinks = {
       onSnapshot?: (market: string, snapshot: any) => void;
       onExecs?: (market: string, execs: any[]) => void;
@@ -88,29 +124,27 @@ export class SocketManager {
 
     let _sinksBound = false;
 
-    function safeJson<T>(v: any, fallback: T): T {
-      if (v == null) return fallback;            // handle null/undefined
+    const safeJson = <T,>(v: any, fallback: T): T => {
+      if (v == null) return fallback;
       if (typeof v === 'string') {
         try { return JSON.parse(v) as T; } catch { return fallback; }
       }
-      return v as T;                              // tolerate old nativeive builds passing objects/arrays
-    }
+      return v as T;
+    };
 
-    /** Bind native sinks exactly once and fan them into your SocketManager callbacks. */
-    function registerNativeSinks(sinks: Sinks) {
-      if (_sinksBound) return; // idempotent
+    // NOTE: use function expression or arrow to keep access to native in ctor scope
+    const registerNativeSinks = (sinks: Sinks) => {
+      if (_sinksBound) return;
       _sinksBound = true;
 
-      // Map possible export names (camelCase from napi or legacy snake_case)
-// use only wrapper’s camelCase API
+      // use only wrapper’s camelCase API
       const { setExecSink, setSnapshotSink, setOrderEventSink } = native as any;
-
 
       // Execs → _handleExecs (via sinks.onExecs)
       if (typeof setExecSink === 'function' && typeof sinks.onExecs === 'function') {
         setExecSink((symbol: string, execs: any[] | string) => {
           const payload = safeJson<any[]>(execs, []);
-          // don’t block native thread; nudge to microtask
+          // don’t block native thread; bounce to microtask
           queueMicrotask(() => sinks.onExecs!(symbol, payload));
         });
       }
@@ -123,7 +157,7 @@ export class SocketManager {
         });
       }
 
-      // Order events → book/order-state updates (via sinks.onOrderEvent)
+      // Order events (optional)
       if (typeof setOrderEventSink === 'function' && typeof sinks.onOrderEvent === 'function') {
         setOrderEventSink((ev: any | string) => {
           const obj = safeJson<any>(ev, null);
@@ -131,13 +165,48 @@ export class SocketManager {
         });
       }
 
-      // Optional: log build id for sanity
+      // Optional: log build id
       if (typeof native.nativeBuildId === 'function') {
         try { console.log('[native build]', native.nativeBuildId()); } catch {}
       }
-    }
+    };
+
+    // 🔗 ACTUALLY WIRE THE SINKS (this was missing)
+    registerNativeSinks({
+      onExecs: (symbol, execs) => {
+        // NOTE: make sure your Rust uses the same field names this handler expects
+        this._handleExecs(symbol, execs);
+      },
+      onSnapshot: (symbol, snapshot) => {
+        this._lastNativeSnap.set(symbol, snapshot);
+        this._dirty.add(symbol);
+      },
+      // onOrderEvent: (ev) => this._handleOrderEvent(ev),
+    });
+  }
+    
+  // Register a socket with its id
+  add(id: string, ws: WS) {
+    this._liveSessions.set(id, ws);
   }
 
+  // Lookup by id
+  get(id: string): WS | undefined {
+    return this._liveSessions.get(id);
+  }
+
+  // Remove by id
+  remove(id: string) {
+    this._liveSessions.delete(id);
+  }
+
+  has(id: string): boolean {
+    return this._liveSessions.has(id);
+  }
+
+  size(): number {
+    return this._liveSessions.size;
+  }
 
   private flushOrderbookData() {
      if (this._dirty.size === 0) return;
@@ -152,7 +221,7 @@ export class SocketManager {
          native,
        });
      }
-   }
+  }
 
   spotKeyFromIds(a?: any, b?: any): string | null {
       if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
@@ -162,13 +231,18 @@ export class SocketManager {
       return `${base}-${quote}`;            // canonical internal key
     }
 
-futKey(contractId?: any, expiry?: any): string | null {
-  if (!contractId && !expiry) return null;
-  const cid = String(contractId ?? '');
-  const exp = expiry == null ? 'perp' : String(expiry);
-  return `${cid}-${exp}`;
-}
+  futKey(contractId?: any, expiry?: any): string | null {
+    if (!contractId && !expiry) return null;
+    const cid = String(contractId ?? '');
+    const exp = expiry == null ? 'perp' : String(expiry);
+    return `${cid}-${exp}`;
+  }
 
+  // minimal stub so the optional call compiles; wire to real storage later
+  private saveToHistory(t: IHistoryTrade): void {
+    // e.g., push to an in-memory array or forward to persistence
+    // (left intentionally no-op for now)
+  }
 
   // === Public API expected by index.ts ===
   handleOpen = (ws: WS) => {
@@ -223,7 +297,7 @@ futKey(contractId?: any, expiry?: any): string | null {
       }
       case OnEvents.AMEND_ORDER: {
       const uuid  = String(data.orderUUID || data.orderUuid || data.uuid || '');
-      const mk    = this.resolveMarket(ws, data);
+      const mk    = this.resolveMarket(data);
       const newQty = data.newAmount ?? data.newQty;
       const newPx  = data.newPrice;
 
@@ -263,7 +337,7 @@ futKey(contractId?: any, expiry?: any): string | null {
     }
 
       case OnEvents.ORDERBOOK_JOIN: {
-        const mk = this.resolveMarket(ws, data)
+        const mk = this.resolveMarket(data)
         if (mk) this.subscribeMarket((ws as any).id, mk, ws);
         break;
       }
@@ -327,7 +401,7 @@ futKey(contractId?: any, expiry?: any): string | null {
 
     // 🧭 2. Resolve market
     const sid = (ws as any).id as string;
-    const market = this.resolveMarket(ws, data);
+    const market = this.resolveMarket(data);
     this.ensureSocketMarketIndex(sid, market);
     if (!market) {
       ws.send(JSON.stringify({
@@ -435,7 +509,7 @@ futKey(contractId?: any, expiry?: any): string | null {
 
   private async handleManyOrders(ws: WS, data: any) {
     const sid = (ws as any).id as string;
-    const market = this.resolveMarket(ws, data);
+    const market = this.resolveMarket(data);
     this.ensureSocketMarketIndex(sid, market);
     if (!market) {
       ws.send(
@@ -483,7 +557,7 @@ futKey(contractId?: any, expiry?: any): string | null {
     if (!uuid) return;
 
     const sid    = (ws as any).id as string;
-    const market = this.resolveMarket(ws, data);
+    const market = this.resolveMarket(data);
     console.log('uuid', uuid, market);
     this.ensureSocketMarketIndex(sid, market);
 
@@ -560,30 +634,95 @@ futKey(contractId?: any, expiry?: any): string | null {
     execs: Array<{
       price: number;
       quantity: number;
-      maker_socketId?: string;
-      taker_socketId?: string;
+      maker_socketId?: string; maker_socket_id?: string;
+      taker_socketId?: string; taker_socket_id?: string;
       maker_ext_uuid?: string;
       taker_ext_uuid?: string;
+      side_of_taker?: 'BUY' | 'SELL'; sideOfTaker?: 'BUY' | 'SELL';
     }>
   ) {
-    
-    // 2) per-socket refresh (so their trays update)
-    const sockets = new Set<string>();
-    for (const ex of execs) {
-      if (ex.maker_socketId) sockets.add(ex.maker_socketId);
-      if (ex.taker_socketId) sockets.add(ex.taker_socketId);
+    console.debug('[EXEC/IN]', marketKey, Array.isArray(execs) ? execs.length : -1, execs?.[0]);
+
+    // Process each exec slice
+    for (const raw of execs as any[]) {
+      try {
+        // normalize field names
+        const makerSock  = raw.maker_socketId ?? raw.maker_socket_id ?? null;
+        const takerSock  = raw.taker_socketId ?? raw.taker_socket_id ?? null;
+        const makerUUID  = raw.maker_ext_uuid ?? '';
+        const takerUUID  = raw.taker_ext_uuid ?? '';
+        const price      = Number(raw.price) || 0;
+        const qty        = Number(raw.quantity) || 0;
+        const sideOfTaker: 'BUY' | 'SELL' = raw.side_of_taker ?? raw.sideOfTaker ?? 'BUY';
+
+        const buyerSocketId  = sideOfTaker === 'BUY' ? takerSock : makerSock;
+        const sellerSocketId = sideOfTaker === 'BUY' ? makerSock : takerSock;
+
+        if (!buyerSocketId || !sellerSocketId) {
+          console.warn('[EXEC] missing socket ids', { raw, buyerSocketId, sellerSocketId });
+          continue;
+        }
+
+        // market meta (ids) if you keep them
+        const meta = this._marketMeta?.get?.(marketKey) || { baseId: 0, quoteId: 0 };
+
+        // (optional) session keypairs; if not needed, pass {}
+        const buyerKey  = (this as any)._sessionMeta?.get?.(buyerSocketId)?.keypair ?? {};
+        const sellerKey = (this as any)._sessionMeta?.get?.(sellerSocketId)?.keypair ?? {};
+
+        const tradeInfo: ITradeInfo = {
+          type: EOrderType.SPOT, // or infer per market
+          buyer:  { socketId: buyerSocketId,  keypair: buyerKey,  uuid: takerUUID },
+          seller: { socketId: sellerSocketId, keypair: sellerKey, uuid: makerUUID },
+          taker: takerSock ?? '',
+          maker: makerSock ?? '',
+          props: {
+            propIdDesired: meta.baseId,
+            propIdForSale: meta.quoteId,
+            amountDesired: qty,
+            amountForSale: safeNumber(qty * price),
+            price,
+            sellerIsMaker: sideOfTaker === 'BUY',
+          },
+        };
+
+        // If bursts are heavy, bounce to microtask to keep event loop snappy:
+        // queueMicrotask(async () => { await this.newChannel(tradeInfo, null); });
+        const res = await this.newChannel(tradeInfo, null);
+        if (res.error) {
+          console.error('[EXECS→Channel] error', res.error, { marketKey, raw });
+        }
+      } catch (e) {
+        console.error('[EXEC] handler threw', e);
+      }
     }
+
+    // Per-socket refresh: accept snake_case & camelCase and de-dupe
+    const sockets = new Set<string>();
+    for (const ex of execs as any[]) {
+      const m = ex.maker_socketId ?? ex.maker_socket_id;
+      const t = ex.taker_socketId ?? ex.taker_socket_id;
+      if (m) sockets.add(m);
+      if (t) sockets.add(t);
+    }
+
     for (const sid of sockets) {
       const ws = this._liveSessions.get(sid);
-      if (!ws) continue;
-      ws.send(
-        JSON.stringify({
+      if (!ws) {
+        console.warn('[EXEC] refresh: missing live session', { sid, marketKey });
+        continue;
+      }
+      try {
+        ws.send(JSON.stringify({
           event: EmitEvents.UPDATE_ORDERS_REQUEST,
           marketKey,
-        })
-      );
+        }));
+      } catch (e) {
+        console.error('[EXEC] refresh send failed', { sid, marketKey, e });
+      }
     }
   }
+
 
   // === Market subscription helpers ===
   private subscribeMarket(socketId: string, marketKey: string, ws: WS) {
@@ -834,7 +973,7 @@ private ensureSocketMarketIndex(socketId: string, marketKey: string) {
       return null;
     }
 
-    private resolveMarket(ws: HyperExpress.Websocket, data: any): string | null {
+    private resolveMarket(data: any): string | null {
       const mk =
         data?.marketKey ??
         data?.filter?.marketKey ??
@@ -920,6 +1059,114 @@ private ensureSocketMarketIndex(socketId: string, marketKey: string) {
       public get sessionCount(): number {
         return this._liveSessions.size;
       }
+
+      
+    private async newChannel(tradeInfo: ITradeInfo, unfilled: TOrder | null): Promise<IResultChannelSwap> {
+      try {
+        const buyerSocketId  = tradeInfo.buyer.socketId;
+        const sellerSocketId = tradeInfo.seller.socketId;
+
+        const buyerSocket  = this._liveSessions.get(buyerSocketId);
+        const sellerSocket = this._liveSessions.get(sellerSocketId);
+
+        if (!buyerSocket || !sellerSocket) {
+          console.error('[Channel] missing socket(s)', { buyerSocketId, sellerSocketId });
+          return { error: 'One of the sockets is not available' };
+        }
+
+        const channel = new ChannelSwap(buyerSocket, sellerSocket, tradeInfo, unfilled);
+        const channelRes = await channel.onReady();
+        if (channelRes.error || !channelRes.data) return channelRes;
+
+        const historyTrade: IHistoryTrade = {
+          txid: channelRes.data.txid,
+          time: Date.now(),
+          ...tradeInfo,
+        };
+        this.saveToHistory?.(historyTrade); // no-op if not present
+        return channelRes;
+      } catch (error: any) {
+        return { error: error?.message ?? String(error) };
+      }
+    }
+
+      
+	// Helper function for building trades
+    private buildTrade(
+      new_order: TOrder,
+      old_order: TOrder
+    ): IResult<{ unfilled: TOrder | null; tradeInfo: ITradeInfo }> {
+      try {
+        const ordersArray = [new_order, old_order];
+        const buyOrder  = ordersArray.find(t => t.action === EOrderAction.BUY);
+        const sellOrder = ordersArray.find(t => t.action === EOrderAction.SELL);
+        if (!buyOrder || !sellOrder) throw new Error('Building Trade Failed. Code 1');
+
+        const newAmt = new_order.props.amount;
+        const oldAmt = old_order.props.amount;
+        const amount = Math.min(newAmt, oldAmt);
+        const price  = old_order.props.price;
+        const sellerIsMaker = old_order.action === EOrderAction.SELL;
+
+        let tradeProps: any;
+        let unfilled: TOrder | null = null;
+
+        if (toEOrderType(buyOrder.type) === EOrderType.FUTURES) {
+          // ---------- FUTURES branch ----------
+          const pNew = new_order.props as IFuturesOrderProps;
+          const pOld = old_order.props as IFuturesOrderProps;
+
+          unfilled =
+            newAmt > oldAmt
+              ? ({ ...new_order, props: { ...pNew, amount: safeNumber(newAmt - oldAmt) } } as TOrder)
+              : newAmt < oldAmt
+              ? ({ ...old_order, props: { ...pOld, amount: safeNumber(oldAmt - newAmt) } } as TOrder)
+              : null;
+
+          tradeProps = {
+            amount,
+            contract_id: pNew.contract_id ?? pOld.contract_id,
+            price,
+            initMargin: pNew.initMargin ?? pOld.initMargin,
+            collateral: pNew.collateral ?? pOld.collateral,
+            sellerIsMaker,
+          };
+        } else {
+          // ---------- SPOT branch ----------
+          const pNew = new_order.props as ISpotOrderProps;
+          const pOld = old_order.props as ISpotOrderProps;
+
+          unfilled =
+            newAmt > oldAmt
+              ? ({ ...new_order, props: { ...pNew, amount: safeNumber(newAmt - oldAmt) } } as TOrder)
+              : newAmt < oldAmt
+              ? ({ ...old_order, props: { ...pOld, amount: safeNumber(oldAmt - newAmt) } } as TOrder)
+              : null;
+
+          tradeProps = {
+            propIdDesired: pNew.id_desired ?? pOld.id_desired,
+            propIdForSale: pNew.id_for_sale ?? pOld.id_for_sale,
+            amountDesired: amount,
+            amountForSale: safeNumber(amount * price),
+            sellerIsMaker,
+          };
+        }
+
+        const tradeInfo: ITradeInfo = {
+          type: toEOrderType(new_order.type), // enum, not string
+          buyer:  { socketId: buyOrder.socket_id,  keypair: buyOrder.keypair,  uuid: buyOrder.uuid },
+          seller: { socketId: sellOrder.socket_id, keypair: sellOrder.keypair, uuid: sellOrder.uuid },
+          taker: new_order.socket_id,
+          maker: old_order.socket_id,
+          props: tradeProps,
+        };
+
+        return { data: { unfilled, tradeInfo } };
+      } catch (e: any) {
+        return { error: e?.message ?? String(e) };
+      }
+    }
+
 }
 
 // singleton export
