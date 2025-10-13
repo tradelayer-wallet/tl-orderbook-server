@@ -13,12 +13,9 @@
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use once_cell::sync::Lazy;
-use napi::{Env, JsFunction};
-use napi::threadsafe_function::{ThreadsafeFunction, ThreadsafeFunctionCallMode, ErrorStrategy};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Mutex;
-use napi::JsUnknown;
 // ---------- logging ----------
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -40,20 +37,20 @@ static EXECS_SINK: RwLock<Option<ExecSinkType>> = RwLock::new(None);
 
 #[napi]
 pub fn set_exec_sink(_env: Env, cb: JsFunction) -> napi::Result<()> {
-    // JS: (symbol: string, execsJson: string) => void
     let tsfn: ThreadsafeFunction<(String, String), ErrorStrategy::CalleeHandled> =
         cb.create_threadsafe_function(0, |ctx| {
-            // Force owned types so Rust doesn't infer `str`
             let (sym, execs_json): (String, String) = ctx.value;
-
-            let js_sym   = ctx.env.create_string(&sym)?;
-            let js_execs = ctx.env.create_string(&execs_json)?;
-
-            // Return Vec<JsUnknown> (convert via into_unknown)
-            let a: JsUnknown = js_sym.into_unknown();
-            let b: JsUnknown = js_execs.into_unknown();
+            let a: JsUnknown = ctx.env.create_string(&sym)?.into_unknown();
+            let b: JsUnknown = ctx.env.create_string(&execs_json)?.into_unknown();
             Ok(vec![a, b])
         })?;
+
+    if let Ok(mut guard) = EXECS_SINK.write() {
+        *guard = Some(tsfn);
+    }
+    Ok(())
+}
+)?;
 
     {
          let mut guard = EXECS_SINK.write().unwrap();
@@ -74,12 +71,14 @@ use ulid::Ulid;
 
 // ------------ add near your other serde types ------------
 
+#[derive(Clone)]
 #[napi(object)]
 pub struct JsKeypair {
     pub address: String,
     pub pubkey:  String,
 }
 
+#[derive(Clone)]
 #[napi(object)]
 pub struct JsOrder {
   pub uuid: String,
@@ -585,8 +584,7 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
     if !execs.is_empty() {
         let execs_json = serde_json::to_string(&execs).unwrap_or_else(|_| "[]".into());
         if let Some(sink) = EXECS_SINK.read().unwrap().as_ref() {
-            let _ = sink.call(Ok((symbol.clone(), execs_json)),
-                              ThreadsafeFunctionCallMode::NonBlocking);
+            let _ = sink.call(Ok::<(String, String), _>((symbol.clone(), execs_json)), ThreadsafeFunctionCallMode::NonBlocking);
         }
     }
 
