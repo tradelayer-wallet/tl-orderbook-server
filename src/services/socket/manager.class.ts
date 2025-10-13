@@ -640,6 +640,7 @@ export class SocketManager {
       maker_ext_uuid?: string;
       taker_ext_uuid?: string;
       side_of_taker?: 'BUY' | 'SELL'; sideOfTaker?: 'BUY' | 'SELL';
+      props?: any;
     }>
   ) {
     console.debug('[EXEC/IN]', marketKey, Array.isArray(execs) ? execs.length : -1, execs?.[0]);
@@ -655,6 +656,7 @@ export class SocketManager {
         const price      = Number(raw.price) || 0;
         const qty        = Number(raw.quantity) || 0;
         const sideOfTaker: 'BUY' | 'SELL' = raw.side_of_taker ?? raw.sideOfTaker ?? 'BUY';
+        const props = raw.props || {}
 
         const buyerSocketId  = sideOfTaker === 'BUY' ? takerSock : makerSock;
         const sellerSocketId = sideOfTaker === 'BUY' ? makerSock : takerSock;
@@ -682,8 +684,8 @@ export class SocketManager {
           taker: takerSock ?? '',
           maker: makerSock ?? '',
           props: {
-            propIdDesired: meta.baseId,
-            propIdForSale: meta.quoteId,
+            propIdDesired: props.propIdDesired  ,
+            propIdForSale: props.propIdForSale ,
             amountDesired: qty,
             amountForSale: safeNumber(qty * price),
             price,
