@@ -10,12 +10,13 @@
 //
 // N-API exports are camelCased in JS by #[napi] (e.g., get_order_history_by_socket -> getOrderHistoryBySocket)
 
-use napi::bindgen_prelude::*; // Env, Function, Result, Unknown, etc.
+use napi::{Env, JsFunction, JsUnknown};
+use napi::bindgen_prelude::Function;
 use napi::threadsafe_function::{ThreadsafeFunction, ThreadsafeFunctionCallMode};
 use napi_derive::napi;
 use serde::Serialize;
 use once_cell::sync::Lazy;
-
+use napi::Status; 
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Mutex;
@@ -32,39 +33,59 @@ fn log_line<S: AsRef<str>>(s: S) {
     }
 }
 
-
 #[derive(Serialize)]
 struct ExecMsg {
-    price: f64,
-    quantity: f64,
-    // match the JS field names your TS expects:
-    #[serde(rename = "maker_socketId")]
-    maker_socket_id: Option<String>,
-    #[serde(rename = "taker_socketId")]
-    taker_socket_id: Option<String>,
-    #[serde(rename = "maker_ext_uuid")]
-    maker_ext_uuid: Option<String>,
-    #[serde(rename = "taker_ext_uuid")]
-    taker_ext_uuid: Option<String>,
+  price: f64,
+  quantity: f64,
+
+  // match the JS field names your TS expects:
+  #[serde(rename = "maker_socketId")]
+  maker_socket_id: Option<String>,
+  #[serde(rename = "taker_socketId")]
+  taker_socket_id: Option<String>,
+  #[serde(rename = "maker_ext_uuid")]
+  maker_ext_uuid: Option<String>,
+  #[serde(rename = "taker_ext_uuid")]
+  taker_ext_uuid: Option<String>,
+
+  // newly-added, optional
+  #[serde(skip_serializing_if = "Option::is_none")]
+  props: Option<serde_json::Value>,
+  #[serde(rename = "side_of_taker", skip_serializing_if = "Option::is_none")]
+  side_of_taker: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  taker_keypair: Option<Keypair>,
 }
+
+
+#[napi(object)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Keypair {
+  pub address: String,
+  pub pubkey: String,
+}
+
+
 
 use std::sync::RwLock;
 
+// --- exec sink types (v2) ---
 type ExecSinkType = ThreadsafeFunction<(String, String)>;
-
 static EXECS_SINK: RwLock<Option<ExecSinkType>> = RwLock::new(None);
 
+
 #[napi]
-pub fn set_exec_sink(env: Env, cb: Function) -> napi::Result<()> {
-  let tsfn: ThreadsafeFunction<(String, String)> =
-    env.create_threadsafe_function(&cb, 0, |ctx| {
-      let (sym, execs_json) = ctx.value;
+pub fn set_exec_sink(env: Env, cb: JsFunction) -> napi::Result<()> {
+  // napi v2: <T, V, R> where V = JsUnknown
+  let tsfn: ExecSinkType =
+    env.create_threadsafe_function::<(String, String), JsUnknown, _>(&cb, 0, |ctx| {
+      let (sym, execs_json): (String, String) = ctx.value;
+
       let js_sym   = ctx.env.create_string(&sym)?;
       let js_execs = ctx.env.create_string(&execs_json)?;
-      Ok(vec![
-        js_sym.into_unknown(&ctx.env)?,
-        js_execs.into_unknown(&ctx.env)?,
-      ])
+
+      // into_unknown() -> JsUnknown; R must return Vec<JsUnknown>
+      Ok(vec![js_sym.into_unknown(), js_execs.into_unknown()])
     })?;
 
   if let Ok(mut guard) = EXECS_SINK.write() {
@@ -73,12 +94,12 @@ pub fn set_exec_sink(env: Env, cb: Function) -> napi::Result<()> {
   Ok(())
 }
 
-
-// small helper to push execs safely
+// small helper to push execs safely (v2 signature)
 fn push_execs(symbol: &str, execs: &[ExecMsg]) {
   let payload = serde_json::to_string(execs).unwrap_or_else(|_| "[]".into());
   if let Ok(guard) = EXECS_SINK.read() {
     if let Some(sink) = guard.as_ref() {
+      // v2: wrap in Ok(...)
       let _ = sink.call(Ok((symbol.to_string(), payload)), ThreadsafeFunctionCallMode::NonBlocking);
     }
   }
@@ -92,9 +113,8 @@ use uuid::Uuid;
 use ulid::Ulid;
 
 // ---------- API types ----------
-#[derive(Debug, Clone, Serialize, Deserialize)]
-
 #[napi(object)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsOrder {
     pub uuid: String,
     pub side: String,     // "BUY" | "SELL"
@@ -104,7 +124,15 @@ pub struct JsOrder {
     // Accept either `socket_id` or `socketId` from JS; store as `socket_id`
     #[serde(alias = "socket_id", alias = "socketId")]
     pub socket_id: Option<String>,
+
+    // pass-throughs
+    #[serde(default)]
+    pub keypair: Option<Keypair>,
+
+    #[serde(default)]
+    pub props: Option<serde_json::Value>,
 }
+
 
 
 #[inline]
@@ -428,92 +456,138 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
     }
 
 
-    // ----------------------------------------------------------------
-    // 5 Maker attribution from snapshot FIFO + taker/maker MATCH logs
-    // ----------------------------------------------------------------
-    let mut maker_slices: Vec<serde_json::Value> = Vec::new();
-    let mut sum_qty = 0f64;
-    let mut sum_notional = 0f64;
+            // ----------------------------------------------------------------
+            // 5 Maker attribution from snapshot FIFO + taker/maker MATCH logs
+            // ----------------------------------------------------------------
+            let mut maker_slices: Vec<serde_json::Value> = Vec::new();
+            let mut sum_qty = 0f64;
+            let mut sum_notional = 0f64;
 
-    for tx in mr.transactions.as_vec().iter() {
-        let px = (tx.price as f64) / PRICE_SCALE;
-        // CHANGED: convert internal qty (u64) back to external float
-        let q  = (tx.quantity as f64) / QTY_SCALE_F64;
-        sum_qty += q;
-        sum_notional += q * px;
+            // ---- 6 tab executions after matching ----
+            // (merged here so we can include maker_socket_id & maker_ext_uuid)
+            let mut execs: Vec<ExecMsg> = Vec::new();
 
-        // taker history
-        if let Some(sock) = sock_id.as_ref() {
-            s.push_hist(&symbol, sock, serde_json::json!({
-                "ts": now, "uuid": ext_id, "side": order.side,
-                "price": px, "qty": q, "event": "MATCH", "role": "taker", "symbol": symbol
-            }));
-        }
-
-        // maker-side attribution (per-tx)
-        if let Some(fifo) = pre_fifo.get_mut(&tx.price) {
-            let mut want = tx.quantity;
-            let mut i = 0usize;
-            while want > 0 && i < fifo.len() {
-                let (maker_id, rem_val) = { let (id_s, q2) = &fifo[i]; (id_s.clone(), *q2) };
-                let take = want.min(rem_val);
-                if take > 0 {
-                    // skip self
-                    let is_self = sock_id
-                        .as_ref()
-                        .and_then(|sock| socket_owner_of(&s, &symbol, &maker_id).map(|o| o == *sock))
-                        .unwrap_or(false);
-                    if !is_self {
-                        maker_slices.push(serde_json::json!({
-                            "maker_order_id": maker_id,
-                            "taker_order_id": format!("{:?}", eng_id),
-                            "price": px,
-                            // CHANGED: internal -> external for maker slice qty
-                            "quantity": (take as f64) / QTY_SCALE_F64,
-                            "maker": true
-                        }));
-                        // maker history (owner)
-                        if let Some(maker_sock) = socket_owner_of(&s, &symbol, &maker_id) {
-                            let ext = s.int2ext
-                                .get(&symbol).and_then(|m| m.get(&maker_id)).cloned().unwrap_or_default();
-                            s.push_hist(&symbol, &maker_sock, serde_json::json!({
-                                "ts": now, "uuid": ext,
-                                "side": match order.side.as_str() { "BUY" => "SELL", _ => "BUY" },
-                                "price": px,
-                                // CHANGED: internal -> external
-                                "qty": (take as f64) / QTY_SCALE_F64,
-                                "event": "MATCH", "role": "maker", "symbol": symbol
-                            }));
-                        }
-                    }
-                    fifo[i].1 -= take;
-                    want -= take;
-                    if fifo[i].1 == 0 { i += 1; } else { break; }
-                } else { i += 1; }
-            }
-            fifo.drain(..i);
-        }
-    }
-
-        // ---- 6 tab executions after matching ----
-        let mut execs: Vec<ExecMsg> = Vec::new();
-        if let Some(ref taker_sock) = sock_id {
             for tx in mr.transactions.as_vec().iter() {
-                let price    = (tx.price as f64) / PRICE_SCALE;
-                let quantity = (tx.quantity as f64) / QTY_SCALE_F64;
-                execs.push(ExecMsg {
-                    price,
-                    quantity,
-                    maker_socket_id: None,                  // or Some(owner) if you attribute
-                    taker_socket_id: Some(taker_sock.clone()),
-                    maker_ext_uuid: None,
-                    taker_ext_uuid: Some(ext_id.clone()),
-                });
+                let px = (tx.price as f64) / PRICE_SCALE;
+                // CHANGED: convert internal qty (u64) back to external float
+                let q  = (tx.quantity as f64) / QTY_SCALE_F64;
+                sum_qty += q;
+                sum_notional += q * px;
+
+                // taker history
+                if let Some(sock) = sock_id.as_ref() {
+                    s.push_hist(&symbol, sock, serde_json::json!({
+                        "ts": now, "uuid": ext_id, "side": order.side,
+                        "price": px, "qty": q, "event": "MATCH", "role": "taker", "symbol": symbol
+                    }));
+                }
+
+                // maker-side attribution (per-tx) + build execs with maker/taker sockets
+                let mut any_attributed = false;
+                if let Some(fifo) = pre_fifo.get_mut(&tx.price) {
+                    let mut want = tx.quantity;
+                    let mut i = 0usize;
+                    while want > 0 && i < fifo.len() {
+                        let (maker_id, rem_val) = { let (id_s, q2) = &fifo[i]; (id_s.clone(), *q2) };
+                        let take = want.min(rem_val);
+                        if take > 0 {
+                            // skip self
+                            let is_self = sock_id
+                                .as_ref()
+                                .and_then(|sock| socket_owner_of(&s, &symbol, &maker_id).map(|o| o == *sock))
+                                .unwrap_or(false);
+
+                            if !is_self {
+                                // record maker slice
+                                maker_slices.push(serde_json::json!({
+                                    "maker_order_id": maker_id,
+                                    "taker_order_id": format!("{:?}", eng_id),
+                                    "price": px,
+                                    "quantity": (take as f64) / QTY_SCALE_F64,
+                                    "maker": true
+                                }));
+
+                                // maker history (owner)
+                                let maker_sock_opt = socket_owner_of(&s, &symbol, &maker_id);
+                                if let Some(maker_sock) = maker_sock_opt.as_ref() {
+                                    let ext = s.int2ext
+                                        .get(&symbol).and_then(|m| m.get(&maker_id)).cloned().unwrap_or_default();
+                                    s.push_hist(&symbol, maker_sock, serde_json::json!({
+                                        "ts": now, "uuid": ext,
+                                        "side": match order.side.as_str() { "BUY" => "SELL", _ => "BUY" },
+                                        "price": px,
+                                        "qty": (take as f64) / QTY_SCALE_F64,
+                                        "event": "MATCH", "role": "maker", "symbol": symbol
+                                    }));
+
+                                    // exec slice with both sockets + ext uuids
+                                    if let Some(ref taker_sock) = sock_id {
+                                        execs.push(ExecMsg {
+                                        price: px,
+                                        quantity: (take as f64) / QTY_SCALE_F64,
+                                        maker_socket_id: Some(maker_sock.clone()),
+                                        taker_socket_id: Some(taker_sock.clone()),
+                                        maker_ext_uuid: Some(ext),
+                                        taker_ext_uuid: Some(ext_id.clone()),
+                                        // NEW:
+                                        props: order.props.clone(),
+                                        side_of_taker: Some(order.side.clone()),
+                                        taker_keypair: order.keypair.clone(),
+                                        });
+                                    }
+                                } else {
+                                    // maker owner unknown -> emit taker-only slice
+                                    if let Some(ref taker_sock) = sock_id {
+                                        execs.push(ExecMsg {
+                                        price: px,
+                                        quantity: (take as f64) / QTY_SCALE_F64,
+                                        maker_socket_id: None,
+                                        taker_socket_id: Some(taker_sock.clone()),
+                                        maker_ext_uuid: None,
+                                        taker_ext_uuid: Some(ext_id.clone()),
+                                        // NEW:
+                                        props: order.props.clone(),
+                                        side_of_taker: Some(order.side.clone()),
+                                        taker_keypair: order.keypair.clone(),
+                                        });
+                                    }
+                                }
+
+                                any_attributed = true;
+                            }
+
+                            fifo[i].1 -= take;
+                            want -= take;
+                            if fifo[i].1 == 0 { i += 1; } else { break; }
+                        } else { i += 1; }
+                    }
+                    fifo.drain(..i);
+                }
+
+                // fallback: if no maker attribution happened at this price/tx, still emit taker-only
+                if !any_attributed {
+                    if let Some(ref taker_sock) = sock_id {
+                        execs.push(ExecMsg {
+                        price: px,
+                        quantity: q,
+                        maker_socket_id: None,
+                        taker_socket_id: Some(taker_sock.clone()),
+                        maker_ext_uuid: None,
+                        taker_ext_uuid: Some(ext_id.clone()),
+                        // NEW:
+                        props: order.props.clone(),
+                        side_of_taker: Some(order.side.clone()),
+                        taker_keypair: order.keypair.clone(),
+                        });
+                    }
+                }
             }
-        }
-        if !execs.is_empty() {
-            push_execs(&symbol, &execs);
-        }
+
+            // flush (covers the original “6” section)
+            if !execs.is_empty() {
+                push_execs(&symbol, &execs);
+            }
+
 
     // ----------------------------------------------------------------
     // 7 Build response payload (+ history summary)
