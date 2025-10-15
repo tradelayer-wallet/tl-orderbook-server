@@ -10,15 +10,8 @@
 //
 // N-API exports are camelCased in JS by #[napi] (e.g., get_order_history_by_socket -> getOrderHistoryBySocket)
 
-use napi::Env;
-use napi::JsString;
-use napi::Function;
-use napi::bindgen_prelude::Unknown;
-use napi::threadsafe_function::{
-  ThreadsafeFunction,
-  ThreadsafeFunctionCallMode,
-};
-use napi::bindgen_prelude::*;
+use napi::bindgen_prelude::*; // Env, Function, Result, Unknown, etc.
+use napi::threadsafe_function::{ThreadsafeFunction, ThreadsafeFunctionCallMode};
 use napi_derive::napi;
 use serde::Serialize;
 use once_cell::sync::Lazy;
@@ -63,18 +56,26 @@ static EXECS_SINK: RwLock<Option<ExecSinkType>> = RwLock::new(None);
 
 #[napi]
 pub fn set_exec_sink(_env: Env, cb: Function) -> napi::Result<()> {
-
-  let tsfn: ThreadsafeFunction<(String, String)> =
-    cb.create_threadsafe_function(0, |ctx| {
-      let (sym, execs_json): (String, String) = ctx.value;
-      let js_sym: JsString   = ctx.env.create_string(&sym)?;
-      let js_execs: JsString = ctx.env.create_string(&execs_json)?;
-      let a: Unknown = js_sym.into_unknown();
-      let b: Unknown = js_execs.into_unknown();
-      Ok(vec![a, b])
+  let tsfn: ThreadsafeFunction<(String, String)> = cb
+    .build_threadsafe_function()
+    .call_mode(ThreadsafeFunctionCallMode::NonBlocking)
+    .build(|(sym, execs_json), env: Env| {
+      let js_sym   = env.create_string(&sym)?;
+      let js_execs = env.create_string(&execs_json)?;
+      Ok(vec![js_sym.into_unknown(&env)?, js_execs.into_unknown(&env)?])
     })?;
   if let Ok(mut guard) = EXECS_SINK.write() { *guard = Some(tsfn); }
   Ok(())
+}
+
+// small helper to push execs safely
+fn push_execs(symbol: &str, execs: &[ExecMsg]) {
+  let payload = serde_json::to_string(execs).unwrap_or_else(|_| "[]".into());
+  if let Ok(guard) = EXECS_SINK.read() {
+    if let Some(sink) = guard.as_ref() {
+      let _ = sink.call(Ok((symbol.to_string(), payload)), ThreadsafeFunctionCallMode::NonBlocking);
+    }
+  }
 }
 
 // ---------- engine ----------
@@ -441,10 +442,9 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
                 "ts": now, "uuid": ext_id, "side": order.side,
                 "price": px, "qty": q, "event": "MATCH", "role": "taker", "symbol": symbol
             }));
-    }
-  }
+        }
 
-        // maker-side attribution
+        // maker-side attribution (per-tx)
         if let Some(fifo) = pre_fifo.get_mut(&tx.price) {
             let mut want = tx.quantity;
             let mut i = 0usize;
@@ -487,7 +487,9 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
             }
             fifo.drain(..i);
         }
-         // ---- 6 tab executions after matching ----
+    }
+
+        // ---- 6 tab executions after matching ----
         let mut execs: Vec<ExecMsg> = Vec::new();
         if let Some(ref taker_sock) = sock_id {
             for tx in mr.transactions.as_vec().iter() {
@@ -503,16 +505,8 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
                 });
             }
         }
-        unsafe {
-            if let Ok(guard) = EXECS_SINK.read() { 
-                if let Some(sink) = guard.as_ref() {
-                let execs_json = serde_json::to_string(&execs).unwrap_or_else(|_| "[]".into());
-                let _ = sink.call(
-                    Ok((symbol.clone(), execs_json)),
-                    ThreadsafeFunctionCallMode::NonBlocking,
-                );
-                }
-            }
+        if !execs.is_empty() {
+            push_execs(&symbol, &execs);
         }
 
     // ----------------------------------------------------------------
@@ -540,6 +534,7 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
     }
         
     if !mr.is_complete && mr.remaining_quantity > 0 {
+        if let Some(sock) = sock_id.as_ref() {
             s.push_hist(&symbol, sock, serde_json::json!({
                 "ts": now,
                 "uuid": ext_id,
@@ -548,6 +543,7 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
                 "resting_qty": rem,      // ← normalized
                 "symbol": symbol
             }));
+        }
     }
 
     let txns = mr.transactions.as_vec().iter().map(|tx| {
@@ -773,14 +769,13 @@ pub fn edit(
     }
 
     // Cancel & re-add under a short borrow
-    let ok = {
+    let ok: bool = {
         let Some(book) = s.man.get_book_mut(&symbol) else { return Ok(false) };
 
         // STPF cancels (self makers that would cross new price)
         for oid in &stpf_to_cancel {
             let _ = book.cancel_order(oid.clone());
         }
-    };
 
         // Replace the edited order (cancel+readd with same id)
         let _ = book.cancel_order(eng_id.clone());
@@ -793,26 +788,25 @@ pub fn edit(
             time_in_force: TimeInForce::Gtc,
             extra_fields: (),
         };
-        book.add_order(add).is_ok();
+        book.add_order(add).is_ok()
+    };
 
     // Clean maps for STPF-canceled makers
     if !stpf_to_cancel.is_empty() {
         if let Some(int2ext) = s.int2ext.get_mut(&symbol) {
             for oid in &stpf_to_cancel {
                 let _ = int2ext.remove(&oid.to_string());
-    }
-  }
+            }
         }
         if let Some(per_sock) = s.by_socket.get_mut(&symbol) {
             for (_sock, ids) in per_sock.iter_mut() {
                 for oid in &stpf_to_cancel {
                     ids.remove(&oid.to_string());
                     ids.remove(&format!("{:?}", oid));
-    }
-  }
+                }
             }
-        
-    
+        }
+    }
 
     // History: AMENDED records
     if ok {
@@ -902,14 +896,16 @@ pub fn cancel_all_by_socket(symbol: String, socket_id: String) -> u32 {
     // 3 Cleanup indices (separate borrows)
     if !canceled.is_empty() {
         if let Some(per) = s.by_socket.get_mut(&symbol) {
+            let mut empty_after = false;
             if let Some(set) = per.get_mut(&socket_id) {
                 for eng_str in &canceled {
                     set.remove(eng_str);
                 }
+                empty_after = set.is_empty();
             }
-                if set.is_empty() {
-                    per.remove(&socket_id);
-                }
+            if empty_after {
+                per.remove(&socket_id);
+            }
         }
     }
         
@@ -960,53 +956,56 @@ pub fn cancel_all_by_socket_global(socket_id: String) -> u32 {
         return 0;
     }
 
-    // 2 For each symbol, cancel with a scoped mutable borrow of its book
+    // 2 For each symbol, cancel with a scoped mutable borrow of its book, then cleanup per symbol
     let mut total_canceled: u32 = 0;
-    for (sym, ids) in &work {
+    for (sym, ids) in work {
         let mut canceled_here: Vec<String> = Vec::new();
-            if let Some(book) = s.man.get_book_mut(sym) {
-                for eng_str in ids {
-                    let oid = to_order_id(eng_str);
-                    let ok = book.cancel_order(oid).is_ok();
-                    log_line(format!(
-                        "[CANCEL_BY_SOCK_GLOBAL_ATTEMPT] sym='{}' sock='{}' eng='{}' -> {}",
-                        sym,
-                        &socket_id,
-                        eng_str,
-                        if ok { "OK" } else { "MISS" }
-                    ));
-                    if ok {
-                        canceled_here.push(eng_str.clone());
-                        total_canceled += 1;
-                    }
-                }
-            } else {
+
+        if let Some(book) = s.man.get_book_mut(&sym) {
+            for eng_str in &ids {
+                let oid = to_order_id(eng_str);
+                let ok = book.cancel_order(oid).is_ok();
                 log_line(format!(
-                    "[CANCEL_BY_SOCK_GLOBAL_BOOKMISS] sym='{}' sock='{}'",
-                    sym, &socket_id
+                    "[CANCEL_BY_SOCK_GLOBAL_ATTEMPT] sym='{}' sock='{}' eng='{}' -> {}",
+                    sym,
+                    &socket_id,
+                    eng_str,
+                    if ok { "OK" } else { "MISS" }
                 ));
+                if ok {
+                    canceled_here.push(eng_str.clone());
+                    total_canceled += 1;
+                }
             }
-    }
+        } else {
+            log_line(format!(
+                "[CANCEL_BY_SOCK_GLOBAL_BOOKMISS] sym='{}' sock='{}'",
+                sym, &socket_id
+            ));
+        }
 
         // 3 Cleanup indices for this symbol (separate mutable borrows)
         if !canceled_here.is_empty() {
-            if let Some(per) = s.by_socket.get_mut(sym) {
+            if let Some(per) = s.by_socket.get_mut(&sym) {
+                let mut empty_after = false;
                 if let Some(set) = per.get_mut(&socket_id) {
                     for eng_str in &canceled_here {
                         set.remove(eng_str);
                     }
+                    empty_after = set.is_empty();
                 }
-                    if set.is_empty() {
-                        per.remove(&socket_id);
-                    }
+                if empty_after {
+                    per.remove(&socket_id);
+                }
             }
-        }
             
-            if let Some(int2ext) = s.int2ext.get_mut(sym) {
+            if let Some(int2ext) = s.int2ext.get_mut(&sym) {
                 for eng_str in &canceled_here {
                     int2ext.remove(eng_str);
                 }
             }
+        }
+    }
 
     log_line(format!(
         "[CANCEL_BY_SOCK_GLOBAL_OUT] sock='{}' canceled={}",
@@ -1097,9 +1096,8 @@ pub fn get_open_orders_by_socket(socket_id: String, symbol: String) -> String {
                         "amount":      *quantity as f64 / QTY_SCALE_F64,
                         "timestamp":   *timestamp,
                     }));
-                // if you have Hidden/Iceberg variants and want to expose them, handle here
-                _ => {}
                 }
+                _ => { /* no-op */ }
             }
         }
     }
