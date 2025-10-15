@@ -55,18 +55,24 @@ type ExecSinkType = ThreadsafeFunction<(String, String)>;
 static EXECS_SINK: RwLock<Option<ExecSinkType>> = RwLock::new(None);
 
 #[napi]
-pub fn set_exec_sink(_env: Env, cb: Function) -> napi::Result<()> {
-  let tsfn: ThreadsafeFunction<(String, String)> = cb
-    .build_threadsafe_function()
-    .call_mode(ThreadsafeFunctionCallMode::NonBlocking)
-    .build(|(sym, execs_json), env: Env| {
-      let js_sym   = env.create_string(&sym)?;
-      let js_execs = env.create_string(&execs_json)?;
-      Ok(vec![js_sym.into_unknown(&env)?, js_execs.into_unknown(&env)?])
+pub fn set_exec_sink(env: Env, cb: Function) -> napi::Result<()> {
+  let tsfn: ThreadsafeFunction<(String, String)> =
+    env.create_threadsafe_function(&cb, 0, |ctx| {
+      let (sym, execs_json) = ctx.value;
+      let js_sym   = ctx.env.create_string(&sym)?;
+      let js_execs = ctx.env.create_string(&execs_json)?;
+      Ok(vec![
+        js_sym.into_unknown(&ctx.env)?,
+        js_execs.into_unknown(&ctx.env)?,
+      ])
     })?;
-  if let Ok(mut guard) = EXECS_SINK.write() { *guard = Some(tsfn); }
+
+  if let Ok(mut guard) = EXECS_SINK.write() {
+    *guard = Some(tsfn);
+  }
   Ok(())
 }
+
 
 // small helper to push execs safely
 fn push_execs(symbol: &str, execs: &[ExecMsg]) {
