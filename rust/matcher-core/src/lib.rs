@@ -571,6 +571,7 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
     });
 
     Ok(serde_json::to_string(&payload).unwrap_or_else(|_| "{}".into()))
+}
 
 
 // ---------- submit_batch ----------
@@ -585,8 +586,7 @@ pub fn submit_batch(req: BatchReq) -> napi::Result<String> {
         for uuid in list {
             if cancel(req.market.clone(), uuid.clone()) {
                 out_canceled.push(uuid.clone());
-    }
-  }
+            }
         }
     }
 
@@ -604,8 +604,8 @@ pub fn submit_batch(req: BatchReq) -> napi::Result<String> {
             }
 
             out_placed.push(o.uuid.clone());
+        }
     }
-  }
     
 
     // 3 optional snapshot
@@ -627,7 +627,7 @@ pub fn submit_batch(req: BatchReq) -> napi::Result<String> {
     });
 
     Ok(serde_json::to_string(&payload).unwrap_or_else(|_| "{}".into()))
-
+}
 
 // ---------- cancel ----------
 #[napi]
@@ -676,8 +676,7 @@ pub fn cancel(symbol: String, order_id: String) -> bool {
     if let Some(per_sock) = s.by_socket.get_mut(&symbol) {
         for (_sock, ids) in per_sock.iter_mut() {
             ids.remove(&eng_str);
-    }
-  }
+        }
         per_sock.retain(|_, ids| !ids.is_empty());
     }
   
@@ -692,8 +691,8 @@ pub fn cancel(symbol: String, order_id: String) -> bool {
         }));
     }
   
-
     true
+}
 
 
 // ---------- edit (cancel+readd with plan; maker-bump for price edits) ----------
@@ -766,8 +765,7 @@ pub fn edit(
                     if let orderbook_rs::OrderType::Standard { id, .. } = ord.as_ref() {
                         if sock_owns_engine_id(&s, &symbol, taker_sock, id) {
                             stpf_to_cancel.push(id.clone());
-    }
-  }
+                        }
                     }
                 }
             }
@@ -781,8 +779,8 @@ pub fn edit(
         // STPF cancels (self makers that would cross new price)
         for oid in &stpf_to_cancel {
             let _ = book.cancel_order(oid.clone());
-    }
-  }
+        }
+    };
 
         // Replace the edited order (cancel+readd with same id)
         let _ = book.cancel_order(eng_id.clone());
@@ -795,8 +793,7 @@ pub fn edit(
             time_in_force: TimeInForce::Gtc,
             extra_fields: (),
         };
-        book.add_order(add).is_ok()
-    ;
+        book.add_order(add).is_ok();
 
     // Clean maps for STPF-canceled makers
     if !stpf_to_cancel.is_empty() {
@@ -839,11 +836,11 @@ pub fn edit(
                 "new_price": (tgt_px as f64) / PRICE_SCALE,
                 "new_qty":   (tgt_qty as f64)
             }));
+        }
     }
-  }
     
-
     Ok(ok)
+}
 
 
 #[napi]
@@ -879,7 +876,6 @@ pub fn cancel_all_by_socket(symbol: String, socket_id: String) -> u32 {
 
     // 2 Cancel with a scoped mutable borrow of the book only
     let mut canceled: Vec<String> = Vec::new();
-    {
         let Some(book) = s.man.get_book_mut(&symbol) else {
             log_line(format!(
                 "[CANCEL_BY_SOCK_BOOKMISS] sym='{}' sock='{}'",
@@ -900,10 +896,8 @@ pub fn cancel_all_by_socket(symbol: String, socket_id: String) -> u32 {
             ));
             if ok {
                 canceled.push(eng_str.clone());
-    }
-  }
+            }
         }
-    } // <-- book mutable borrow ends here
 
     // 3 Cleanup indices (separate borrows)
     if !canceled.is_empty() {
@@ -911,21 +905,19 @@ pub fn cancel_all_by_socket(symbol: String, socket_id: String) -> u32 {
             if let Some(set) = per.get_mut(&socket_id) {
                 for eng_str in &canceled {
                     set.remove(eng_str);
-    }
-  }
+                }
+            }
                 if set.is_empty() {
                     per.remove(&socket_id);
+                }
+        }
     }
-  }
-            }
         
-        if let Some(int2ext) = s.int2ext.get_mut(&symbol) {
+    if let Some(int2ext) = s.int2ext.get_mut(&symbol) {
             for eng_str in &canceled {
                 int2ext.remove(eng_str);
+           }
     }
-  }
-        
-    
 
     log_line(format!(
         "[CANCEL_BY_SOCK_OUT] sym='{}' sock='{}' canceled={}",
@@ -933,6 +925,7 @@ pub fn cancel_all_by_socket(symbol: String, socket_id: String) -> u32 {
     ));
 
     canceled.len() as u32
+}
 
 
 #[napi]
@@ -955,8 +948,7 @@ pub fn cancel_all_by_socket_global(socket_id: String) -> u32 {
                     sym, &socket_id, ids.len()
                 ));
                 work.push((sym.clone(), ids));
-    }
-  }
+            }
         }
     }
 
@@ -972,7 +964,6 @@ pub fn cancel_all_by_socket_global(socket_id: String) -> u32 {
     let mut total_canceled: u32 = 0;
     for (sym, ids) in &work {
         let mut canceled_here: Vec<String> = Vec::new();
-        {
             if let Some(book) = s.man.get_book_mut(sym) {
                 for eng_str in ids {
                     let oid = to_order_id(eng_str);
@@ -994,9 +985,8 @@ pub fn cancel_all_by_socket_global(socket_id: String) -> u32 {
                     "[CANCEL_BY_SOCK_GLOBAL_BOOKMISS] sym='{}' sock='{}'",
                     sym, &socket_id
                 ));
+            }
     }
-  }
-        } // <-- book mutable borrow ends here
 
         // 3 Cleanup indices for this symbol (separate mutable borrows)
         if !canceled_here.is_empty() {
@@ -1004,22 +994,19 @@ pub fn cancel_all_by_socket_global(socket_id: String) -> u32 {
                 if let Some(set) = per.get_mut(&socket_id) {
                     for eng_str in &canceled_here {
                         set.remove(eng_str);
-    }
-  }
+                    }
+                }
                     if set.is_empty() {
                         per.remove(&socket_id);
-    }
-  }
-                }
+                    }
+            }
+        }
             
             if let Some(int2ext) = s.int2ext.get_mut(sym) {
                 for eng_str in &canceled_here {
                     int2ext.remove(eng_str);
-    }
-  }
-            
-        
-    
+                }
+            }
 
     log_line(format!(
         "[CANCEL_BY_SOCK_GLOBAL_OUT] sock='{}' canceled={}",
@@ -1027,7 +1014,7 @@ pub fn cancel_all_by_socket_global(socket_id: String) -> u32 {
     ));
 
     total_canceled
-
+}
 
 
 // ---------- snapshots / stats ----------
@@ -1067,16 +1054,14 @@ pub fn get_open_orders_by_socket(socket_id: String, symbol: String) -> String {
     // quick exits if we don't have the book or indices
     let Some(book) = s.man.get_book(&symbol) else {
         return "[]".into();
-    }
-  };
+    };
+
     let Some(per_sock) = s.by_socket.get(&symbol) else {
         return "[]".into();
-    }
-  ;
+    };
     let Some(id_set) = per_sock.get(&socket_id) else {
         return "[]".into();
-    }
-  ;
+    };
 
     // for each engine-id string owned by this socket, try to fetch the resting order
     for eng_str in id_set.iter() {
@@ -1112,15 +1097,15 @@ pub fn get_open_orders_by_socket(socket_id: String, symbol: String) -> String {
                         "amount":      *quantity as f64 / QTY_SCALE_F64,
                         "timestamp":   *timestamp,
                     }));
-    }
-  }
                 // if you have Hidden/Iceberg variants and want to expose them, handle here
                 _ => {}
+                }
             }
         }
+    }
     
-
     serde_json::to_string(&out).unwrap_or_else(|_| "[]".into())
+}
 
 
 // JS will see: getOrderHistoryBySocket(market: string, socketId: string, limit?: number): string

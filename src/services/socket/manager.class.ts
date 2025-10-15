@@ -1,4 +1,4 @@
-// src/services/socket/manager.class.ts
+// ---------- imports ----------
 import HyperExpress from 'hyper-express';
 import { EmitEvents, OnEvents, OrderEmitEvents } from './events';
 import { native, registerNativeSinks, JsOrder, Exec } from '../../native';
@@ -14,7 +14,6 @@ import {
 } from '../../utils/types/orderbook.types';
 
 type WS = HyperExpress.Websocket;
-
 type UUID = string;
 
 export type OrderAction = 'BUY' | 'SELL';
@@ -22,11 +21,8 @@ export type OrderTypeKind = 'SPOT' | 'FUTURES';
 
 const toEOrderType = (t: unknown): EOrderType => {
   if (t === EOrderType.FUTURES || t === 'FUTURES') return EOrderType.FUTURES;
-  // default / anything else -> SPOT
   return EOrderType.SPOT;
 };
-
-
 
 export interface IResult<T> { data?: T; error?: string }
 export interface IResultChannelSwap extends IResult<{ txid: string }> {}
@@ -39,7 +35,6 @@ interface IHistoryTrade extends ITradeInfo {
   txid: string;
   time: number;
 }
-
 
 type NormalizedOrder = {
   uuid: string;
@@ -54,16 +49,21 @@ type NormalizedOrder = {
   error?: string;
 };
 
-const PRICE_SCALE = 100;       // engine ticks -> UI price
-const QTY_SCALE   = 1e8;       // engine sats  -> UI amount
+const PRICE_SCALE = 100;   // engine ticks -> UI price
+const QTY_SCALE   = 1e8;   // engine sats  -> UI amount
 
-// --- helpers (top of file or near other utils) ---
+// Polyfill for queueMicrotask if needed
+if (typeof (global as any).queueMicrotask !== 'function') {
+  (global as any).queueMicrotask = (fn: () => void) => Promise.resolve().then(fn);
+}
+
+// --- helpers ---
 function parseMaybeJson<T = any>(x: unknown, fallback: T): T {
   if (x == null) return fallback;
   if (typeof x !== 'string') return x as T;
   try { return JSON.parse(x) as T; } catch { return fallback; }
 }
-// add qty scale; keep price scale as-is
+
 function normalizeSnapshotToRows(snapObj: any, PRICE_SCALE = 100, QTY_SCALE = 1e8) {
   const snap = snapObj?.snapshot ?? snapObj;
   if (!snap || (!Array.isArray(snap.bids) && !Array.isArray(snap.asks))) return [];
@@ -73,7 +73,7 @@ function normalizeSnapshotToRows(snapObj: any, PRICE_SCALE = 100, QTY_SCALE = 1e
   for (const b of (snap.bids ?? [])) {
     rows.push({
       price: PRICE_SCALE ? (Number(b.price) / PRICE_SCALE) : Number(b.price),
-      amount: (Number(b.amount ?? b.visible_quantity ?? 0)) / QTY_SCALE,  // ← scale
+      amount: (Number(b.amount ?? b.visible_quantity ?? 0)) / QTY_SCALE,
       side: 'BUY',
       isBuy: true,
     });
@@ -82,7 +82,7 @@ function normalizeSnapshotToRows(snapObj: any, PRICE_SCALE = 100, QTY_SCALE = 1e
   for (const a of (snap.asks ?? [])) {
     rows.push({
       price: PRICE_SCALE ? (Number(a.price) / PRICE_SCALE) : Number(a.price),
-      amount: (Number(a.amount ?? a.visible_quantity ?? 0)) / QTY_SCALE,  // ← scale
+      amount: (Number(a.amount ?? a.visible_quantity ?? 0)) / QTY_SCALE,
       side: 'SELL',
       isBuy: false,
     });
@@ -95,96 +95,99 @@ export class SocketManager {
   private _marketSubs = new Map<string, Set<string>>();
   private _sessionSubs = new Map<string, Set<string>>();
 
-  private _dirty = new Set<string>();                 
-  private _flushing = false;                          
-  private _coalesceMs = 50;                           
-  private _depth = 40;                             
+  private _dirty = new Set<string>();
+  private _flushing = false;
+  private _coalesceMs = 50;
+  private _depth = 40;
 
-  // local de-dupe for close-order spam per socket
   private _recentClose = new Map<string, Map<string, number>>();
-
-  // local cache (optional): uuid -> { market, price?, quantity? }
   private _uuidToMarket = new Map<string, string>();
-  private _byUuid = new Map<
-    string,
-    { market: string; price?: number; quantity?: number }
-  >();
+  private _byUuid = new Map<string, { market: string; price?: number; quantity?: number }>();
 
   private _tickHandle: NodeJS.Timeout | null = null;
   private _lastNativeSnap = new Map<string, any>(); // marketKey -> latest snapshot
 
-  constructor() {
-    // start periodic broadcaster
-    this._tickHandle = setInterval(() => this.flushOrderbookData(), this._coalesceMs);
+    constructor() {
+      // start periodic broadcaster
+      this._tickHandle = setInterval(() => this.flushOrderbookData(), this._coalesceMs);
 
-    type Sinks = {
-      onSnapshot?: (market: string, snapshot: any) => void;
-      onExecs?: (market: string, execs: any[]) => void;
-      onOrderEvent?: (ev: any) => void;
-    };
+      type Sinks = {
+        onSnapshot?: (market: string, snapshot: any) => void;
+        onExecs?: (market: string, execs: any[]) => void;
+        onOrderEvent?: (ev: any) => void;
+      };
 
-    let _sinksBound = false;
+      let _sinksBound = false;
 
-    const safeJson = <T,>(v: any, fallback: T): T => {
-      if (v == null) return fallback;
-      if (typeof v === 'string') {
-        try { return JSON.parse(v) as T; } catch { return fallback; }
-      }
-      return v as T;
-    };
+      const safeJson = <T,>(v: any, fallback: T): T => {
+        if (v == null) return fallback;
+        if (typeof v === 'string') {
+          try { return JSON.parse(v) as T; } catch { return fallback; }
+        }
+        return v as T;
+      };
 
-    // NOTE: use function expression or arrow to keep access to native in ctor scope
-    const registerNativeSinks = (sinks: Sinks) => {
-      if (_sinksBound) return;
-      _sinksBound = true;
+      // ---- Wire addon callbacks (exec/snapshot) without shadowing imported registerNativeSinks ----
+      const wireNativeAddonSinks = (sinks: Sinks) => {
+        if (_sinksBound) return;
+        _sinksBound = true;
 
-      // use only wrapper’s camelCase API
-      const { setExecSink, setSnapshotSink, setOrderEventSink } = native as any;
+        const { setExecSink, setSnapshotSink, setOrderEventSink, nativeBuildId } = native as any;
 
-      // Execs → _handleExecs (via sinks.onExecs)
-      if (typeof setExecSink === 'function' && typeof sinks.onExecs === 'function') {
-        setExecSink((symbol: string, execs: any[] | string) => {
-          const payload = safeJson<any[]>(execs, []);
-          // don’t block native thread; bounce to microtask
-          queueMicrotask(() => sinks.onExecs!(symbol, payload));
-        });
-      }
+        if (typeof nativeBuildId === 'function') {
+          try { console.log('[native build]', nativeBuildId()); } catch {}
+        }
 
-      // Snapshots → cache/dirty (via sinks.onSnapshot)
-      if (typeof setSnapshotSink === 'function' && typeof sinks.onSnapshot === 'function') {
-        setSnapshotSink((symbol: string, snapshot: any | string) => {
-          const obj = safeJson<any>(snapshot, null);
-          if (obj != null) queueMicrotask(() => sinks.onSnapshot!(symbol, obj));
-        });
-      }
+        if (typeof setExecSink === 'function' && typeof sinks.onExecs === 'function') {
+          setExecSink((symbol: string, execs: any[] | string) => {
+            const payload = safeJson<any[]>(execs, []);
+            queueMicrotask(() => sinks.onExecs!(symbol, payload));
+          });
+          console.log('[sinks] addon exec wired');
+        } else {
+          console.warn('[sinks] addon exec NOT wired');
+        }
 
-      // Order events (optional)
-      if (typeof setOrderEventSink === 'function' && typeof sinks.onOrderEvent === 'function') {
-        setOrderEventSink((ev: any | string) => {
-          const obj = safeJson<any>(ev, null);
-          if (obj != null) queueMicrotask(() => sinks.onOrderEvent!(obj));
-        });
-      }
+        if (typeof setSnapshotSink === 'function' && typeof sinks.onSnapshot === 'function') {
+          setSnapshotSink((symbol: string, snapshot: any | string) => {
+            const obj = safeJson<any>(snapshot, null);
+            if (obj != null) queueMicrotask(() => sinks.onSnapshot!(symbol, obj));
+          });
+          console.log('[sinks] addon snapshot wired');
+        } else {
+          console.warn('[sinks] addon snapshot NOT wired');
+        }
 
-      // Optional: log build id
-      if (typeof native.nativeBuildId === 'function') {
-        try { console.log('[native build]', native.nativeBuildId()); } catch {}
-      }
-    };
+        if (typeof setOrderEventSink === 'function' && typeof sinks.onOrderEvent === 'function') {
+          setOrderEventSink((ev: any | string) => {
+            const obj = safeJson<any>(ev, null);
+            if (obj != null) queueMicrotask(() => sinks.onOrderEvent!(obj));
+          });
+          console.log('[sinks] addon orderEvent wired');
+        }
+      };
 
-    // 🔗 ACTUALLY WIRE THE SINKS (this was missing)
-    registerNativeSinks({
-      onExecs: (symbol, execs) => {
-        // NOTE: make sure your Rust uses the same field names this handler expects
-        this._handleExecs(symbol, execs);
-      },
-      onSnapshot: (symbol, snapshot) => {
-        this._lastNativeSnap.set(symbol, snapshot);
-        this._dirty.add(symbol);
-      },
-      // onOrderEvent: (ev) => this._handleOrderEvent(ev),
-    });
-  }
+      // 1) Wire the native addon sinks (async pushes from Rust threads)
+      wireNativeAddonSinks({
+        onExecs: (symbol, execs) => this._handleExecs(symbol, execs),
+        onSnapshot: (symbol, snapshot) => {
+          this._lastNativeSnap.set(symbol, snapshot);
+          this._dirty.add(symbol);
+        },
+        // onOrderEvent: (ev) => this._handleOrderEvent(ev),
+      });
+
+      // 2) ALSO register the shim sinks so native.submit/submit_batch fanouts work (sync return path)
+      registerNativeSinks({
+        onExecs: (symbol: string, execs: Exec[]) => this._handleExecs(symbol, execs),
+        onSnapshot: (symbol: string, snapshot: any) => {
+          this._lastNativeSnap.set(symbol, snapshot);
+          this._dirty.add(symbol);
+        },
+        // onOrderEvent: (ev) => this._handleOrderEvent(ev),
+      });
+    }
+
     
   // Register a socket with its id
   add(id: string, ws: WS) {
@@ -358,8 +361,8 @@ export class SocketManager {
     }
   }
 
-  private async handleNewOrder(ws: HyperExpress.Websocket, data: any) {
-    // 🧱 1. Basic guards
+  private async handleNewOrder(ws: HyperExpress.Websocket, data: any){
+    //  1. Basic guards
     if (!data.isLimitOrder) {
       ws.send(JSON.stringify({
         event: OrderEmitEvents.ERROR,
@@ -418,7 +421,7 @@ export class SocketManager {
       ws.send(JSON.stringify({ event: OrderEmitEvents.ERROR, message: order.error }));
       return;
     }
-    console.log('order before sub '+JSON.stringify(order))
+    console.log('order before sub '+JSON.stringify(order)+' and after toJs '+JSON.stringify(this.toJsOrder(order)))
     try {
       ws.send(JSON.stringify({
         event: OrderEmitEvents.SAVED,
@@ -643,7 +646,7 @@ export class SocketManager {
       props?: any;
     }>
   ) {
-    console.debug('[EXEC/IN]', marketKey, Array.isArray(execs) ? execs.length : -1, execs?.[0]);
+    console.log('[EXEC/IN]', marketKey, Array.isArray(execs) ? execs.length : -1, execs?.[0]);
 
     // Process each exec slice
     for (const raw of execs as any[]) {
@@ -1028,33 +1031,34 @@ private ensureSocketMarketIndex(socketId: string, marketKey: string) {
     };
   }
 
-  private toJsOrder(o: {
-        uuid: string;
-        socketId: string;
-        side?: string;
-        type?: 'SPOT' | 'FUTURES';
-        action?: 'BUY' | 'SELL';
-        props?: any;
-        price: number;
-        amount: number;
-        quantity?: number;
-        keypair?: any;
-      }): JsOrder {
-        const side = (o.side || o.action || 'BUY').toUpperCase();
-        return {
-          uuid: o.uuid,
-          socketId: o.socketId,
-          side: side === 'SELL' ? 'SELL' : 'BUY',
-          price: Number(o.price),
-          amount: Number(o.amount ?? o.quantity ?? 0),
-          // extra fields are carried in native.submit’s payload if your addon reads them
-          // (the JsOrder type in native.ts already allows optional props)
-          props: o.props,
-          keypair: o.keypair,
-          type: o.type,
-          action: o.action,
-        } as unknown as JsOrder;
-      }
+    private toJsOrder(o: {
+      uuid: string;
+      socketId: string;
+      side?: string;
+      type?: 'SPOT' | 'FUTURES';
+      action?: 'BUY' | 'SELL';
+      props?: any;
+      price: number;
+      amount: number;
+      quantity?: number;
+      keypair?: any;
+    }): JsOrder {
+      const side = (o.side || o.action || 'BUY').toUpperCase();
+      const payload = {
+        uuid: o.uuid,
+        socketId: o.socketId,          // camelCase for your code
+        socket_id: o.socketId,         // <-- snake_case for native/Rust
+        side: side === 'SELL' ? 'SELL' : 'BUY',
+        price: Number(o.price),
+        amount: Number(o.amount ?? o.quantity ?? 0),
+        props: o.props,
+        keypair: o.keypair,
+        type: o.type,
+        action: o.action,
+      } as any;
+
+      return payload as JsOrder;
+    }
 
       // === Debug helpers used by routes ===
       public get liveSessions(): string[] {
