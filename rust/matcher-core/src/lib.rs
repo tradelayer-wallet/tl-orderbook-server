@@ -55,6 +55,7 @@ struct ExecMsg {
   side_of_taker: Option<String>,
   #[serde(skip_serializing_if = "Option::is_none")]
   taker_keypair: Option<Keypair>,
+  maker_keypair: Option<Keypair>,
 }
 
 
@@ -64,8 +65,6 @@ pub struct Keypair {
   pub address: String,
   pub pubkey: String,
 }
-
-
 
 use std::sync::RwLock;
 
@@ -150,8 +149,6 @@ pub struct JsOrder {
     pub props: Option<serde_json::Value>,
 }
 
-
-
 #[inline]
 fn order_socket_id(o: &JsOrder) -> Option<String> {
     o.socket_id.clone()
@@ -172,15 +169,14 @@ use hashbrown::HashMap as FastMap;
 #[derive(Default)]
 struct State {
     man: BookManagerStd<()>,
-
     // symbol -> socket -> {engine-id strings}
     by_socket: HashMap<String, FastMap<String, HashSet<String>>>,
-
     // symbol -> external uuid -> engine-id (string form)
     ext2int: HashMap<String, FastMap<String, String>>,
     // symbol -> engine-id (string form) -> external uuid
     int2ext: HashMap<String, FastMap<String, String>>,
-
+    // NEW: global ext-uuid -> keypair map (engine-private)
+    keypair_by_ext: HashMap<String, Keypair>,
     // symbol -> socket -> deque of events (JSON)
     history: HashMap<String, HashMap<String, VecDeque<serde_json::Value>>>,
 }
@@ -552,6 +548,8 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
             fifo.drain(..i);
         }
 
+        let maker_kp = lookup_keypair(&maker_socket_id);
+
         // Build exec slice (taker socket always from sock_id)
         let taker_sock_for_exec = sock_id.clone();
         execs.push(ExecMsg {
@@ -564,6 +562,7 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
             // If your ExecMsg includes these optional fields, uncomment and map them:
             props: order.props.clone(), // requires JsOrder { props: Option<...> }
             taker_keypair: order.keypair.clone(), // requires JsOrder { keypair: Option<...> }
+            maker_keypair: maker_kp, 
             side_of_taker: Some(order.side.clone()), // if you added this to ExecMsg
         });
     }
@@ -638,7 +637,6 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
 
     Ok(serde_json::to_string(&payload).unwrap_or_else(|_| "{}".into()))
 }
-
 
 // ---------- submit_batch ----------
 #[napi]
