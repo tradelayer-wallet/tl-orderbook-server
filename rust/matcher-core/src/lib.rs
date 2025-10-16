@@ -218,6 +218,7 @@ pub fn set_stpf_policy(policy: String) -> bool {
     true
 }
 
+
 // ---------- helpers ----------
 const PRICE_SCALE: f64 = 1e2; // adjust if engine uses a different scale
 #[inline] fn to_price_u64(px: f64) -> u64 { ((px * PRICE_SCALE).round()).max(0.0) as u64 }
@@ -250,6 +251,14 @@ fn to_order_id(s: &str) -> OrderId {
     // fallback: generate a fresh unique ULID so every order has its own engine id
     OrderId::Ulid(ulid::Ulid::new())
 }
+
+fn maker_kp_by_ext(s: &State, maker_ext_uuid: &Option<String>) -> Option<Keypair> {
+  maker_ext_uuid
+    .as_ref()
+    .and_then(|ext| s.keypair_by_ext.get(ext))
+    .cloned()
+}
+
 
 // Find which socket owns a given *string* id for a symbol
 fn socket_owner_of(s: &State, symbol: &str, id_str: &str) -> Option<String> {
@@ -287,7 +296,6 @@ pub fn drop_book(symbol: String) -> bool {
     s.history.remove(&symbol);
     s.man.remove_book(&symbol).is_some()
 }
-
 #[napi]
 pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
     use std::collections::HashMap;
@@ -307,6 +315,11 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
     // CHANGED: scale external float amount to internal u64 satoshis
     let qty     = ((order.amount.max(0.0)) * QTY_SCALE).round() as u64;
     let side    = parse_side(&order.side);
+
+    // IMPORTANT: persist keypair for this external order id (engine-internal)
+    if let Some(ref kp) = order.keypair {
+        s.keypair_by_ext.insert(ext_id.clone(), kp.clone());
+    }
 
     // IMPORTANT: capture socket id once; use everywhere after this.
     // (If you also added `socketId` to JsOrder, change to:
@@ -349,7 +362,7 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
         }
     }
 
-        // ----------------------------------------------------------------
+    // ----------------------------------------------------------------
     // 2) STPF (self-trade prevention) against currently resting makers
     // ----------------------------------------------------------------
     match *STPF_POLICY.lock().unwrap() {
@@ -466,7 +479,10 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
                 }
             }
         }
+        // Also drop the ext->keypair entry for this order to avoid leaks
+        s.keypair_by_ext.remove(&ext_id);
     }
+
     // ----------------------------------------------------------------
     // 5 Maker attribution from snapshot FIFO + taker/maker MATCH logs
     // ----------------------------------------------------------------
@@ -548,7 +564,7 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
             fifo.drain(..i);
         }
 
-        let maker_kp = lookup_keypair(&maker_socket_id);
+        let maker_kp = maker_kp_by_ext(&s, &maker_ext_for_exec);
 
         // Build exec slice (taker socket always from sock_id)
         let taker_sock_for_exec = sock_id.clone();
