@@ -141,6 +141,11 @@ export class SocketManager {
         if (typeof setExecSink === 'function' && typeof sinks.onExecs === 'function') {
           setExecSink((symbol: string, execs: any[] | string) => {
             const payload = safeJson<any[]>(execs, []);
+            if (payload?.length) {
+              // DEBUG: see the actual keys from Rust
+              console.log('[exec keys]', Object.keys(payload[0]));
+              console.log('[raw exec 0]', payload[0]);
+            }
             queueMicrotask(() => sinks.onExecs!(symbol, payload));
           });
           console.log('[sinks] addon exec wired');
@@ -633,105 +638,121 @@ export class SocketManager {
   }
 
   // === Native exec fanout ===
-  private async _handleExecs(
-    marketKey: string,
-    execs: Array<{
-      price: number;
-      quantity: number;
-      maker_socketId?: string; maker_socket_id?: string;
-      taker_socketId?: string; taker_socket_id?: string;
-      maker_ext_uuid?: string;
-      taker_ext_uuid?: string;
-      side_of_taker?: 'BUY' | 'SELL'; sideOfTaker?: 'BUY' | 'SELL';
-      props?: any;
-    }>
-  ) {
-    console.log('[EXEC/IN]', marketKey, Array.isArray(execs) ? execs.length : -1, execs?.[0]);
+private async _handleExecs(
+  marketKey: string,
+  execs: Array<{
+    price: number;
+    quantity: number;
+    maker_socketId?: string; maker_socket_id?: string;
+    taker_socketId?: string; taker_socket_id?: string;
+    maker_ext_uuid?: string;
+    taker_ext_uuid?: string;
+    side_of_taker?: 'BUY' | 'SELL'; sideOfTaker?: 'BUY' | 'SELL';
+    props?: any;
+    taker_keypair?: { address: string; pubkey: string };
+  }>
+) {
+  // Normalize first so logs/use are consistent
+  const normalized = (Array.isArray(execs) ? execs : []).map((raw: any) => {
+    const makerSocketId = raw.maker_socketId ?? raw.maker_socket_id ?? null;
+    const takerSocketId = raw.taker_socketId ?? raw.taker_socket_id ?? null;
+    const makerUuid     = raw.maker_ext_uuid ?? '';
+    const takerUuid     = raw.taker_ext_uuid ?? '';
+    const sideOfTaker   = (raw.side_of_taker ?? raw.sideOfTaker ?? 'BUY') as 'BUY' | 'SELL';
+    const price         = Number(raw.price) || 0;
+    const quantity      = Number(raw.quantity) || 0;
+    const props         = raw.props ?? null;
+    const takerKeypair  = raw.taker_keypair ?? null;
 
-    // Process each exec slice
-    for (const raw of execs as any[]) {
-      try {
-        // normalize field names
-        const makerSock  = raw.maker_socketId ?? raw.maker_socket_id ?? null;
-        const takerSock  = raw.taker_socketId ?? raw.taker_socket_id ?? null;
-        const makerUUID  = raw.maker_ext_uuid ?? '';
-        const takerUUID  = raw.taker_ext_uuid ?? '';
-        const price      = Number(raw.price) || 0;
-        const qty        = Number(raw.quantity) || 0;
-        const sideOfTaker: 'BUY' | 'SELL' = raw.side_of_taker ?? raw.sideOfTaker ?? 'BUY';
-        const props = raw.props || {}
+    // Derive buyer/seller socket ids
+    const buyerSocketId  = sideOfTaker === 'BUY' ? takerSocketId : makerSocketId;
+    const sellerSocketId = sideOfTaker === 'BUY' ? makerSocketId : takerSocketId;
 
-        const buyerSocketId  = sideOfTaker === 'BUY' ? takerSock : makerSock;
-        const sellerSocketId = sideOfTaker === 'BUY' ? makerSock : takerSock;
+    return {
+      price,
+      quantity,
+      makerSocketId,
+      takerSocketId,
+      makerUuid,
+      takerUuid,
+      sideOfTaker,
+      props,
+      takerKeypair,
+      buyerSocketId,
+      sellerSocketId,
+    };
+  });
 
-        if (!buyerSocketId || !sellerSocketId) {
-          console.warn('[EXEC] missing socket ids', { raw, buyerSocketId, sellerSocketId });
-          continue;
-        }
+  console.log('[EXEC/IN]', marketKey, normalized.length, normalized[0]);
 
-        // (optional) session keypairs; if not needed, pass {}
-        const buyerKey = {
-          address: raw.taker_address,
-          pubkey:  raw.taker_pubkey,
-        };
+  // Process each exec slice
+  for (const ex of normalized) {
+    try {
+      const {
+        price, quantity,
+        makerSocketId, takerSocketId,
+        makerUuid, takerUuid,
+        sideOfTaker, props, takerKeypair,
+        buyerSocketId, sellerSocketId,
+      } = ex;
 
-        const sellerKey = {
-          address: raw.maker_address,
-          pubkey:  raw.maker_pubkey,
-        };
-
-        const tradeInfo: ITradeInfo = {
-          type: EOrderType.SPOT, // or infer per market
-          buyer:  { socketId: buyerSocketId,  keypair: buyerKey,  uuid: takerUUID },
-          seller: { socketId: sellerSocketId, keypair: sellerKey, uuid: makerUUID },
-          taker: takerSock ?? '',
-          maker: makerSock ?? '',
-          props: {
-            propIdDesired: props.propIdDesired  ,
-            propIdForSale: props.propIdForSale ,
-            amountDesired: qty,
-            amountForSale: safeNumber(qty * price),
-            price,
-            sellerIsMaker: sideOfTaker === 'BUY',
-          },
-        };
-
-        // If bursts are heavy, bounce to microtask to keep event loop snappy:
-        // queueMicrotask(async () => { await this.newChannel(tradeInfo, null); });
-        const res = await this.newChannel(tradeInfo, null);
-        if (res.error) {
-          console.error('[EXECS→Channel] error', res.error, { marketKey, raw });
-        }
-      } catch (e) {
-        console.error('[EXEC] handler threw', e);
-      }
-    }
-
-    // Per-socket refresh: accept snake_case & camelCase and de-dupe
-    const sockets = new Set<string>();
-    for (const ex of execs as any[]) {
-      const m = ex.maker_socketId ?? ex.maker_socket_id;
-      const t = ex.taker_socketId ?? ex.taker_socket_id;
-      if (m) sockets.add(m);
-      if (t) sockets.add(t);
-    }
-
-    for (const sid of sockets) {
-      const ws = this._liveSessions.get(sid);
-      if (!ws) {
-        console.warn('[EXEC] refresh: missing live session', { sid, marketKey });
+      if (!buyerSocketId || !sellerSocketId) {
+        console.warn('[EXEC] missing socket ids', { raw: ex, buyerSocketId, sellerSocketId });
         continue;
       }
-      try {
-        ws.send(JSON.stringify({
-          event: EmitEvents.UPDATE_ORDERS_REQUEST,
-          marketKey,
-        }));
-      } catch (e) {
-        console.error('[EXEC] refresh send failed', { sid, marketKey, e });
+
+      // Prefer taker_keypair passed from native; leave maker keypair empty unless you pipe it later
+      const buyerKey = takerKeypair ?? { address: undefined, pubkey: undefined };
+      const sellerKey = { address: undefined, pubkey: undefined };
+
+      const tradeInfo: ITradeInfo = {
+        type: EOrderType.SPOT,
+        buyer:  { socketId: buyerSocketId,  keypair: buyerKey,  uuid: takerUuid },
+        seller: { socketId: sellerSocketId, keypair: sellerKey, uuid: makerUuid },
+        taker: takerSocketId ?? '',
+        maker: makerSocketId ?? '',
+        props: {
+          // map through your props as-is (they already arrive normalized by Rust)
+          ...props,
+          amountDesired: quantity,
+          amountForSale: safeNumber(quantity * price),
+          price,
+          sellerIsMaker: sideOfTaker === 'BUY',
+        },
+      };
+
+      const res = await this.newChannel(tradeInfo, null);
+      if (res?.error) {
+        console.error('[EXECS→Channel] error', res.error, { marketKey, exec: ex });
       }
+    } catch (e) {
+      console.error('[EXEC] handler threw', e);
     }
   }
+
+  // Per-socket refresh: accept snake_case & camelCase and de-dupe
+  const sockets = new Set<string>();
+  for (const ex of normalized) {
+    if (ex.makerSocketId) sockets.add(ex.makerSocketId);
+    if (ex.takerSocketId) sockets.add(ex.takerSocketId);
+  }
+
+  for (const sid of sockets) {
+    const ws = this._liveSessions.get(sid);
+    if (!ws) {
+      console.warn('[EXEC] refresh: missing live session', { sid, marketKey });
+      continue;
+    }
+    try {
+      ws.send(JSON.stringify({
+        event: EmitEvents.UPDATE_ORDERS_REQUEST,
+        marketKey,
+      }));
+    } catch (e) {
+      console.error('[EXEC] refresh send failed', { sid, marketKey, e });
+    }
+  }
+}
 
 
   // === Market subscription helpers ===

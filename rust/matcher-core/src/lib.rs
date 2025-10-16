@@ -454,140 +454,113 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
             }
         }
     }
+    // ----------------------------------------------------------------
+    // 5 Maker attribution from snapshot FIFO + taker/maker MATCH logs
+    // ----------------------------------------------------------------
+    let mut maker_slices: Vec<serde_json::Value> = Vec::new();
+    let mut sum_qty = 0f64;
+    let mut sum_notional = 0f64;
 
+    // We'll also build the exec fanout payload here (used in part 6)
+    let mut execs: Vec<ExecMsg> = Vec::new();
 
-            // ----------------------------------------------------------------
-            // 5 Maker attribution from snapshot FIFO + taker/maker MATCH logs
-            // ----------------------------------------------------------------
-            let mut maker_slices: Vec<serde_json::Value> = Vec::new();
-            let mut sum_qty = 0f64;
-            let mut sum_notional = 0f64;
+    for tx in mr.transactions.as_vec().iter() {
+        let px = (tx.price as f64) / PRICE_SCALE;
+        let q  = (tx.quantity as f64) / QTY_SCALE_F64;
+        sum_qty += q;
+        sum_notional += q * px;
 
-            // ---- 6 tab executions after matching ----
-            // (merged here so we can include maker_socket_id & maker_ext_uuid)
-            let mut execs: Vec<ExecMsg> = Vec::new();
+        // taker history
+        if let Some(sock) = sock_id.as_ref() {
+            s.push_hist(&symbol, sock, serde_json::json!({
+                "ts": now, "uuid": ext_id, "side": order.side,
+                "price": px, "qty": q, "event": "MATCH", "role": "taker", "symbol": symbol
+            }));
+        }
 
-            for tx in mr.transactions.as_vec().iter() {
-                let px = (tx.price as f64) / PRICE_SCALE;
-                // CHANGED: convert internal qty (u64) back to external float
-                let q  = (tx.quantity as f64) / QTY_SCALE_F64;
-                sum_qty += q;
-                sum_notional += q * px;
+        // maker-side attribution (per-tx)
+        // also try to discover maker socket + ext uuid for the exec fanout
+        let mut maker_sock_for_exec: Option<String> = None;
+        let mut maker_ext_for_exec:  Option<String> = None;
 
-                // taker history
-                if let Some(sock) = sock_id.as_ref() {
-                    s.push_hist(&symbol, sock, serde_json::json!({
-                        "ts": now, "uuid": ext_id, "side": order.side,
-                        "price": px, "qty": q, "event": "MATCH", "role": "taker", "symbol": symbol
-                    }));
-                }
+        if let Some(fifo) = pre_fifo.get_mut(&tx.price) {
+            let mut want = tx.quantity;
+            let mut i = 0usize;
+            while want > 0 && i < fifo.len() {
+                let (maker_id, rem_val) = { let (id_s, q2) = &fifo[i]; (id_s.clone(), *q2) };
+                let take = want.min(rem_val);
+                if take > 0 {
+                    // find owner socket (if any)
+                    let owner_opt = socket_owner_of(&s, &symbol, &maker_id);
 
-                // maker-side attribution (per-tx) + build execs with maker/taker sockets
-                let mut any_attributed = false;
-                if let Some(fifo) = pre_fifo.get_mut(&tx.price) {
-                    let mut want = tx.quantity;
-                    let mut i = 0usize;
-                    while want > 0 && i < fifo.len() {
-                        let (maker_id, rem_val) = { let (id_s, q2) = &fifo[i]; (id_s.clone(), *q2) };
-                        let take = want.min(rem_val);
-                        if take > 0 {
-                            // skip self
-                            let is_self = sock_id
-                                .as_ref()
-                                .and_then(|sock| socket_owner_of(&s, &symbol, &maker_id).map(|o| o == *sock))
-                                .unwrap_or(false);
+                    // skip self-trade slices for maker_slices log, but still okay for exec fanout
+                    let is_self = sock_id
+                        .as_ref()
+                        .and_then(|sock| owner_opt.as_ref().map(|o| o == sock))
+                        .unwrap_or(false);
 
-                            if !is_self {
-                                // record maker slice
-                                maker_slices.push(serde_json::json!({
-                                    "maker_order_id": maker_id,
-                                    "taker_order_id": format!("{:?}", eng_id),
-                                    "price": px,
-                                    "quantity": (take as f64) / QTY_SCALE_F64,
-                                    "maker": true
-                                }));
-
-                                // maker history (owner)
-                                let maker_sock_opt = socket_owner_of(&s, &symbol, &maker_id);
-                                if let Some(maker_sock) = maker_sock_opt.as_ref() {
-                                    let ext = s.int2ext
-                                        .get(&symbol).and_then(|m| m.get(&maker_id)).cloned().unwrap_or_default();
-                                    s.push_hist(&symbol, maker_sock, serde_json::json!({
-                                        "ts": now, "uuid": ext,
-                                        "side": match order.side.as_str() { "BUY" => "SELL", _ => "BUY" },
-                                        "price": px,
-                                        "qty": (take as f64) / QTY_SCALE_F64,
-                                        "event": "MATCH", "role": "maker", "symbol": symbol
-                                    }));
-
-                                    // exec slice with both sockets + ext uuids
-                                    if let Some(ref taker_sock) = sock_id {
-                                        execs.push(ExecMsg {
-                                        price: px,
-                                        quantity: (take as f64) / QTY_SCALE_F64,
-                                        maker_socket_id: Some(maker_sock.clone()),
-                                        taker_socket_id: Some(taker_sock.clone()),
-                                        maker_ext_uuid: Some(ext),
-                                        taker_ext_uuid: Some(ext_id.clone()),
-                                        // NEW:
-                                        props: order.props.clone(),
-                                        side_of_taker: Some(order.side.clone()),
-                                        taker_keypair: order.keypair.clone(),
-                                        });
-                                    }
-                                } else {
-                                    // maker owner unknown -> emit taker-only slice
-                                    if let Some(ref taker_sock) = sock_id {
-                                        execs.push(ExecMsg {
-                                        price: px,
-                                        quantity: (take as f64) / QTY_SCALE_F64,
-                                        maker_socket_id: None,
-                                        taker_socket_id: Some(taker_sock.clone()),
-                                        maker_ext_uuid: None,
-                                        taker_ext_uuid: Some(ext_id.clone()),
-                                        // NEW:
-                                        props: order.props.clone(),
-                                        side_of_taker: Some(order.side.clone()),
-                                        taker_keypair: order.keypair.clone(),
-                                        });
-                                    }
-                                }
-
-                                any_attributed = true;
-                            }
-
-                            fifo[i].1 -= take;
-                            want -= take;
-                            if fifo[i].1 == 0 { i += 1; } else { break; }
-                        } else { i += 1; }
+                    // capture maker socket/ext for fanout (first attribution is fine)
+                    if maker_sock_for_exec.is_none() {
+                        maker_sock_for_exec = owner_opt.clone();
+                        maker_ext_for_exec = s.int2ext
+                            .get(&symbol).and_then(|m| m.get(&maker_id)).cloned();
                     }
-                    fifo.drain(..i);
-                }
 
-                // fallback: if no maker attribution happened at this price/tx, still emit taker-only
-                if !any_attributed {
-                    if let Some(ref taker_sock) = sock_id {
-                        execs.push(ExecMsg {
-                        price: px,
-                        quantity: q,
-                        maker_socket_id: None,
-                        taker_socket_id: Some(taker_sock.clone()),
-                        maker_ext_uuid: None,
-                        taker_ext_uuid: Some(ext_id.clone()),
-                        // NEW:
-                        props: order.props.clone(),
-                        side_of_taker: Some(order.side.clone()),
-                        taker_keypair: order.keypair.clone(),
-                        });
+                    if !is_self {
+                        maker_slices.push(serde_json::json!({
+                            "maker_order_id": maker_id,
+                            "taker_order_id": format!("{:?}", eng_id),
+                            "price": px,
+                            "quantity": (take as f64) / QTY_SCALE_F64,
+                            "maker": true
+                        }));
+                        if let Some(maker_sock) = owner_opt {
+                            let ext = s.int2ext
+                                .get(&symbol).and_then(|m| m.get(&maker_id)).cloned().unwrap_or_default();
+                            s.push_hist(&symbol, &maker_sock, serde_json::json!({
+                                "ts": now, "uuid": ext,
+                                "side": match order.side.as_str() { "BUY" => "SELL", _ => "BUY" },
+                                "price": px,
+                                "qty": (take as f64) / QTY_SCALE_F64,
+                                "event": "MATCH", "role": "maker", "symbol": symbol
+                            }));
+                        }
                     }
-                }
-            }
 
-            // flush (covers the original “6” section)
-            if !execs.is_empty() {
-                push_execs(&symbol, &execs);
+                    fifo[i].1 -= take;
+                    want -= take;
+                    if fifo[i].1 == 0 { i += 1; } else { break; }
+                } else { i += 1; }
             }
+            fifo.drain(..i);
+        }
 
+        // Build exec slice (taker socket always from sock_id)
+        let taker_sock_for_exec = sock_id.clone();
+        execs.push(ExecMsg {
+            price: px,
+            quantity: q,
+            maker_socket_id: maker_sock_for_exec,
+            taker_socket_id: taker_sock_for_exec,
+            maker_ext_uuid: maker_ext_for_exec,
+            taker_ext_uuid: Some(ext_id.clone()),
+            // If your ExecMsg includes these optional fields, uncomment and map them:
+            props: order.props.clone(), // requires JsOrder { props: Option<...> }
+            taker_keypair: order.keypair.clone(), // requires JsOrder { keypair: Option<...> }
+            side_of_taker: Some(order.side.clone()), // if you added this to ExecMsg
+        });
+    }
+
+    // ----------------------------------------------------------------
+    // 6 Exec fanout after matching
+    // ----------------------------------------------------------------
+    if !execs.is_empty() {
+        // optional: log what's going out
+        if let Ok(json) = serde_json::to_string(&execs) {
+            log_line(format!("[EXECS_JSON_OUT sym={}] {}", symbol, json));
+        }
+        push_execs(&symbol, &execs);
+    }
 
     // ----------------------------------------------------------------
     // 7 Build response payload (+ history summary)
