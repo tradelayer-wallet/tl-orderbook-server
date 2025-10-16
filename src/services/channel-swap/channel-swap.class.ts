@@ -52,7 +52,7 @@ export class ChannelSwap {
   ) {
 
     this.tradeUUID = getTradeUUID(tradeInfo);
-
+    console.log('tradeInfo inside channel swap mgmt '+JSON.stringify(tradeInfo))
     // --- DEDUPLICATION GUARD ---
     if (activeSwaps.has(this.tradeUUID)) {
       console.log(`[SwapGuard] Swap already active for ${this.tradeUUID}, skipping duplicate.`);

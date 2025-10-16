@@ -663,184 +663,193 @@ export class SocketManager {
     }
     this.sendOrderbookSnapshot(ws, mk);
   }
+// === Native exec fanout ===
+private async _handleExecs(
+  marketKey: string,
+  execs: Array<{
+    price: number;
+    quantity: number;
+    maker_socketId?: string; maker_socket_id?: string;
+    taker_socketId?: string; taker_socket_id?: string;
+    maker_ext_uuid?: string;
+    taker_ext_uuid?: string;
+    side_of_taker?: 'BUY' | 'SELL'; sideOfTaker?: 'BUY' | 'SELL';
+    props?: any;
+    taker_keypair?: { address: string; pubkey: string };
+    maker_keypair?: { address: string; pubkey: string };
+  }>
+) {
+  // Normalize first so logs/use are consistent
+  const normalized = (Array.isArray(execs) ? execs : []).map((raw: any) => {
+    const makerSocketId = raw.maker_socketId ?? raw.maker_socket_id ?? null;
+    const takerSocketId = raw.taker_socketId ?? raw.taker_socket_id ?? null;
+    const makerUuid     = raw.maker_ext_uuid ?? '';
+    const takerUuid     = raw.taker_ext_uuid ?? '';
+    const sideOfTaker   = (raw.side_of_taker ?? raw.sideOfTaker ?? 'BUY') as 'BUY' | 'SELL';
+    const price         = Number(raw.price) || 0;          // MATCH price
+    const quantity      = Number(raw.quantity) || 0;
+    const props         = raw.props ?? null;
+    const takerKeypair  = raw.taker_keypair ?? raw.takerKeypair ?? null;
+    const makerKeypair  = raw.maker_keypair ?? raw.makerKeypair ?? null;
 
-  // === Native exec fanout ===
-  private async _handleExecs(
-    marketKey: string,
-    execs: Array<{
-      price: number;
-      quantity: number;
-      maker_socketId?: string; maker_socket_id?: string;
-      taker_socketId?: string; taker_socket_id?: string;
-      maker_ext_uuid?: string;
-      taker_ext_uuid?: string;
-      side_of_taker?: 'BUY' | 'SELL'; sideOfTaker?: 'BUY' | 'SELL';
-      props?: any;
-      taker_keypair?: { address: string; pubkey: string };
-    }>
-  ) {
-    // Normalize first so logs/use are consistent
-    const normalized = (Array.isArray(execs) ? execs : []).map((raw: any) => {
-      const makerSocketId = raw.maker_socketId ?? raw.maker_socket_id ?? null;
-      const takerSocketId = raw.taker_socketId ?? raw.taker_socket_id ?? null;
-      const makerUuid     = raw.maker_ext_uuid ?? '';
-      const takerUuid     = raw.taker_ext_uuid ?? '';
-      const sideOfTaker   = (raw.side_of_taker ?? raw.sideOfTaker ?? 'BUY') as 'BUY' | 'SELL';
-      const price         = Number(raw.price) || 0;          // MATCH price
-      const quantity      = Number(raw.quantity) || 0;
-      const props         = raw.props ?? null;
-      const takerKeypair  = raw.taker_keypair ?? null;
+    // Derive buyer/seller socket ids
+    const buyerSocketId  = sideOfTaker === 'BUY' ? takerSocketId : makerSocketId;
+    const sellerSocketId = sideOfTaker === 'BUY' ? makerSocketId : takerSocketId;
 
-      // Derive buyer/seller socket ids
-      const buyerSocketId  = sideOfTaker === 'BUY' ? takerSocketId : makerSocketId;
-      const sellerSocketId = sideOfTaker === 'BUY' ? makerSocketId : takerSocketId;
+    // Derive: seller is maker iff taker buys
+    const sellerIsMaker = sideOfTaker === 'BUY';
 
-      // Derive: seller is maker iff taker buys
-      const sellerIsMaker = sideOfTaker === 'BUY';
+    // FUTURES detection (server-side convention)
+    const isFutures =
+      props && typeof props === 'object' &&
+      (props.contract_id != null || props.contractId != null);
 
-      // FUTURES detection (server-side convention)
-      const isFutures =
-        props && typeof props === 'object' &&
-        (props.contract_id != null || props.contractId != null);
+    // Enrich props idempotently
+    let nextProps: any;
+    if (props && typeof props === 'object') {
+      nextProps = Object.prototype.hasOwnProperty.call(props, 'sellerIsMaker')
+        ? props
+        : { ...props, sellerIsMaker };
+    } else {
+      nextProps = { sellerIsMaker };
+    }
 
-      // Enrich props idempotently
-      let nextProps: any;
-      if (props && typeof props === 'object') {
-        nextProps = Object.prototype.hasOwnProperty.call(props, 'sellerIsMaker')
-          ? props
-          : { ...props, sellerIsMaker };
-      } else {
-        nextProps = { sellerIsMaker };
+    // Only for FUTURES, attach canonical prices (don’t overwrite if already present)
+    if (isFutures) {
+      const orderPriceNum = Number(nextProps?.price);
+      const orderPrice = Number.isFinite(orderPriceNum) ? orderPriceNum : null;
+      if (!Object.prototype.hasOwnProperty.call(nextProps, 'execPrice'))  nextProps.execPrice  = price;
+      if (!Object.prototype.hasOwnProperty.call(nextProps, 'orderPrice')) nextProps.orderPrice = orderPrice;
+    }
+    
+    return {
+      price,
+      quantity,
+      makerSocketId,
+      takerSocketId,
+      makerUuid,
+      takerUuid,
+      sideOfTaker,
+      props: nextProps,
+      takerKeypair,
+      makerKeypair,                 // <— normalized here
+      buyerSocketId,
+      sellerSocketId,
+      type: isFutures ? EOrderType.FUTURES : EOrderType.SPOT as const,
+    };
+  });
+
+  console.log('[EXEC/IN]', marketKey, normalized.length, normalized[0]);
+
+  // Process each exec slice
+  for (const ex of normalized) {
+    try {
+      const {
+        price, quantity,
+        makerSocketId, takerSocketId,
+        makerUuid, takerUuid,
+        sideOfTaker, props, takerKeypair, makerKeypair,
+        buyerSocketId, sellerSocketId,
+        type,
+      } = ex;
+
+      if (!buyerSocketId || !sellerSocketId) {
+        console.warn('[EXEC] missing socket ids', { raw: ex, buyerSocketId, sellerSocketId });
+        continue;
       }
 
-      // Only for FUTURES, attach canonical prices (don’t overwrite if already present)
-      if (isFutures) {
-        const orderPriceNum = Number(nextProps?.price);
-        const orderPrice = Number.isFinite(orderPriceNum) ? orderPriceNum : null;
-        if (!Object.prototype.hasOwnProperty.call(nextProps, 'execPrice'))  nextProps.execPrice  = price;
-        if (!Object.prototype.hasOwnProperty.call(nextProps, 'orderPrice')) nextProps.orderPrice = orderPrice;
-      }
+      // Keys
+      const buyerKey  = takerKeypair ?? { address: undefined, pubkey: undefined };
+      const sellerKey = makerKeypair ?? { address: undefined, pubkey: undefined };
 
-      return {
-        price,
-        quantity,
-        makerSocketId,
-        takerSocketId,
-        makerUuid,
-        takerUuid,
-        sideOfTaker,
-        props: nextProps,
-        takerKeypair,
-        buyerSocketId,
-        sellerSocketId,
-        type: isFutures ? EOrderType.FUTURES : EOrderType.SPOT as const,
-      };
-    });
+      let tradeProps: any;
 
-    console.log('[EXEC/IN]', marketKey, normalized.length, normalized[0]);
-
-    // Process each exec slice
-    for (const ex of normalized) {
-      try {
-        const {
-          price, quantity,
-          makerSocketId, takerSocketId,
-          makerUuid, takerUuid,
-          sideOfTaker, props, takerKeypair,
-          buyerSocketId, sellerSocketId,
-          type,
-        } = ex;
-
-        if (!buyerSocketId || !sellerSocketId) {
-          console.warn('[EXEC] missing socket ids', { raw: ex, buyerSocketId, sellerSocketId });
-          continue;
+      if (type === EOrderType.FUTURES) {
+        // Ensure we carry contract id in a canonical field
+        const cidRaw = props?.contract_id ?? props?.contractId;
+        const contractId = Number(cidRaw);
+        if (!Number.isFinite(contractId)) {
+          console.warn('[EXEC] FUTURES missing/invalid contract_id', { marketKey, props });
+          continue; // skip malformed
         }
-
-        // Prefer taker_keypair passed from native; leave maker keypair empty unless you pipe it later
-        const buyerKey  = takerKeypair ?? { address: undefined, pubkey: undefined };
-        const sellerKey = { address: undefined, pubkey: undefined };
-
-        let tradeProps: any;
-
-        if (type === EOrderType.FUTURES) {
-          // Ensure we carry contract id in a canonical field
-          const contractId = Number(
-            props?.contract_id ?? props?.contractId
-          );
-          tradeProps = {
-            ...props,
-            // canonical futures fields expected by channel/wallet
-            contract_id: contractId,
-            amount: quantity,
-            price: props?.execPrice ?? price, // exec (match) price drives PnL/fees
-            // initMargin / collateral / transfer are preserved if present in props
-          };
-        } else {
-          // SPOT shape: keep compatibility with existing wallet expectations
-          const idDesired = props?.id_desired ?? props?.idDesired;
-          const idForSale = props?.id_for_sale ?? props?.idForSale;
-          tradeProps = {
-            ...props,
-            id_desired: idDesired,
-            id_for_sale: idForSale,
-            amountDesired: quantity,
-            amountForSale: safeNumber(quantity * price),
-            price,
-          };
-        }
-
-        const tradeInfo: ITradeInfo = {
-          type,
-          buyer:  { socketId: buyerSocketId,  keypair: buyerKey,  uuid: takerUuid },
-          seller: { socketId: sellerSocketId, keypair: sellerKey, uuid: makerUuid },
-          taker: takerSocketId ?? '',
-          maker: makerSocketId ?? '',
-          props: tradeProps,
+        tradeProps = {
+          ...props,
+          // canonical futures fields expected by channel/wallet
+          contract_id: contractId,
+          amount: quantity,
+          price: props?.execPrice ?? price, // exec (match) price drives PnL/fees
+          // initMargin / collateral / transfer are preserved if present in props
         };
-
-        const res = await this.newChannel(tradeInfo, null);
-        if (res?.error) {
-          console.error('[EXECS→Channel] error', res.error, { marketKey, exec: ex });
-        }
-      } catch (e) {
-        console.error('[EXEC] handler threw', e);
-      }
-      
-      // Per-socket refresh: accept snake_case & camelCase and de-dupe
-      const sockets = new Set<string>(
-        (normalized ?? [])
-          .flatMap(ex => [ex.makerSocketId, ex.takerSocketId])
-          .filter((v): v is string => typeof v === 'string' && v.length > 0)
-      );
-
-      // Prebuild payload once
-      let payload = '';
-      try {
-        payload = JSON.stringify({ event: EmitEvents.UPDATE_ORDERS_REQUEST, marketKey });
-      } catch (e) {
-        console.error('[EXEC] refresh: payload stringify failed', { marketKey, e });
-        return; // bail; no point spamming
+      } else {
+        // SPOT shape: keep compatibility with existing wallet expectations
+        const idDesired = props?.id_desired ?? props?.idDesired;
+        const idForSale = props?.id_for_sale ?? props?.idForSale;
+        tradeProps = {
+          ...props,
+          id_desired: idDesired,
+          id_for_sale: idForSale,
+          amountDesired: quantity,
+          amountForSale: safeNumber(quantity * price),
+          price,
+        };
       }
 
-      for (const sid of sockets) {
-        const ws = this._liveSessions.get(sid);
-        if (!ws) {
-          console.warn('[EXEC] refresh: missing live session', { sid, marketKey });
-          continue;
-        }
-        // If using 'ws' lib: ensure OPEN state
-        if (typeof ws.readyState === 'number' && ws.readyState !== ws.OPEN) {
-          console.warn('[EXEC] refresh: socket not OPEN', { sid, state: ws.readyState, marketKey });
-          continue;
-        }
-        try {
-          ws.send(payload);
-        } catch (e) {
-          console.error('[EXEC] refresh send failed', { sid, marketKey, e });
-        }
+      const tradeInfo: ITradeInfo = {
+        type,
+        buyer:  { socketId: buyerSocketId,  keypair: buyerKey,  uuid: takerUuid },
+        seller: { socketId: sellerSocketId, keypair: sellerKey, uuid: makerUuid },
+        taker: takerSocketId ?? '',
+        maker: makerSocketId ?? '',
+        props: tradeProps,
+      };
+
+      console.log('trade info '+JSON.stringify(tradeInfo))
+      const res = await this.newChannel(tradeInfo, null);
+      console.log('channel res '+JSON.stringify(res))
+      if (res?.error) {
+        console.error('[EXECS→Channel] error', res.error, { marketKey, exec: ex });
       }
+    } catch (e) {
+      console.error('[EXEC] handler threw', e);
     }
   }
+
+  // === Per-socket refresh (once per batch) ===
+  const sockets = new Set<string>(
+    (normalized ?? [])
+      .flatMap(ex => [ex.makerSocketId, ex.takerSocketId])
+      .filter((v): v is string => typeof v === 'string' && v.length > 0)
+  );
+
+  let payload = '';
+  try {
+    payload = JSON.stringify({ event: EmitEvents.UPDATE_ORDERS_REQUEST, marketKey });
+  } catch (e) {
+    console.error('[EXEC] refresh: payload stringify failed', { marketKey, e });
+    return;
+  }
+
+  for (const sid of sockets) {
+    const ws = this._liveSessions.get(sid);
+    if (!ws) {
+      console.warn('[EXEC] refresh: missing live session', { sid, marketKey });
+      continue;
+    }
+
+    // Best-effort OPEN check if the impl provides one
+    const rstate = (ws as any)?.readyState;
+    if (typeof rstate === 'number' && rstate !== 1 /* OPEN */) {
+      console.warn('[EXEC] refresh: socket not OPEN', { sid, state: rstate, marketKey });
+      continue;
+    }
+
+    try {
+      ws.send(payload);
+    } catch (e) {
+      console.error('[EXEC] refresh send failed', { sid, marketKey, e });
+    }
+  }
+}
 
   // === Market subscription helpers ===
   private subscribeMarket(socketId: string, marketKey: string, ws: WS) {
