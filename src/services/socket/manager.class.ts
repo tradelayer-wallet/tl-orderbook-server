@@ -98,28 +98,30 @@ export const wireExecSinksStrict = (
 
   // Prefer native
   if (hasNativeExecs && typeof sinks.onExecs === 'function') {
-    setExecSink((symbol: unknown, execs: unknown) => {
-      // Tolerate one known probe: (null, 'SYMBOL')
-      if (symbol == null && typeof execs === 'string') {
+    setExecSink((symbol: string, execsJson: string) => {
+      // legacy probe tolerance still OK but should never hit now
+      // (kept for safety; delete if you want)
+      if ((symbol as any) == null && typeof execsJson === 'string') {
         if (!_loggedProbeOnce) {
-          console.warn('[exec] (null, symbol) probe; ignoring once:', execs);
+          console.warn('[exec] (null, symbol) probe; ignoring once:', execsJson);
           _loggedProbeOnce = true;
         }
         return;
       }
+
       if (typeof symbol !== 'string') {
         throw new Error(`[exec] expected symbol:string, got ${typeof symbol}`);
       }
-      const arr = parseArrayStrict(execs);
-      if (!arr.length) {
-        console.warn('[exec] empty payload for', symbol);
-        return;
+
+      try {
+        const arr = JSON.parse(execsJson);
+        if (Array.isArray(arr) && arr.length) {
+          sinks.onExecs!(symbol, arr);
+        }
+      } catch (e) {
+        console.error('[exec parse error]', e);
       }
-      queueMicrotask(() => sinks.onExecs!(symbol, arr));
     });
-    console.log('[sinks] addon exec wired (STRICT)');
-  } else {
-    console.warn('[sinks] addon exec NOT available; will wire shim if provided');
   }
 
   if (typeof setSnapshotSink === 'function' && typeof sinks.onSnapshot === 'function') {

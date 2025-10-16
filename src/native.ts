@@ -82,9 +82,33 @@ export const native = {
   snapshot: (market: string, levels?: number) =>
     nat.snapshot?.(market, levels ?? 50),
 
-    // sink setters (pass-through to the raw addon)
-  setExecSink: (cb: (symbol: string, execsJson: string) => void) =>
-    (nat as any).setExecSink?.(cb) ?? (nat as any).set_exec_sink?.(cb),
+  // sink setters (ONLY this wrapper changed) 
+  setExecSink: (cb: (symbol: string, execsJson: string) => void) => {
+    const raw = (nat as any).set_exec_sink ?? (nat as any).setExecSink;
+    assertFn(raw, 'set_exec_sink');
+
+    return raw((...args: any[]) => {
+      let err: unknown = null;
+      let symbol: string | undefined;
+      let execsJson: string | undefined;
+
+      if (args.length === 3) {
+        // Node-style: (err, symbol, payload)
+        [err, symbol, execsJson] = args;
+      } else if (args.length === 2) {
+        // Plain: (symbol, payload)
+        [symbol, execsJson] = args;
+      } else {
+        console.error('[exec sink] unexpected arity', args.length, args);
+        return;
+      }
+
+      if (err) { console.error('[exec sink err]', err); return; }
+      if (typeof symbol !== 'string' || typeof execsJson !== 'string') return;
+
+      cb(symbol, execsJson);
+    });
+  },
 
   setSnapshotSink: (cb: (market: string, snapshotJson: string) => void) =>
     (nat as any).setSnapshotSink?.(cb) ?? (nat as any).set_snapshot_sink?.(cb),
@@ -95,24 +119,23 @@ export const native = {
   nativeBuildId: () =>
     (nat as any).nativeBuildId?.(),
 
-    
   get_open_orders_by_socket: (socketId: string, market?: string): string =>
     nat.getOpenOrdersBySocket?.(socketId, market) ?? '[]',
 
   getOrderHistoryBySocket: (socketId: string, market: string, limit?: number): string =>
     (nat as any).getOrderHistoryBySocket?.(market, socketId, limit ?? 200) ?? '[]',
 
-    cancel_all_by_socket: (market: string, socketId: string): number => {
-      const fn = (nat as any).cancelAllBySocket;   // no optional chaining
-      assertFn(fn, 'cancelAllBySocket');
-      return fn(market, socketId);
-    },
+  cancel_all_by_socket: (market: string, socketId: string): number => {
+    const fn = (nat as any).cancelAllBySocket;   // no optional chaining
+    assertFn(fn, 'cancelAllBySocket');
+    return fn(market, socketId);
+  },
 
-    cancel_all_by_socket_global: (socketId: string): number => {
-      const fn = (nat as any).cancelAllBySocketGlobal;  // no optional chaining
-      assertFn(fn, 'cancelAllBySocketGlobal');
-      return fn(socketId);
-    },
+  cancel_all_by_socket_global: (socketId: string): number => {
+    const fn = (nat as any).cancelAllBySocketGlobal;  // no optional chaining
+    assertFn(fn, 'cancelAllBySocketGlobal');
+    return fn(socketId);
+  },
 
   // single ops
   submit: (market: string, order: JsOrder) => {

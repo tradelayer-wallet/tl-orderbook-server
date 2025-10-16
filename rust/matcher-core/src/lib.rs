@@ -75,23 +75,21 @@ static EXECS_SINK: RwLock<Option<ExecSinkType>> = RwLock::new(None);
 
 #[napi]
 pub fn set_exec_sink(env: Env, cb: JsFunction) -> napi::Result<()> {
-  let tsf = cb.create_threadsafe_function(0, |ctx| {
-    match ctx.value {
-      Ok((symbol, payload)) => {
-        let null = ctx.env.get_null()?; // lead with null for (err, ...)
-        Ok(vec![
-          null.into_raw(),
-          ctx.env.create_string(&symbol)?.into_raw(),
-          ctx.env.create_string(&payload)?.into_raw(),
-        ])
-      }
-      Err(e) => Err(e),
-    }
-  })?;
+  // napi v2: <T, V, R> where V = JsUnknown
+  let tsfn: ExecSinkType =
+    env.create_threadsafe_function::<(String, String), JsUnknown, _>(&cb, 0, |ctx| {
+      let (sym, execs_json): (String, String) = ctx.value;
 
-  tsf.unref(&env)?;
-  if let Ok(mut g) = EXECS_SINK.write() { *g = Some(tsf); }
-  log_line("[EXECS_SINK_SET] ok".to_string());
+      let js_sym   = ctx.env.create_string(&sym)?;
+      let js_execs = ctx.env.create_string(&execs_json)?;
+
+      // into_unknown() -> JsUnknown; R must return Vec<JsUnknown>
+      Ok(vec![js_sym.into_unknown(), js_execs.into_unknown()])
+    })?;
+
+  if let Ok(mut guard) = EXECS_SINK.write() {
+    *guard = Some(tsfn);
+  }
   Ok(())
 }
 
