@@ -108,90 +108,94 @@ export class SocketManager {
   private _lastNativeSnap = new Map<string, any>(); // marketKey -> latest snapshot
 
     constructor() {
-      // start periodic broadcaster
-      this._tickHandle = setInterval(() => this.flushOrderbookData(), this._coalesceMs);
+  // start periodic broadcaster
+  this._tickHandle = setInterval(() => this.flushOrderbookData(), this._coalesceMs);
 
-      type Sinks = {
-        onSnapshot?: (market: string, snapshot: any) => void;
-        onExecs?: (market: string, execs: any[]) => void;
-        onOrderEvent?: (ev: any) => void;
-      };
+  type Sinks = {
+    onSnapshot?: (market: string, snapshot: any) => void;
+    onExecs?: (market: string, execs: any[]) => void;
+    onOrderEvent?: (ev: any) => void;
+  };
 
-      let _sinksBound = false;
+  let _sinksBound = false;
 
-      const safeJson = <T,>(v: any, fallback: T): T => {
-        if (v == null) return fallback;
-        if (typeof v === 'string') {
-          try { return JSON.parse(v) as T; } catch { return fallback; }
-        }
-        return v as T;
-      };
-
-      // ---- Wire addon callbacks (exec/snapshot) without shadowing imported registerNativeSinks ----
-      const wireNativeAddonSinks = (sinks: Sinks) => {
-        if (_sinksBound) return;
-        _sinksBound = true;
-
-        const { setExecSink, setSnapshotSink, setOrderEventSink, nativeBuildId } = native as any;
-
-        if (typeof nativeBuildId === 'function') {
-          try { console.log('[native build]', nativeBuildId()); } catch {}
-        }
-
-        if (typeof setExecSink === 'function' && typeof sinks.onExecs === 'function') {
-          setExecSink((symbol: string, execs: any[] | string) => {
-            const payload = safeJson<any[]>(execs, []);
-            if (payload?.length) {
-              // DEBUG: see the actual keys from Rust
-              console.log('[exec keys]', Object.keys(payload[0]));
-              console.log('[raw exec 0]', payload[0]);
-            }
-            queueMicrotask(() => sinks.onExecs!(symbol, payload));
-          });
-          console.log('[sinks] addon exec wired');
-        } else {
-          console.warn('[sinks] addon exec NOT wired');
-        }
-
-        if (typeof setSnapshotSink === 'function' && typeof sinks.onSnapshot === 'function') {
-          setSnapshotSink((symbol: string, snapshot: any | string) => {
-            const obj = safeJson<any>(snapshot, null);
-            if (obj != null) queueMicrotask(() => sinks.onSnapshot!(symbol, obj));
-          });
-          console.log('[sinks] addon snapshot wired');
-        } else {
-          console.warn('[sinks] addon snapshot NOT wired');
-        }
-
-        if (typeof setOrderEventSink === 'function' && typeof sinks.onOrderEvent === 'function') {
-          setOrderEventSink((ev: any | string) => {
-            const obj = safeJson<any>(ev, null);
-            if (obj != null) queueMicrotask(() => sinks.onOrderEvent!(obj));
-          });
-          console.log('[sinks] addon orderEvent wired');
-        }
-      };
-
-      // 1) Wire the native addon sinks (async pushes from Rust threads)
-      wireNativeAddonSinks({
-        onExecs: (symbol, execs) => this._handleExecs(symbol, execs),
-        onSnapshot: (symbol, snapshot) => {
-          this._lastNativeSnap.set(symbol, snapshot);
-          this._dirty.add(symbol);
-        },
-        // onOrderEvent: (ev) => this._handleOrderEvent(ev),
-      });
-
-      // 2) ALSO register the shim sinks so native.submit/submit_batch fanouts work (sync return path)
-      registerNativeSinks({
-        onExecs: (symbol: string, execs: Exec[]) => this._handleExecs(symbol, execs),
-        onSnapshot: (symbol: string, snapshot: any) => {
-          this._lastNativeSnap.set(symbol, snapshot);
-          this._dirty.add(symbol);
-        },
-        // onOrderEvent: (ev) => this._handleOrderEvent(ev),
-      });
+  const safeJson = <T,>(v: any, fallback: T): T => {
+    if (v == null) return fallback;
+    if (typeof v === 'string') {
+      try { return JSON.parse(v) as T; } catch { return fallback; }
     }
+    return v as T;
+  };
+
+  // ---- Wire addon callbacks (exec/snapshot) without shadowing imported registerNativeSinks ----
+  const wireNativeAddonSinks = (sinks: Sinks) => {
+    if (_sinksBound) return;
+    _sinksBound = true;
+
+    const { setExecSink, setSnapshotSink, setOrderEventSink, nativeBuildId } = native as any;
+
+    if (typeof nativeBuildId === 'function') {
+      try { console.log('[native build]', nativeBuildId()); } catch {}
+    }
+
+    if (typeof setExecSink === 'function' && typeof sinks.onExecs === 'function') {
+      setExecSink((symbol: string, execs: any[] | string) => {
+        const payload = safeJson<any[]>(execs, []);
+        if (payload?.length) {
+          // DEBUG: see the actual keys from Rust (should be snake_case)
+          console.log('[exec keys]', Object.keys(payload[0]));
+          console.log('[raw exec 0]', payload[0]);
+        }
+        queueMicrotask(() => sinks.onExecs!(symbol, payload));
+      });
+      console.log('[sinks] addon exec wired');
+    } else {
+      console.warn('[sinks] addon exec NOT wired');
+    }
+
+    if (typeof setSnapshotSink === 'function' && typeof sinks.onSnapshot === 'function') {
+      setSnapshotSink((symbol: string, snapshot: any | string) => {
+        const obj = safeJson<any>(snapshot, null);
+        if (obj != null) queueMicrotask(() => sinks.onSnapshot!(symbol, obj));
+      });
+      console.log('[sinks] addon snapshot wired');
+    } else {
+      console.warn('[sinks] addon snapshot NOT wired');
+    }
+
+    if (typeof setOrderEventSink === 'function' && typeof sinks.onOrderEvent === 'function') {
+      setOrderEventSink((ev: any | string) => {
+        const obj = safeJson<any>(ev, null);
+        if (obj != null) queueMicrotask(() => sinks.onOrderEvent!(obj));
+      });
+      console.log('[sinks] addon orderEvent wired');
+    }
+  };
+
+  // choose exec source once
+  const hasNativeExecs = typeof (native as any)?.setExecSink === 'function';
+  console.log('[sinks] exec source =', hasNativeExecs ? 'native' : 'shim');
+
+  // 1) Wire the native addon sinks (async pushes from Rust threads)
+  wireNativeAddonSinks({
+    onExecs: hasNativeExecs ? (symbol, execs) => this._handleExecs(symbol, execs) : undefined,
+    onSnapshot: (symbol, snapshot) => {
+      this._lastNativeSnap.set(symbol, snapshot);
+      this._dirty.add(symbol);
+    },
+    // onOrderEvent: (ev) => this._handleOrderEvent(ev),
+  });
+
+  // 2) ONLY register the shim execs if native is unavailable
+  registerNativeSinks({
+    onExecs: hasNativeExecs ? undefined : (symbol: string, execs: Exec[]) => this._handleExecs(symbol, execs),
+    onSnapshot: (symbol: string, snapshot: any) => {
+      this._lastNativeSnap.set(symbol, snapshot);
+      this._dirty.add(symbol);
+    },
+    // onOrderEvent: (ev) => this._handleOrderEvent(ev),
+  });
+}
 
     
   // Register a socket with its id
