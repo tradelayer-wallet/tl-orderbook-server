@@ -73,37 +73,56 @@ use std::sync::RwLock;
 type ExecSinkType = ThreadsafeFunction<(String, String)>;
 static EXECS_SINK: RwLock<Option<ExecSinkType>> = RwLock::new(None);
 
-
 #[napi]
 pub fn set_exec_sink(env: Env, cb: JsFunction) -> napi::Result<()> {
-  // napi v2: <T, V, R> where V = JsUnknown
-  let tsfn: ExecSinkType =
-    env.create_threadsafe_function::<(String, String), JsUnknown, _>(&cb, 0, |ctx| {
-      let (sym, execs_json): (String, String) = ctx.value;
+  let tsf = cb.create_threadsafe_function(0, |ctx| {
+    match ctx.value {
+      Ok((symbol, payload)) => {
+        let null = ctx.env.get_null()?; // lead with null for (err, ...)
+        Ok(vec![
+          null.into_raw(),
+          ctx.env.create_string(&symbol)?.into_raw(),
+          ctx.env.create_string(&payload)?.into_raw(),
+        ])
+      }
+      Err(e) => Err(e),
+    }
+  })?;
 
-      let js_sym   = ctx.env.create_string(&sym)?;
-      let js_execs = ctx.env.create_string(&execs_json)?;
-
-      // into_unknown() -> JsUnknown; R must return Vec<JsUnknown>
-      Ok(vec![js_sym.into_unknown(), js_execs.into_unknown()])
-    })?;
-
-  if let Ok(mut guard) = EXECS_SINK.write() {
-    *guard = Some(tsfn);
-  }
+  tsf.unref(&env)?;
+  if let Ok(mut g) = EXECS_SINK.write() { *g = Some(tsf); }
+  log_line("[EXECS_SINK_SET] ok".to_string());
   Ok(())
 }
 
 // small helper to push execs safely (v2 signature)
-fn push_execs(symbol: &str, execs: &[ExecMsg]) {
+
+fn push_execs(symbol: &str, execs: &[ExecMsg]) -> bool {
   let payload = serde_json::to_string(execs).unwrap_or_else(|_| "[]".into());
-  if let Ok(guard) = EXECS_SINK.read() {
-    if let Some(sink) = guard.as_ref() {
-      // v2: wrap in Ok(...)
-      let _ = sink.call(Ok((symbol.to_string(), payload)), ThreadsafeFunctionCallMode::NonBlocking);
+  match EXECS_SINK.read() {
+    Ok(guard) => {
+      if let Some(sink) = guard.as_ref() {
+        let status: Status = sink.call(
+          Ok((symbol.to_string(), payload)),
+          ThreadsafeFunctionCallMode::NonBlocking,
+        );
+        if status != Status::Ok {
+          log_line(format!("[EXECS_SINK_ERR sym={}] status={:?}", symbol, status));
+          return false;
+        }
+        true
+      } else {
+        log_line(format!("[EXECS_SINK_MISS sym={}] no_sink_set", symbol));
+        false
+      }
+    }
+    Err(_) => {
+      log_line(format!("[EXECS_SINK_ERR sym={}] lock_poisoned", symbol));
+      false
     }
   }
 }
+
 
 // ---------- engine ----------
 use orderbook_rs::prelude::{

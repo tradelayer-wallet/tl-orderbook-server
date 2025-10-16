@@ -57,7 +57,105 @@ if (typeof (global as any).queueMicrotask !== 'function') {
   (global as any).queueMicrotask = (fn: () => void) => Promise.resolve().then(fn);
 }
 
+
+
 // --- helpers ---
+// ---- exec/snapshot wiring (strict) ------------------------------------------
+
+type WireSinks = {
+  onExecs?: (symbol: string, execs: any[]) => void;
+  onSnapshot?: (symbol: string, snapshot: any) => void;
+};
+
+const looksLikeJsonArray = (s: unknown) =>
+  typeof s === 'string' && /^\s*\[/.test(s);
+
+const parseArrayStrict = (v: unknown): any[] => {
+  if (Array.isArray(v)) return v;
+  if (looksLikeJsonArray(v)) {
+    return JSON.parse(v as string);
+  }
+  throw new Error(`[exec] expected array (or JSON string array), got ${typeof v}`);
+};
+
+let _loggedProbeOnce = false;
+
+/**
+ * Strictly wire native (preferred) or shim (fallback) exec/snapshot sinks.
+ * Fails loud on wrong types to surface mis-wiring immediately.
+ */
+export const wireExecSinksStrict = (
+  nativeObj: any,
+  registerNativeSinksFn: (s: WireSinks) => void,
+  sinks: WireSinks
+) => {
+  const { setExecSink, setSnapshotSink, nativeBuildId } = nativeObj ?? {};
+  if (typeof nativeBuildId === 'function') {
+    try { console.log('[native build]', nativeBuildId()); } catch {}
+  }
+
+  const hasNativeExecs = typeof setExecSink === 'function';
+
+  // Prefer native
+  if (hasNativeExecs && typeof sinks.onExecs === 'function') {
+    setExecSink((symbol: unknown, execs: unknown) => {
+      // Tolerate one known probe: (null, 'SYMBOL')
+      if (symbol == null && typeof execs === 'string') {
+        if (!_loggedProbeOnce) {
+          console.warn('[exec] (null, symbol) probe; ignoring once:', execs);
+          _loggedProbeOnce = true;
+        }
+        return;
+      }
+      if (typeof symbol !== 'string') {
+        throw new Error(`[exec] expected symbol:string, got ${typeof symbol}`);
+      }
+      const arr = parseArrayStrict(execs);
+      if (!arr.length) {
+        console.warn('[exec] empty payload for', symbol);
+        return;
+      }
+      queueMicrotask(() => sinks.onExecs!(symbol, arr));
+    });
+    console.log('[sinks] addon exec wired (STRICT)');
+  } else {
+    console.warn('[sinks] addon exec NOT available; will wire shim if provided');
+  }
+
+  if (typeof setSnapshotSink === 'function' && typeof sinks.onSnapshot === 'function') {
+    setSnapshotSink((symbol: unknown, snapshot: unknown) => {
+      if (typeof symbol !== 'string') {
+        throw new Error(`[snapshot] expected symbol:string, got ${typeof symbol}`);
+      }
+      const obj = typeof snapshot === 'string' ? JSON.parse(snapshot) : snapshot;
+      queueMicrotask(() => sinks.onSnapshot!(symbol, obj));
+    });
+    console.log('[sinks] addon snapshot wired (STRICT)');
+  }
+
+  // Fallback shim only if native exec sink is missing
+  if (!hasNativeExecs) {
+    registerNativeSinksFn({
+      onExecs: (symbol: unknown, execs: unknown) => {
+        if (typeof symbol !== 'string') {
+          throw new Error(`[shim exec] expected symbol:string, got ${typeof symbol}`);
+        }
+        const arr = parseArrayStrict(execs);
+        queueMicrotask(() => sinks.onExecs?.(symbol, arr));
+      },
+      onSnapshot: (symbol: unknown, snapshot: unknown) => {
+        if (typeof symbol !== 'string') {
+          throw new Error(`[shim snap] expected symbol:string, got ${typeof symbol}`);
+        }
+        const obj = typeof snapshot === 'string' ? JSON.parse(snapshot) : snapshot;
+        queueMicrotask(() => sinks.onSnapshot?.(symbol, obj));
+      },
+    });
+    console.log('[sinks] shim exec/snapshot wired (STRICT)');
+  }
+};
+
+
 function parseMaybeJson<T = any>(x: unknown, fallback: T): T {
   if (x == null) return fallback;
   if (typeof x !== 'string') return x as T;
@@ -107,96 +205,19 @@ export class SocketManager {
   private _tickHandle: NodeJS.Timeout | null = null;
   private _lastNativeSnap = new Map<string, any>(); // marketKey -> latest snapshot
 
-    constructor() {
-  // start periodic broadcaster
-  this._tickHandle = setInterval(() => this.flushOrderbookData(), this._coalesceMs);
+  constructor() {
+    // periodic broadcaster
+    this._tickHandle = setInterval(() => this.flushOrderbookData(), this._coalesceMs);
 
-  type Sinks = {
-    onSnapshot?: (market: string, snapshot: any) => void;
-    onExecs?: (market: string, execs: any[]) => void;
-    onOrderEvent?: (ev: any) => void;
-  };
-
-  let _sinksBound = false;
-
-  const safeJson = <T,>(v: any, fallback: T): T => {
-    if (v == null) return fallback;
-    if (typeof v === 'string') {
-      try { return JSON.parse(v) as T; } catch { return fallback; }
-    }
-    return v as T;
-  };
-
-  // ---- Wire addon callbacks (exec/snapshot) without shadowing imported registerNativeSinks ----
-  const wireNativeAddonSinks = (sinks: Sinks) => {
-    if (_sinksBound) return;
-    _sinksBound = true;
-
-    const { setExecSink, setSnapshotSink, setOrderEventSink, nativeBuildId } = native as any;
-
-    if (typeof nativeBuildId === 'function') {
-      try { console.log('[native build]', nativeBuildId()); } catch {}
-    }
-
-    if (typeof setExecSink === 'function' && typeof sinks.onExecs === 'function') {
-      setExecSink((symbol: string, execs: any[] | string) => {
-        const payload = safeJson<any[]>(execs, []);
-        if (payload?.length) {
-          // DEBUG: see the actual keys from Rust (should be snake_case)
-          console.log('[exec keys]', Object.keys(payload[0]));
-          console.log('[raw exec 0]', payload[0]);
-        }
-        queueMicrotask(() => sinks.onExecs!(symbol, payload));
-      });
-      console.log('[sinks] addon exec wired');
-    } else {
-      console.warn('[sinks] addon exec NOT wired');
-    }
-
-    if (typeof setSnapshotSink === 'function' && typeof sinks.onSnapshot === 'function') {
-      setSnapshotSink((symbol: string, snapshot: any | string) => {
-        const obj = safeJson<any>(snapshot, null);
-        if (obj != null) queueMicrotask(() => sinks.onSnapshot!(symbol, obj));
-      });
-      console.log('[sinks] addon snapshot wired');
-    } else {
-      console.warn('[sinks] addon snapshot NOT wired');
-    }
-
-    if (typeof setOrderEventSink === 'function' && typeof sinks.onOrderEvent === 'function') {
-      setOrderEventSink((ev: any | string) => {
-        const obj = safeJson<any>(ev, null);
-        if (obj != null) queueMicrotask(() => sinks.onOrderEvent!(obj));
-      });
-      console.log('[sinks] addon orderEvent wired');
-    }
-  };
-
-  // choose exec source once
-  const hasNativeExecs = typeof (native as any)?.setExecSink === 'function';
-  console.log('[sinks] exec source =', hasNativeExecs ? 'native' : 'shim');
-
-  // 1) Wire the native addon sinks (async pushes from Rust threads)
-  wireNativeAddonSinks({
-    onExecs: hasNativeExecs ? (symbol, execs) => this._handleExecs(symbol, execs) : undefined,
-    onSnapshot: (symbol, snapshot) => {
-      this._lastNativeSnap.set(symbol, snapshot);
-      this._dirty.add(symbol);
-    },
-    // onOrderEvent: (ev) => this._handleOrderEvent(ev),
-  });
-
-  // 2) ONLY register the shim execs if native is unavailable
-  registerNativeSinks({
-    onExecs: hasNativeExecs ? undefined : (symbol: string, execs: Exec[]) => this._handleExecs(symbol, execs),
-    onSnapshot: (symbol: string, snapshot: any) => {
-      this._lastNativeSnap.set(symbol, snapshot);
-      this._dirty.add(symbol);
-    },
-    // onOrderEvent: (ev) => this._handleOrderEvent(ev),
-  });
-}
-
+    // wire sinks (native preferred, shim fallback)
+    wireExecSinksStrict(native as any, registerNativeSinks, {
+      onExecs: (symbol, execs) => this._handleExecs(symbol, execs),
+      onSnapshot: (symbol, snapshot) => {
+        this._lastNativeSnap.set(symbol, snapshot);
+        this._dirty.add(symbol);
+      }
+    });
+  }
     
   // Register a socket with its id
   add(id: string, ws: WS) {
