@@ -695,6 +695,17 @@ private async _handleExecs(
     const buyerSocketId  = sideOfTaker === 'BUY' ? takerSocketId : makerSocketId;
     const sellerSocketId = sideOfTaker === 'BUY' ? makerSocketId : takerSocketId;
 
+    // Derive: seller is maker iff taker buys
+    const sellerIsMaker = sideOfTaker === 'BUY';
+
+    // Enrich props idempotently
+    const nextProps =
+      props && typeof props === 'object'
+        ? (Object.prototype.hasOwnProperty.call(props, 'sellerIsMaker')
+            ? props
+            : { ...props, sellerIsMaker })
+        : { sellerIsMaker };
+
     return {
       price,
       quantity,
@@ -703,7 +714,7 @@ private async _handleExecs(
       makerUuid,
       takerUuid,
       sideOfTaker,
-      props,
+      props: nextProps,
       takerKeypair,
       buyerSocketId,
       sellerSocketId,
