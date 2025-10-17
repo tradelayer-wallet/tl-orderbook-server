@@ -53,6 +53,7 @@ export class ChannelSwap {
 
     this.tradeUUID = getTradeUUID(tradeInfo);
     console.log('tradeInfo inside channel swap mgmt '+JSON.stringify(tradeInfo))
+    console.log('checking websocket objects '+JSON.stringify(client)+' '+JSON.stringify(dealer))
     // --- DEDUPLICATION GUARD ---
     if (activeSwaps.has(this.tradeUUID)) {
       console.log(`[SwapGuard] Swap already active for ${this.tradeUUID}, skipping duplicate.`);
@@ -83,7 +84,7 @@ export class ChannelSwap {
     this.monitorTerminalEvents();
 
     const trade = { tradeInfo: this.tradeInfo, unfilled: this.unfilled };
-
+    console.log('channel config '+this.buyerId)
     // Send 'new-channel' to each side
     this.clientMgr.emit('new-channel', {
       ...trade,
