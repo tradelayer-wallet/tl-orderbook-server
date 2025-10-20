@@ -788,10 +788,7 @@ export class SocketManager {
           // SPOT shape: keep compatibility with existing wallet expectations
           const idDesired = props?.id_desired ?? props?.idDesired;
           const idForSale = props?.id_for_sale ?? props?.idForSale;
-          const amountDesired = 
-          if(idForSale==0){
-
-          }
+          
           tradeProps = {
             ...props,
             propIdDesired: idDesired,
