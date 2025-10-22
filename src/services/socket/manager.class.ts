@@ -648,22 +648,64 @@ export class SocketManager {
     }
   }
 
+  // === Update snapshot request ===
   private handleUpdateOrderbook(ws: WS, data: any) {
-    // accept: {marketKey}, or {filter:{marketKey}}, or {symbol}
-    const mk = String(data.marketKey || data.symbol || '') || '';
+    // Accept: {marketKey}, {symbol}, {filter:{...}}, or flat fields
+    const payload = (data && typeof data === 'object') ? data : {};
+    const filter  = (payload.filter && typeof payload.filter === 'object') ? payload.filter : payload;
+
+    // Prefer explicit on-wire key first
+    let mk: string | undefined =
+      (typeof payload.marketKey === 'string' && payload.marketKey) ||
+      (typeof payload.symbol === 'string' && payload.symbol)     ||
+      undefined;
+
+    // Try to derive when not provided
     if (!mk) {
-      ws.send(
-        JSON.stringify({
-          event: EmitEvents.ORDERBOOK_DATA,
-          orders: [],
-          history: [],
-        })
-      );
+      const type = String(filter.type || payload.type || '').toUpperCase();
+
+      if (type === 'SPOT') {
+        // tolerate several field names
+        const a = Number(filter.first_token ?? filter.base ?? filter.id_for_sale ?? filter.pair?.[0]);
+        const b = Number(filter.second_token ?? filter.quote ?? filter.id_desired ?? filter.pair?.[1]);
+        if (Number.isFinite(a) && Number.isFinite(b)) {
+          const base  = Math.min(a, b);
+          const quote = Math.max(a, b);
+          mk = `${base}-${quote}`;
+        }
+      } else if (type === 'FUTURES') {
+        const cid = Number(filter.contract_id ?? filter.id ?? payload.contract_id ?? payload.id);
+        if (Number.isFinite(cid)) {
+          mk = `${cid}-perp`;
+        }
+      }
+
+      // Last chance: if a legacy marketKey/symbol is lurking inside filter
+      if (!mk && typeof filter.marketKey === 'string') mk = filter.marketKey;
+      if (!mk && typeof filter.symbol    === 'string') mk = filter.symbol;
+    }
+
+    // Depth handling (accept string/number anywhere)
+    const rawDepth = filter.depth ?? payload.depth;
+    const depth = Number.isFinite(Number(rawDepth)) ? Number(rawDepth) : 50;
+    console.log('inside handle orderbook update '+mk)
+    if (!mk) {
+      // No way to resolve — reply with an empty snapshot object (FE renders this shape)
+      ws.send(JSON.stringify({
+        event: EmitEvents.ORDERBOOK_DATA,
+        marketKey: '',
+        orders: { symbol: '', timestamp: Date.now(), bids: [], asks: [], checksum: '' },
+        isDelta: false,
+        openedOrders: [],
+        history: [],
+      }));
       return;
     }
-    this.sendOrderbookSnapshot(ws, mk);
+
+    // Emit a fresh snapshot right away
+    this.sendOrderbookSnapshot(ws, mk, depth);
   }
-    
+
   // === Native exec fanout ===
   private async _handleExecs(
     marketKey: string,
@@ -788,7 +830,7 @@ export class SocketManager {
           // SPOT shape: keep compatibility with existing wallet expectations
           const idDesired = props?.id_desired ?? props?.idDesired;
           const idForSale = props?.id_for_sale ?? props?.idForSale;
-          
+
           tradeProps = {
             ...props,
             propIdDesired: idDesired,
@@ -916,63 +958,93 @@ private ensureSocketMarketIndex(socketId: string, marketKey: string) {
       } catch {}
     }
   }
+// === Snapshots/opened tray ===
+private sendOrderbookSnapshot(ws: WS, marketKey: string, depth = 50) {
+  // Scales — tune if your engine uses different scaling
+  const PRICE_SCALE = 100;      // 100 -> price=1.00, 10000 -> 100.00
+  const QTY_SCALE   = 1e8;      // 10_000_000 -> 0.1
 
-    // === Snapshots/opened tray ===
-  private sendOrderbookSnapshot(ws: WS, marketKey: string, depth = 50) {
-    if (!marketKey) {
-      ws.send(JSON.stringify({
-        event: EmitEvents.ORDERBOOK_DATA,
-        orders: [],
-        isDelta: false,
-        history: [],
-      }));
-      return;
-    }
-
-    try {
-      const snapRaw = (native as any).snapshot?.(marketKey, depth);
-      const snapObj = parseMaybeJson<any>(snapRaw, null);
-      const orders = normalizeSnapshotToRows(snapObj, /* PRICE_SCALE */ 100);
-
-      // Opened orders tray (support both arg orders just in case)
-      const socketId = (ws as any).id as string;
-      let opened: any[] = [];
-      try {
-        if (typeof (native as any).get_open_orders_by_socket === 'function') {
-          // try (sid, market) first
-          let openedRaw = (native as any).get_open_orders_by_socket(socketId, marketKey);
-          if (!Array.isArray(openedRaw)) {
-            // some builds are (market, sid)
-            openedRaw = (native as any).get_open_orders_by_socket(marketKey, socketId);
-          }
-          opened = Array.isArray(openedRaw) ? openedRaw : [];
-        }
-      } catch {}
-
-      const payload = {
-        event: EmitEvents.ORDERBOOK_DATA,
-        marketKey,
-        orders,           // <-- always present, [] when empty
-        isDelta: false,
-        openedOrders: opened,
-        history: [],
+  const levelsFrom = (arr: any[] | undefined) => {
+    return (arr ?? []).map(l => {
+      // prefer visible_quantity; fall back to amount if present
+      const rawQty = l.visible_quantity ?? l.amount ?? 0;
+      return {
+        price: Number(l.price) / PRICE_SCALE,
+        amount: Math.abs(Number(rawQty)) / QTY_SCALE,
+        count: Number(l.order_count ?? l.count ?? 0),
       };
+    })
+    .filter(x => isFinite(x.price) && isFinite(x.amount) && x.price > 0 && x.amount > 0);
+  };
 
-      // send to caller
-      ws.send(JSON.stringify(payload));
-      // and to anyone joined on this market (so all views update)
-      this.broadcastToMarket(marketKey, payload);
-
-    } catch {
-      ws.send(JSON.stringify({
-        event: EmitEvents.ORDERBOOK_DATA,
-        marketKey,
-        orders: [],
-        isDelta: false,
-        history: [],
-      }));
-    }
+  if (!marketKey) {
+    const payload = {
+      event: EmitEvents.ORDERBOOK_DATA,
+      marketKey: '',
+      orders: { symbol: '', timestamp: Date.now(), bids: [], asks: [], checksum: '' },
+      isDelta: false,
+      openedOrders: [],
+      history: [],
+    };
+    ws.send(JSON.stringify(payload));
+    return;
   }
+
+  try {
+    // 1) Pull engine snapshot
+    const snapRaw = (native as any).snapshot?.(marketKey, depth);
+    const snapObj = parseMaybeJson<any>(snapRaw, null);
+
+    // 2) Coerce to the FE’s L2 shape directly
+    const core = snapObj?.snapshot ?? snapObj ?? {};
+    const symbol    = core?.symbol ?? marketKey;
+    const timestamp = Number(core?.timestamp ?? Date.now());
+    const checksum  = String(snapObj?.checksum ?? core?.checksum ?? '');
+
+    const bids = levelsFrom(core?.bids);
+    const asks = levelsFrom(core?.asks);
+
+    // 3) Opened orders tray (leave exactly as you had it)
+    const socketId = (ws as any).id as string;
+    let opened: any[] = [];
+    try {
+      if (typeof (native as any).get_open_orders_by_socket === 'function') {
+        let openedRaw = (native as any).get_open_orders_by_socket(socketId, marketKey);
+        if (!Array.isArray(openedRaw)) {
+          openedRaw = (native as any).get_open_orders_by_socket(marketKey, socketId);
+        }
+        opened = Array.isArray(openedRaw) ? openedRaw : [];
+      }
+    } catch {}
+
+    const payload = {
+      event: EmitEvents.ORDERBOOK_DATA,
+      marketKey,
+      orders: { symbol, timestamp, bids, asks, checksum }, // <-- L2 object your FE already renders
+      isDelta: false,
+      openedOrders: opened,
+      history: [],
+    };
+
+    // 4) Send exactly once.
+    //    EITHER: send only to this client:
+    ws.send(JSON.stringify(payload));
+
+    //    OR: broadcast to room WITHOUT echoing back to this socket (if your broadcast supports excluding sender).
+    // this.broadcastToMarketExcept(ws, marketKey, payload);
+
+  } catch {
+    const payload = {
+      event: EmitEvents.ORDERBOOK_DATA,
+      marketKey,
+      orders: { symbol: marketKey, timestamp: Date.now(), bids: [], asks: [], checksum: '' },
+      isDelta: false,
+      openedOrders: [],
+      history: [],
+    };
+    ws.send(JSON.stringify(payload));
+  }
+}
 
   // === WS lifecycle ===
   private handleClose(ws: WS) {
@@ -1035,21 +1107,26 @@ private ensureSocketMarketIndex(socketId: string, marketKey: string) {
 
     console.log('sweepOrders markets', list.length, list);
 
+    const global = (native as any).cancel_all_by_socket_global;
+  if (typeof global === 'function') {
     try {
-      for (const mk of list) {
-        console.log('about to cancel all '+mk+' '+id)
-        console.log('[native keys]', Object.keys(native));
-        console.log(
-          '[typeof cancel_all_by_socket_global]',
-          typeof (native as any).cancel_all_by_socket_global
-        );
-
-        const res = this.callPerMarket(mk, id);
-        console.log('res '+res)
-      }
+      const r = global(id);
+      console.log('[sweep] cancel_all_by_socket_global(', id, ') ->', r);
     } catch (e) {
-      console.warn('[ws close purge err]', e);
+      console.warn('[sweep] global cancel failed', e);
     }
+    // 🔁 short delayed retry to catch races
+    setTimeout(() => {
+      try {
+        const r2 = (native as any).cancel_all_by_socket_global?.(id);
+        console.log('[sweep] delayed global retry(', id, ') ->', r2);
+      } catch (e) {
+        console.warn('[sweep] delayed global retry failed', e);
+      }
+    }, 200);
+  } else {
+    console.warn('[sweep] global cancel not available on native');
+  }
 
     // NEW: broadcast a fresh snapshot to all subs for each market
     for (const mk of list) {
