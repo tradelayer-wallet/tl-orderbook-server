@@ -1182,13 +1182,87 @@ private sendOrderbookSnapshot(ws: WS, marketKey: string, depth = 50) {
       return null;
     }
 
+    /** Return a canonical market key for any inbound payload shape. */
     private resolveMarket(data: any): string | null {
-      const mk =
-        data?.marketKey ??
-        data?.filter?.marketKey ??
-        this.deriveMarketFromOrder(data);
-      if (mk) return mk;
+
+      // 1) If this is a close-order envelope, be lenient with fields
+      const evt = data?.event ?? data?.type ?? '';
+      if (String(evt) === 'close-order') {
+        // FUTURES: contract id (+ optional expiry/maturity)
+        const cid =
+          data?.contract_id ?? data?.contractId ??
+          data?.props?.contract_id ?? data?.props?.contractId ??
+          data?.order?.contract_id ?? data?.order?.contractId ??
+          data?.payload?.contract_id ?? data?.payload?.contractId;
+
+        const exp =
+          data?.expiry ?? data?.maturity_block ??
+          data?.props?.expiry ?? data?.props?.maturity_block ??
+          data?.order?.expiry ?? data?.order?.maturity_block ??
+          data?.payload?.expiry ?? data?.payload?.maturity_block;
+
+        if (cid != null && this.futKey) {
+          const fut = this.futKey(cid, exp);
+          if (fut) return fut;
+        }
+
+        // SPOT: id_for_sale + id_desired
+        const f =
+          data?.id_for_sale ?? data?.props?.id_for_sale ??
+          data?.order?.id_for_sale ?? data?.payload?.id_for_sale;
+        const d =
+          data?.id_desired ?? data?.props?.id_desired ??
+          data?.order?.id_desired ?? data?.payload?.id_desired;
+
+        if (f != null && d != null && this.spotKeyFromIds) {
+          const spot = this.spotKeyFromIds(f, d);
+          if (spot) return spot;
+        }
+      }
+
+        const direct =
+            data?.marketKey ??
+            data?.filter?.marketKey ??
+            this.deriveMarketFromOrder?.(data);
+          if (direct) return String(direct);
+
+      // 3) Generic inference for non-close frames (or missed fields)
+      const o = data?.order ?? data?.payload ?? data;
+
+      // FUTURES from nested props
+      const cid2 = o?.props?.contract_id ?? o?.props?.contractId ?? o?.contract_id ?? o?.contractId;
+      const exp2 = o?.props?.expiry ?? o?.props?.maturity_block ?? o?.expiry ?? o?.maturity_block;
+      if (cid2 != null && this.futKey) {
+        const fut = this.futKey(cid2, exp2);
+        if (fut) return fut;
+      }
+
+      // SPOT from nested ids
+      const f2 = o?.props?.id_for_sale ?? o?.id_for_sale;
+      const d2 = o?.props?.id_desired ?? o?.id_desired;
+      if (f2 != null && d2 != null && this.spotKeyFromIds) {
+        const spot = this.spotKeyFromIds(f2, d2);
+        if (spot) return spot;
+      }
+
+      // 4) Symbol fallback (ensure -perp for futures-like symbols)
+      const sym = data?.symbol ?? o?.symbol;
+      if (sym) return this.ensurePerpSymbol(sym);
+
+      return null;
     }
+
+  /** Ensure a futures-like symbol is canonicalized (adds -perp when appropriate). */
+  private ensurePerpSymbol(sym: any): string {
+    const s = String(sym ?? '').trim();
+    if (!s) return s;
+    if (/-perp\b/i.test(s)) return s;
+    // "3", "BTC-USD", or multi-dash codes are treated as futures-like and get -perp
+    const isNumeric = /^\d+$/u.test(s);
+    const multiDash = (s.match(/-/g) || []).length >= 1;
+    return (isNumeric || multiDash) ? `${s}-perp` : s;
+  }
+
 
   private normalizeOrder(raw: any, socketId: string): NormalizedOrder {
     const o: any = { ...(raw?.order ?? raw) };
