@@ -851,11 +851,7 @@ export class SocketManager {
         };
 
         console.log('trade info '+JSON.stringify(tradeInfo))
-        const res = await this.newChannel(tradeInfo, null);
-        console.log('channel res '+JSON.stringify(res))
-        if (res?.error) {
-          console.error('[EXECS→Channel] error', res.error, { marketKey, exec: ex });
-        }
+        const res = this.newChannel(tradeInfo, null);
       } catch (e) {
         console.error('[EXEC] handler threw', e);
       }
