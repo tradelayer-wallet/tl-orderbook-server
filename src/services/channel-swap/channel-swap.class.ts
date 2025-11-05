@@ -25,9 +25,11 @@ function getTradeUUID(tradeInfo: ITradeInfo): string {
 
 function shouldProcessStep(tradeUUID: string, socketId: string, eventName: string): boolean {
   const key = `${tradeUUID}:${socketId}:${eventName}`;
+  console.log('inside should process step '+key+' '+completedSteps.has(key))
   if (completedSteps.has(key)) return false;
   completedSteps.add(key);
   return true;
+  
 }
 
 function cleanUpStepsForTrade(tradeUUID: string) {
