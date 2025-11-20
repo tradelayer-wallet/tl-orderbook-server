@@ -29,7 +29,6 @@ function shouldProcessStep(tradeUUID: string, socketId: string, eventName: strin
   if (completedSteps.has(key)) return false;
   completedSteps.add(key);
   return true;
-  
 }
 
 function cleanUpStepsForTrade(tradeUUID: string) {
@@ -111,7 +110,10 @@ export class ChannelSwap {
         console.log(`[SwapGuard] client step ${eventName} already handled for ${this.tradeUUID}`);
         return;
       }
-    const payload = new SwapEvent(eventName, (this.client as any).id, raw.data ?? raw);
+    const payload = new SwapEvent(eventName, socketId, {
+        ...raw.data,
+        tradeUUID: this.tradeUUID
+    });
     console.log('[Relay] client → dealer', clientSwapEvt, JSON.stringify(payload));
     this.dealerMgr.emit(clientSwapEvt, payload);
   });

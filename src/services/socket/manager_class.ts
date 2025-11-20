@@ -57,8 +57,6 @@ if (typeof (global as any).queueMicrotask !== 'function') {
   (global as any).queueMicrotask = (fn: () => void) => Promise.resolve().then(fn);
 }
 
-
-
 // --- helpers ---
 // ---- exec/snapshot wiring (strict) ------------------------------------------
 
@@ -220,6 +218,37 @@ export class SocketManager {
       }
     });
   }
+
+  /** 
+   * Network-aware market key builder
+   * Appends network suffix to market key before passing to Rust
+   * Examples: "5-4" + "LTCTEST" -> "5-4-LTCTEST"
+   *           "BTC-USD-perp" + "MAINNET" -> "BTC-USD-perp-MAINNET"
+   */
+  private makeInternalKey(market: string, network?: string): string {
+    if (!network) return market;
+    const suffix = network.toUpperCase();
+    return `${market}-${suffix}`;
+  }
+
+  /**
+   * Extract base market and network from internal key
+   * Examples: "5-4-LTCTEST" -> { market: "5-4", network: "LTCTEST" }
+   *           "BTC-USD-perp-MAINNET" -> { market: "BTC-USD-perp", network: "MAINNET" }
+   */
+  private parseInternalKey(internalKey: string): { market: string; network?: string } {
+    // Known network suffixes (add more as needed)
+    const knownNetworks = ['MAINNET', 'TESTNET', 'SIGNET', 'LTCTEST', 'REGTEST'];
+    
+    for (const net of knownNetworks) {
+      if (internalKey.endsWith(`-${net}`)) {
+        const market = internalKey.slice(0, -(net.length + 1));
+        return { market, network: net };
+      }
+    }
+    
+    return { market: internalKey, network: undefined };
+  }
     
   // Register a socket with its id
   add(id: string, ws: WS) {
@@ -333,7 +362,9 @@ export class SocketManager {
       }
       case OnEvents.AMEND_ORDER: {
       const uuid  = String(data.orderUUID || data.orderUuid || data.uuid || '');
+      const network = data.network;
       const mk    = this.resolveMarket(data);
+      const internalKey = this.makeInternalKey(mk, network);
       const newQty = data.newAmount ?? data.newQty;
       const newPx  = data.newPrice;
 
@@ -346,10 +377,10 @@ export class SocketManager {
       }
 
       try {
-        native.init_market?.(mk);
+        native.init_market?.(internalKey);
         // pass undefined for fields you aren't changing
         native.edit(
-          mk,
+          internalKey,
           uuid,
           newQty != null ? Number(newQty) : undefined,
           newPx  != null ? Number(newPx)  : undefined
@@ -365,7 +396,7 @@ export class SocketManager {
         }));
 
         // nudge clients to refresh the book / opened orders
-        this.broadcastToMarket(mk, { event: EmitEvents.UPDATE_ORDERS_REQUEST, marketKey: mk });
+        this.broadcastToMarket(internalKey, { event: EmitEvents.UPDATE_ORDERS_REQUEST, marketKey: mk });
       } catch (e: any) {
         ws.send(JSON.stringify({ event: OrderEmitEvents.ERROR, message: e?.message || 'amend failed' }));
       }
@@ -373,13 +404,15 @@ export class SocketManager {
     }
 
       case OnEvents.ORDERBOOK_JOIN: {
+        const network = data.network;
         const mk = this.resolveMarket(data)
-        if (mk) this.subscribeMarket((ws as any).id, mk, ws);
+        if (mk) this.subscribeMarket((ws as any).id, mk, ws, network);
         break;
       }
       case OnEvents.ORDERBOOK_LEAVE: {
+        const network = data.network;
         const mk = String(data.marketKey ?? '') || '';
-        if (mk) this.unsubscribeMarket((ws as any).id, mk);
+        if (mk) this.unsubscribeMarket((ws as any).id, mk, network);
         break;
       }
       case OnEvents.DISCONNECT: {
@@ -402,6 +435,9 @@ export class SocketManager {
       }));
       return;
     }
+
+    // Extract network early
+    const network = data.network || data.order?.network;
 
     // --- FUTURES normalization ---
     if (data?.type === 'FUTURES' && data?.props) {
@@ -438,7 +474,11 @@ export class SocketManager {
     // 🧭 2. Resolve market
     const sid = (ws as any).id as string;
     const market = this.resolveMarket(data);
-    this.ensureSocketMarketIndex(sid, market);
+    
+    // Create internal key with network suffix
+    const internalKey = this.makeInternalKey(market, network);
+    this.ensureSocketMarketIndex(sid, internalKey);
+    
     if (!market) {
       ws.send(JSON.stringify({
         event: OrderEmitEvents.ERROR,
@@ -460,16 +500,16 @@ export class SocketManager {
         orderUuid: order.uuid
       }));
 
-      // 🔧 4. Submit to native engine
-      native.submit(market, this.toJsOrder(order));
+      // 🔧 4. Submit to native engine with internal key
+      native.submit(internalKey, this.toJsOrder(order));
 
       // 🧩 5. Immediate placed-orders tray
-      console.log('about to call orders ' + sid + ' ' + market);
+      console.log('about to call orders ' + sid + ' ' + internalKey);
       try {
-        const openedRaw = (native as any).get_open_orders_by_socket?.(sid, market);
+        const openedRaw = (native as any).get_open_orders_by_socket?.(sid, internalKey);
         console.log('fetched orders ' + JSON.stringify(openedRaw));
 
-        const historyRaw = (native as any).getOrderHistoryBySocket?.(sid, market);
+        const historyRaw = (native as any).getOrderHistoryBySocket?.(sid, internalKey);
         console.log('order history ' + JSON.stringify(historyRaw));
 
         const opened = typeof openedRaw === 'string'
@@ -491,7 +531,7 @@ export class SocketManager {
 
       // 📡 6. Broadcast snapshot to all subs
       
-      const snapRaw = (native as any).snapshot?.(market);
+      const snapRaw = (native as any).snapshot?.(internalKey);
 
       console.log('market snapshot ' + JSON.stringify(snapRaw));
 
@@ -521,7 +561,7 @@ export class SocketManager {
               }
             : null;
 
-          this.broadcastToMarket(market,{
+          this.broadcastToMarket(internalKey,{
             event: EmitEvents.ORDERBOOK_DATA,
             orders: normalized,
             isDelta: false,
@@ -545,8 +585,11 @@ export class SocketManager {
 
   private async handleManyOrders(ws: WS, data: any) {
     const sid = (ws as any).id as string;
+    const network = data.network;
     const market = this.resolveMarket(data);
-    this.ensureSocketMarketIndex(sid, market);
+    const internalKey = this.makeInternalKey(market, network);
+    this.ensureSocketMarketIndex(sid, internalKey);
+    
     if (!market) {
       ws.send(
         JSON.stringify({
@@ -573,9 +616,9 @@ export class SocketManager {
 
       const jsOrders = normalized.map((o) => this.toJsOrder(o));
       // If you have native.submit_batch you can use it; otherwise loop:
-      for (const o of jsOrders) native.submit(market, o);
+      for (const o of jsOrders) native.submit(internalKey, o);
 
-      this.broadcastToMarket(market, {
+      this.broadcastToMarket(internalKey, {
         event: EmitEvents.UPDATE_ORDERS_REQUEST,
       });
     } catch (e: any) {
@@ -593,9 +636,11 @@ export class SocketManager {
     if (!uuid) return;
 
     const sid    = (ws as any).id as string;
+    const network = data.network;
     const market = this.resolveMarket(data);
-    console.log('uuid', uuid, market);
-    this.ensureSocketMarketIndex(sid, market);
+    const internalKey = this.makeInternalKey(market, network);
+    console.log('uuid', uuid, internalKey);
+    this.ensureSocketMarketIndex(sid, internalKey);
 
     if (!market) {
       console.warn('[close-order] missing marketKey for uuid', uuid);
@@ -604,7 +649,7 @@ export class SocketManager {
 
     try {
       // cancel on the engine
-      (native as any).cancel?.(market, uuid);
+      (native as any).cancel?.(internalKey, uuid);
     } catch (e) {
       console.warn('[close-order] cancel error', e);
     }
@@ -613,7 +658,7 @@ export class SocketManager {
     setTimeout(() => {
       console.log('sending snapshot after cancel')
       try {
-        this.sendOrderbookSnapshot(ws, market);
+        this.sendOrderbookSnapshot(ws, market, 50, network);
       } catch (e) {
         console.warn('[close-order] snapshot send error', e);
       }
@@ -622,8 +667,8 @@ export class SocketManager {
     
     // fetch latest opened orders + history for THIS socket & market
     try {
-      const openedRaw  = (native as any).get_open_orders_by_socket?.(sid, market);
-      const historyRaw = (native as any).getOrderHistoryBySocket?.(sid, market);
+      const openedRaw  = (native as any).get_open_orders_by_socket?.(sid, internalKey);
+      const historyRaw = (native as any).getOrderHistoryBySocket?.(sid, internalKey);
 
       const opened = typeof openedRaw  === 'string'
         ? JSON.parse(openedRaw)
@@ -653,6 +698,7 @@ export class SocketManager {
     // Accept: {marketKey}, {symbol}, {filter:{...}}, or flat fields
     const payload = (data && typeof data === 'object') ? data : {};
     const filter  = (payload.filter && typeof payload.filter === 'object') ? payload.filter : payload;
+    const network = data.network || filter.network;
 
     // Prefer explicit on-wire key first
     let mk: string | undefined =
@@ -703,7 +749,7 @@ export class SocketManager {
     }
 
     // Emit a fresh snapshot right away
-    this.sendOrderbookSnapshot(ws, mk, depth);
+    this.sendOrderbookSnapshot(ws, mk, depth, network);
   }
 
   // === Native exec fanout ===
@@ -722,6 +768,10 @@ export class SocketManager {
       maker_keypair?: { address: string; pubkey: string };
     }>
   ) {
+    // marketKey here is the internal key (e.g., "5-4-LTCTEST")
+    // Parse it to get base market for client display
+    const { market: baseMarket } = this.parseInternalKey(marketKey);
+    
     // Normalize first so logs/use are consistent
     const normalized = (Array.isArray(execs) ? execs : []).map((raw: any) => {
       const makerSocketId = raw.maker_socketId ?? raw.maker_socket_id ?? null;
@@ -757,7 +807,7 @@ export class SocketManager {
         nextProps = { sellerIsMaker };
       }
 
-      // Only for FUTURES, attach canonical prices (don’t overwrite if already present)
+      // Only for FUTURES, attach canonical prices (don't overwrite if already present)
       if (isFutures) {
         const orderPriceNum = Number(nextProps?.price);
         const orderPrice = Number.isFinite(orderPriceNum) ? orderPriceNum : null;
@@ -866,7 +916,7 @@ export class SocketManager {
 
     let payload = '';
     try {
-      payload = JSON.stringify({ event: EmitEvents.UPDATE_ORDERS_REQUEST, marketKey });
+      payload = JSON.stringify({ event: EmitEvents.UPDATE_ORDERS_REQUEST, marketKey: baseMarket });
     } catch (e) {
       console.error('[EXEC] refresh: payload stringify failed', { marketKey, e });
       return;
@@ -895,40 +945,44 @@ export class SocketManager {
   }
 
   // === Market subscription helpers ===
-  private subscribeMarket(socketId: string, marketKey: string, ws: WS) {
-    if (!this._marketSubs.has(marketKey))
-      this._marketSubs.set(marketKey, new Set());
-    this._marketSubs.get(marketKey)!.add(socketId);
+  private subscribeMarket(socketId: string, marketKey: string, ws: WS, network?: string) {
+    // Use internal key for subscription tracking
+    const internalKey = this.makeInternalKey(marketKey, network);
+    
+    if (!this._marketSubs.has(internalKey))
+      this._marketSubs.set(internalKey, new Set());
+    this._marketSubs.get(internalKey)!.add(socketId);
 
     if (!this._sessionSubs.has(socketId))
       this._sessionSubs.set(socketId, new Set());
-    this._sessionSubs.get(socketId)!.add(marketKey);
+    this._sessionSubs.get(socketId)!.add(internalKey);
 
-    (ws as any)._markets.add(marketKey);
-    console.log('[sub] add', socketId, marketKey, 'size=', this._sessionSubs.get(socketId)?.size);
+    (ws as any)._markets.add(internalKey);
+    console.log('[sub] add', socketId, internalKey, 'size=', this._sessionSubs.get(socketId)?.size);
 
     // one-shot snapshot
-    this.sendOrderbookSnapshot(ws, marketKey);
+    this.sendOrderbookSnapshot(ws, marketKey, 50, network);
   }
 
-  private unsubscribeMarket(socketId: string, marketKey: string) {
+  private unsubscribeMarket(socketId: string, marketKey: string, network?: string) {
+    const internalKey = this.makeInternalKey(marketKey, network);
     const ws = this._liveSessions.get(socketId);
-    this._marketSubs.get(marketKey)?.delete(socketId);
-    this._sessionSubs.get(socketId)?.delete(marketKey);
-    (ws as any)?._markets?.delete(marketKey);
-      console.log('[sub] del', socketId, marketKey, 'size=', this._sessionSubs.get(socketId)?.size);
+    this._marketSubs.get(internalKey)?.delete(socketId);
+    this._sessionSubs.get(socketId)?.delete(internalKey);
+    (ws as any)?._markets?.delete(internalKey);
+      console.log('[sub] del', socketId, internalKey, 'size=', this._sessionSubs.get(socketId)?.size);
   }
 
   // ensure socket↔market is indexed even if client never "joined"
-private ensureSocketMarketIndex(socketId: string, marketKey: string) {
+private ensureSocketMarketIndex(socketId: string, internalKey: string) {
   if (!this._sessionSubs.has(socketId)) this._sessionSubs.set(socketId, new Set());
-  this._sessionSubs.get(socketId)!.add(marketKey);
+  this._sessionSubs.get(socketId)!.add(internalKey);
 
-  if (!this._marketSubs.has(marketKey)) this._marketSubs.set(marketKey, new Set());
-  this._marketSubs.get(marketKey)!.add(socketId);
+  if (!this._marketSubs.has(internalKey)) this._marketSubs.set(internalKey, new Set());
+  this._marketSubs.get(internalKey)!.add(socketId);
 
   const ws = this._liveSessions.get(socketId) as any;
-  if (ws?._markets instanceof Set) ws._markets.add(marketKey);
+  if (ws?._markets instanceof Set) ws._markets.add(internalKey);
 }
 
 
@@ -955,10 +1009,12 @@ private ensureSocketMarketIndex(socketId: string, marketKey: string) {
     }
   }
 // === Snapshots/opened tray ===
-private sendOrderbookSnapshot(ws: WS, marketKey: string, depth = 50) {
+private sendOrderbookSnapshot(ws: WS, marketKey: string, depth = 50, network?: string) {
   // Scales — tune if your engine uses different scaling
   const PRICE_SCALE = 100;      // 100 -> price=1.00, 10000 -> 100.00
   const QTY_SCALE   = 1e8;      // 10_000_000 -> 0.1
+
+  const internalKey = this.makeInternalKey(marketKey, network);
 
   const levelsFrom = (arr: any[] | undefined) => {
     return (arr ?? []).map(l => {
@@ -987,11 +1043,11 @@ private sendOrderbookSnapshot(ws: WS, marketKey: string, depth = 50) {
   }
 
   try {
-    // 1) Pull engine snapshot
-    const snapRaw = (native as any).snapshot?.(marketKey, depth);
+    // 1) Pull engine snapshot with internal key
+    const snapRaw = (native as any).snapshot?.(internalKey, depth);
     const snapObj = parseMaybeJson<any>(snapRaw, null);
 
-    // 2) Coerce to the FE’s L2 shape directly
+    // 2) Coerce to the FE's L2 shape directly
     const core = snapObj?.snapshot ?? snapObj ?? {};
     const symbol    = core?.symbol ?? marketKey;
     const timestamp = Number(core?.timestamp ?? Date.now());
@@ -1005,9 +1061,9 @@ private sendOrderbookSnapshot(ws: WS, marketKey: string, depth = 50) {
     let opened: any[] = [];
     try {
       if (typeof (native as any).get_open_orders_by_socket === 'function') {
-        let openedRaw = (native as any).get_open_orders_by_socket(socketId, marketKey);
+        let openedRaw = (native as any).get_open_orders_by_socket(socketId, internalKey);
         if (!Array.isArray(openedRaw)) {
-          openedRaw = (native as any).get_open_orders_by_socket(marketKey, socketId);
+          openedRaw = (native as any).get_open_orders_by_socket(internalKey, socketId);
         }
         opened = Array.isArray(openedRaw) ? openedRaw : [];
       }
@@ -1064,7 +1120,7 @@ private sendOrderbookSnapshot(ws: WS, marketKey: string, depth = 50) {
 
   private _seenClose(ws: WS, uuid: string, ms = 1500) {
     const sid = (ws as any).id as string;
-    if (!uuid) return false; // don’t block if input is bad
+    if (!uuid) return false; // don't block if input is bad
 
     let byUuid = this._recentClose.get(sid);
     if (!byUuid) this._recentClose.set(sid, (byUuid = new Map<string, number>()));
@@ -1125,20 +1181,24 @@ private sendOrderbookSnapshot(ws: WS, marketKey: string, depth = 50) {
   }
 
     // NEW: broadcast a fresh snapshot to all subs for each market
-    for (const mk of list) {
+    for (const internalKey of list) {
       try {
-        const snapRaw = (native as any).snapshot?.(mk, this._depth);
+        const snapRaw = (native as any).snapshot?.(internalKey, this._depth);
         const snapObj = parseMaybeJson<any>(snapRaw, null);
         const orders  = normalizeSnapshotToRows(snapObj, 100, 1e8);
-        this.broadcastToMarket(mk, {
+        
+        // Parse to get base market for broadcast
+        const { market: baseMarket } = this.parseInternalKey(internalKey);
+        
+        this.broadcastToMarket(internalKey, {
           event: EmitEvents.ORDERBOOK_DATA,
-          marketKey: mk,
+          marketKey: baseMarket,
           orders,
           isDelta: false,
           history: [],
         });
       } catch (e) {
-        console.warn('[sweep snapshot err]', mk, e);
+        console.warn('[sweep snapshot err]', internalKey, e);
       }
     }
 
