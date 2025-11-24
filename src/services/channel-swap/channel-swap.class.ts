@@ -110,6 +110,7 @@ export class ChannelSwap {
         console.log(`[SwapGuard] client step ${eventName} already handled for ${this.tradeUUID}`);
         return;
       }
+    const socketId = (this.client as any).id;
     const payload = new SwapEvent(eventName, socketId, {
         ...raw.data,
         tradeUUID: this.tradeUUID
