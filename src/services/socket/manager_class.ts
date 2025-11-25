@@ -1181,7 +1181,6 @@ private sendOrderbookSnapshot(ws: WS, marketKey: string, depth = 50, network?: s
   console.log('checking normalized in sweep '+JSON.stringify(normalized))
         this.broadcastToMarket(internalKey, {
         event: EmitEvents.ORDERBOOK_DATA,
-        marketKey: baseMarket,
         orders: normalized,
         isDelta: false,
         history: [],
