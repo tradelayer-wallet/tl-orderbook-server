@@ -533,8 +533,7 @@ export class SocketManager {
                 checksum: snapObj.checksum,
               }
             : null;
-
-          this.broadcastToMarket(internalKey,{
+            this.broadcastToMarket(internalKey,{
             event: EmitEvents.ORDERBOOK_DATA,
             orders: normalized,
             isDelta: false,
@@ -1179,7 +1178,7 @@ private sendOrderbookSnapshot(ws: WS, marketKey: string, depth = 50, network?: s
                 checksum: snapObj.checksum,
               }
             : null;
-
+  console.log('checking normalized in sweep '+JSON.stringify(normalized))
         this.broadcastToMarket(internalKey, {
         event: EmitEvents.ORDERBOOK_DATA,
         marketKey: baseMarket,
