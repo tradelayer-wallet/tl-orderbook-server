@@ -155,37 +155,10 @@ export const wireExecSinksStrict = (
   }
 };
 
-
 function parseMaybeJson<T = any>(x: unknown, fallback: T): T {
   if (x == null) return fallback;
   if (typeof x !== 'string') return x as T;
   try { return JSON.parse(x) as T; } catch { return fallback; }
-}
-
-function normalizeSnapshotToRows(snapObj: any, PRICE_SCALE = 100, QTY_SCALE = 1e8) {
-  const snap = snapObj?.snapshot ?? snapObj;
-  if (!snap || (!Array.isArray(snap.bids) && !Array.isArray(snap.asks))) return [];
-
-  const rows: Array<{ price:number; amount:number; side:'BUY'|'SELL'; isBuy:boolean }> = [];
-
-  for (const b of (snap.bids ?? [])) {
-    rows.push({
-      price: PRICE_SCALE ? (Number(b.price) / PRICE_SCALE) : Number(b.price),
-      amount: (Number(b.amount ?? b.visible_quantity ?? 0)) / QTY_SCALE,
-      side: 'BUY',
-      isBuy: true,
-    });
-  }
-
-  for (const a of (snap.asks ?? [])) {
-    rows.push({
-      price: PRICE_SCALE ? (Number(a.price) / PRICE_SCALE) : Number(a.price),
-      amount: (Number(a.amount ?? a.visible_quantity ?? 0)) / QTY_SCALE,
-      side: 'SELL',
-      isBuy: false,
-    });
-  }
-  return rows;
 }
 
 export class SocketManager {
@@ -1185,18 +1158,36 @@ private sendOrderbookSnapshot(ws: WS, marketKey: string, depth = 50, network?: s
       try {
         const snapRaw = (native as any).snapshot?.(internalKey, this._depth);
         const snapObj = parseMaybeJson<any>(snapRaw, null);
-        const orders  = normalizeSnapshotToRows(snapObj, 100, 1e8);
-        
         // Parse to get base market for broadcast
         const { market: baseMarket } = this.parseInternalKey(internalKey);
         
+         const normalized =
+          snapObj && snapObj.snapshot
+            ? {
+                symbol: snapObj.snapshot.symbol,
+                timestamp: snapObj.snapshot.timestamp,
+                bids: (snapObj.snapshot.bids ?? []).map((b: any) => ({
+                  price: PRICE_SCALE ? b.price / PRICE_SCALE : b.price,
+                  amount: (b.visible_quantity ?? 0) / QTY_SCALE,  
+                  count: b.order_count,
+                })),
+                asks: (snapObj.snapshot.asks ?? []).map((a: any) => ({
+                  price: PRICE_SCALE ? a.price / PRICE_SCALE : a.price,
+                  amount: (a.visible_quantity ?? 0) / QTY_SCALE,   
+                  count: a.order_count,
+                })),
+                checksum: snapObj.checksum,
+              }
+            : null;
+
         this.broadcastToMarket(internalKey, {
-          event: EmitEvents.ORDERBOOK_DATA,
-          marketKey: baseMarket,
-          orders,
-          isDelta: false,
-          history: [],
-        });
+        event: EmitEvents.ORDERBOOK_DATA,
+        marketKey: baseMarket,
+        orders: normalized,
+        isDelta: false,
+        history: [],
+      });
+
       } catch (e) {
         console.warn('[sweep snapshot err]', internalKey, e);
       }
