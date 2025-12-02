@@ -73,7 +73,7 @@ export class MarketsManager {
     getAvailableFuturesMarkets(network:string): IResult<IMarketType[]> {
         try {
             const LTC = createToken('LTC', 'Litecoin', 0);
-            const TBILL = createToken('TBILL', 'US Treasury Bill', 5);
+            const USDT = createToken('USDT', 'Tether US', 5);
             const TL = createToken('TL', 'TradeLayer Native Metacoin', 1);
             const BTCoracle = createToken('BTC', 'Bitcoin Oracle', 1);
             const BTC = createToken('BTC', 'BTC',0)
@@ -81,10 +81,9 @@ export class MarketsManager {
             const sLTC = createToken('sLTC', 'Synth LTC', 's1-1')
 
             const usdContracts: IContract[] = [
-            createContract(LTC, TBILL, 3, 'LTC/USDT', TBILL, false),
-                createContract(TL, TBILL, 4, 'TL/USDT', TBILL, false),
-                
-                createContract(BTCoracle, TBILL, 2, 'BTC/USD', TBILL, false)
+                createContract(BTCoracle, USDT, 2, 'BTC/USDT', USDT, false)
+                createContract(LTC, USDT, 3, 'LTC/USDT', USDT, false),
+                createContract(TL, USDT, 4, 'TL/USDT', USDT, false),
             ];
 
             const ltcContracts: IContract[] = [
