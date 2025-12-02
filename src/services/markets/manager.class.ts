@@ -81,7 +81,7 @@ export class MarketsManager {
             const sLTC = createToken('sLTC', 'Synth LTC', 's1-1')
 
             const usdContracts: IContract[] = [
-                createContract(BTCoracle, USDT, 2, 'BTC/USDT', USDT, false)
+                createContract(BTCoracle, USDT, 2, 'BTC/USDT', USDT, false),
                 createContract(LTC, USDT, 3, 'LTC/USDT', USDT, false),
                 createContract(TL, USDT, 4, 'TL/USDT', USDT, false),
             ];
