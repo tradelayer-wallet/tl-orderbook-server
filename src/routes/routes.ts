@@ -1,6 +1,7 @@
 import HyperExpress from 'hyper-express';
 import { logsRouter} from './logs.route';
 import { marketsRoutes } from './markets.route';
+import { authRouter } from './auth.route'
 
 export function handleRoutes(server: HyperExpress.Server) {
     // CORS middleware
@@ -24,4 +25,5 @@ export function handleRoutes(server: HyperExpress.Server) {
     // Use routers with prefixes
     server.use('/markets', marketsRoutes);
     server.use('/logs', logsRouter);
+    server.use('/auth', authRouter)
 }

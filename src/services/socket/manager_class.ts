@@ -3,6 +3,8 @@ import HyperExpress from 'hyper-express';
 import { EmitEvents, OnEvents, OrderEmitEvents } from './events';
 import { native, registerNativeSinks, JsOrder, Exec } from '../../native';
 import { ChannelSwap } from "../channel-swap/channel-swap.class";
+import { getSessionForToken } from '../routes/auth.route'; // adjust path to your repo layout
+
 
 import {
   ITradeInfo,
@@ -15,6 +17,15 @@ import {
 
 type WS = HyperExpress.Websocket;
 type UUID = string;
+
+const MUTATING_EVENTS = new Set<string>([
+  OnEvents.NEW_ORDER,
+  OnEvents.MANY_ORDERS,
+  OnEvents.AMEND_ORDER,
+  OnEvents.CLOSE_ORDER,
+  'close-order',
+]);
+
 
 export type OrderAction = 'BUY' | 'SELL';
 export type OrderTypeKind = 'SPOT' | 'FUTURES';
