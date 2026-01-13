@@ -34,14 +34,14 @@ type SessionRecord = {
   expiresAt: number;
 };
 
-// Extend WS type to include our auth metadata
+// Extend WS type to include auth metadata
 interface AuthenticatedWS extends HyperExpress.Websocket {
   id: string;
   _markets: Set<string>;
   clientClass: ClientClass;
   authed: boolean;
   session: SessionRecord | null;
-  traderAddress?: string; // resolved identity for order binding
+  traderAddress?: string;
 }
 
 const MUTATING_EVENTS = new Set<string>([
@@ -76,7 +76,7 @@ interface IHistoryTrade extends ITradeInfo {
 type NormalizedOrder = {
   uuid: string;
   socketId: string;
-  traderAddress?: string; // bound identity from session
+  traderAddress?: string;  // NEW: bound identity from session
   price: number;
   amount: number;
   side: 'BUY' | 'SELL';
@@ -321,14 +321,13 @@ export class SocketManager {
   }
 
   // -----------------------------------------------------------------------------
-  // Polymorphic Auth: Client Classification Detection
+  // NEW: Polymorphic Auth Methods
   // -----------------------------------------------------------------------------
+
   /**
    * Detect client class from upgrade request headers.
-   * Called during handleOpen to classify the connection.
    */
   private detectClientClass(req?: any): { clientClass: ClientClass; authed: boolean; apiKey?: string } {
-    // Default: web client, not authed
     let clientClass: ClientClass = 'web';
     let authed = false;
     let apiKey: string | undefined;
@@ -337,101 +336,69 @@ export class SocketManager {
       return { clientClass, authed };
     }
 
-    // Desktop detection: custom header from Electron/desktop app
+    // Desktop detection
     const desktopHeader = req.headers['x-tradelayer-client'];
     if (desktopHeader === 'desktop') {
       clientClass = 'desktop';
-      authed = true; // trusted via desktop security (timed key decrypt)
+      authed = true;
       console.log('[Auth] Desktop client detected - exempt from session auth');
       return { clientClass, authed };
     }
 
-    // Bot/NPM detection: API key header
+    // Bot/NPM detection
     apiKey = req.headers['x-api-key'] || req.headers['x-tradelayer-api-key'];
     if (apiKey) {
-      // TODO: validate API key against allowlist/database
-      // For now, presence of key grants bot status
       clientClass = 'bot';
-      authed = true; // server-side trust
+      authed = true;
       console.log('[Auth] Bot client detected - exempt from session auth');
       return { clientClass, authed, apiKey };
     }
-
-    // Could also detect via query string for environments where headers are awkward
-    // e.g., ws://host/ws?client=desktop or ws://host/ws?apiKey=xxx
 
     return { clientClass, authed };
   }
 
   /**
-   * Resolve trader address based on client class:
-   * - web: from session.address (must be session-authed)
-   * - desktop: from decrypted keypair (passed in order data)
-   * - bot: from API key -> account mapping
+   * Resolve trader address based on client class.
    */
   private resolveTraderAddress(ws: AuthenticatedWS, data?: any): string | undefined {
     switch (ws.clientClass) {
       case 'web':
-        // Web clients MUST use session-bound address
         return ws.session?.address;
-      
       case 'desktop':
-        // Desktop: derive from keypair in order data, or cached on socket
-        // The desktop app decrypts the key locally and includes the address
         return data?.address || data?.order?.address || data?.keypair?.address || ws.traderAddress;
-      
       case 'bot':
-        // Bot: lookup from API key -> account mapping
-        // For now, allow explicit address in data (server validates elsewhere)
         return data?.address || data?.order?.address || ws.traderAddress;
-      
       default:
         return undefined;
     }
   }
 
   // === Public API expected by index.ts ===
-  /**
-   * Handle new WebSocket connection.
-   * Detects client class and initializes auth state.
-   * 
-   * @param ws - WebSocket instance
-   * @param req - Optional upgrade request (for header access)
-   */
-  handleOpen = (ws: WS, req?: any) => {
+  handleOpen = (ws: WS, req?: any) => {  // MODIFIED: added req parameter
     const id = this.generateUniqueId();
     const authWs = ws as AuthenticatedWS;
     
-    // Basic socket setup
     authWs.id = id;
     authWs._markets = new Set<string>();
     
-    // Polymorphic auth: detect client class from headers
+    // NEW: Polymorphic auth detection
     const { clientClass, authed, apiKey } = this.detectClientClass(req);
     authWs.clientClass = clientClass;
     authWs.authed = authed;
     authWs.session = null;
     
-    // For bots, could store API key for later account resolution
-    if (apiKey) {
-      // TODO: resolve apiKey -> traderAddress from database
-      // authWs.traderAddress = lookupAddressForApiKey(apiKey);
-    }
-
     this._liveSessions.set(id, ws);
 
     ws.on('message', (m) => this.handleMessage(ws, m));
     ws.on('close', () => this.handleClose(ws));
 
-    // Initial hello - include auth requirements based on client class
+    // MODIFIED: Include auth info in hello
     const authRequired = clientClass === 'web' && !authed;
     ws.send(JSON.stringify({ 
       event: 'connected', 
       id,
       clientClass,
       authRequired,
-      // Help client understand what they need to do
-      ...(authRequired && { authHint: 'Send { event: "auth", token: "<sessionToken>" } before placing orders' })
     }));
 
     console.log(`[SM] OPEN ${id}, clientClass=${clientClass}, authed=${authed}, live=${this._liveSessions.size}`);
@@ -439,7 +406,7 @@ export class SocketManager {
 
   // === Event handlers ===
   private async handleMessage(ws: WS, message: ArrayBuffer | string) {
-    const authWs = ws as AuthenticatedWS;
+    const authWs = ws as AuthenticatedWS;  // NEW: cast for auth access
     let data: any;
     try {
       data = JSON.parse(
@@ -451,14 +418,12 @@ export class SocketManager {
       console.error('[SM] Failed to parse WS message', e, message);
       return;
     }
-    
-    console.log('incoming message ' + JSON.stringify(data));
+    console.log('incoming message '+JSON.stringify(data))
 
-    // -----------------------------------------------------------------------------
-    // AUTH HANDSHAKE (web clients only)
-    // -----------------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // NEW: AUTH HANDSHAKE
+    // -------------------------------------------------------------------------
     if (data.event === 'auth') {
-      // Auth is only meaningful for web clients
       if (authWs.clientClass !== 'web') {
         ws.send(JSON.stringify({ 
           event: 'auth_ignored', 
@@ -469,23 +434,16 @@ export class SocketManager {
 
       const token = String(data.token || '');
       if (!token) {
-        ws.send(JSON.stringify({ 
-          event: OrderEmitEvents.ERROR, 
-          message: 'Missing token' 
-        }));
+        ws.send(JSON.stringify({ event: OrderEmitEvents.ERROR, message: 'Missing token' }));
         return;
       }
 
       const session = getSessionForToken(token);
       if (!session) {
-        ws.send(JSON.stringify({ 
-          event: OrderEmitEvents.ERROR, 
-          message: 'Invalid or expired session' 
-        }));
+        ws.send(JSON.stringify({ event: OrderEmitEvents.ERROR, message: 'Invalid or expired session' }));
         return;
       }
 
-      // Mark socket as authenticated
       authWs.authed = true;
       authWs.session = session;
       authWs.traderAddress = session.address;
@@ -500,9 +458,9 @@ export class SocketManager {
       return;
     }
 
-    // -----------------------------------------------------------------------------
-    // GATE MUTATIONS (web clients only)
-    // -----------------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // NEW: GATE MUTATIONS (web clients only)
+    // -------------------------------------------------------------------------
     if (MUTATING_EVENTS.has(data.event) && authWs.clientClass === 'web' && !authWs.authed) {
       ws.send(JSON.stringify({ 
         event: OrderEmitEvents.ERROR, 
@@ -511,9 +469,9 @@ export class SocketManager {
       return;
     }
 
-    // -----------------------------------------------------------------------------
-    // STANDARD EVENT ROUTING
-    // -----------------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // EXISTING: Event routing (unchanged)
+    // -------------------------------------------------------------------------
     switch (data.event) {
       case OnEvents.NEW_ORDER: {
         await this.handleNewOrder(ws, data);
@@ -601,7 +559,7 @@ export class SocketManager {
   }
 
   private async handleNewOrder(ws: HyperExpress.Websocket, data: any){
-    const authWs = ws as AuthenticatedWS;
+    const authWs = ws as AuthenticatedWS;  // NEW: cast for auth access
     
     //  1. Basic guards
     if (!data.isLimitOrder) {
@@ -663,28 +621,26 @@ export class SocketManager {
       return;
     }
 
-    // ⚙️ 3. Normalize & bind trader identity
+    // ⚙️ 3. Normalize & ACK
     const order = this.normalizeOrder(data, sid) as NormalizedOrder;
     if (order.error) {
       ws.send(JSON.stringify({ event: OrderEmitEvents.ERROR, message: order.error }));
       return;
     }
 
-    // IMPORTANT: Bind trader address based on client class
-    // This prevents web clients from spoofing identity
-    const traderAddress = this.resolveTraderAddress(authWs, data);
-    order.traderAddress = traderAddress;
-    
-    // For web clients, override any client-supplied address
+    // -------------------------------------------------------------------------
+    // NEW: Bind trader address based on client class
+    // -------------------------------------------------------------------------
+    order.traderAddress = this.resolveTraderAddress(authWs, data);
     if (authWs.clientClass === 'web' && authWs.session?.address) {
+      // Override any client-supplied address for web clients
       if (order.props) {
         order.props.trader = authWs.session.address;
         order.props.address = authWs.session.address;
       }
     }
 
-    console.log('order before sub ' + JSON.stringify(order) + ' and after toJs ' + JSON.stringify(this.toJsOrder(order)));
-    
+    console.log('order before sub '+JSON.stringify(order)+' and after toJs '+JSON.stringify(this.toJsOrder(order)))
     try {
       ws.send(JSON.stringify({
         event: OrderEmitEvents.SAVED,
@@ -774,7 +730,7 @@ export class SocketManager {
   }
 
   private async handleManyOrders(ws: WS, data: any) {
-    const authWs = ws as AuthenticatedWS;
+    const authWs = ws as AuthenticatedWS;  // NEW: cast for auth access
     const sid = (ws as any).id as string;
     const network = data.network;
     const market = this.resolveMarket(data);
@@ -795,10 +751,10 @@ export class SocketManager {
     const normalized = rawOrders.map((o) => {
       const norm = this.normalizeOrder(o, sid) as NormalizedOrder;
       
-      // Bind trader address for each order
+      // -------------------------------------------------------------------------
+      // NEW: Bind trader address for each order
+      // -------------------------------------------------------------------------
       norm.traderAddress = this.resolveTraderAddress(authWs, o);
-      
-      // For web clients, enforce session address
       if (authWs.clientClass === 'web' && authWs.session?.address) {
         if (norm.props) {
           norm.props.trader = authWs.session.address;
@@ -868,231 +824,666 @@ export class SocketManager {
       }
     }, 1)
     // optionally re-broadcast fresh snapshot to this socket
-  }
-
-  // -----------------------------------------------------------------------------
-  // STUB METHODS - These exist in the original file but were truncated
-  // You'll need to copy these from your actual implementation
-  // -----------------------------------------------------------------------------
-  
-  private generateUniqueId(): string {
-    return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-  }
-
-  private handleClose(ws: WS): void {
-    const id = (ws as any).id;
-    if (id) {
-      this._liveSessions.delete(id);
-      // Clean up market subscriptions
-      for (const [market, subs] of this._marketSubs) {
-        subs.delete(id);
-      }
-      console.log(`[SM] CLOSE ${id}, live=${this._liveSessions.size}`);
-    }
-  }
-
-  private _seenClose(ws: WS, uuid: string): boolean {
-    // Dedup close requests
-    const id = (ws as any).id;
-    if (!id || !uuid) return false;
     
-    let socketCloses = this._recentClose.get(id);
-    if (!socketCloses) {
-      socketCloses = new Map();
-      this._recentClose.set(id, socketCloses);
-    }
-    
-    const now = Date.now();
-    if (socketCloses.has(uuid) && now - socketCloses.get(uuid)! < 2000) {
-      return true; // seen recently
-    }
-    
-    socketCloses.set(uuid, now);
-    return false;
-  }
-
-  private ensureSocketMarketIndex(socketId: string, marketKey: string): void {
-    let subs = this._sessionSubs.get(socketId);
-    if (!subs) {
-      subs = new Set();
-      this._sessionSubs.set(socketId, subs);
-    }
-    subs.add(marketKey);
-  }
-
-  private subscribeMarket(socketId: string, market: string, ws: WS, network?: string): void {
-    const internalKey = this.makeInternalKey(market, network);
-    
-    let subs = this._marketSubs.get(internalKey);
-    if (!subs) {
-      subs = new Set();
-      this._marketSubs.set(internalKey, subs);
-    }
-    subs.add(socketId);
-    
-    (ws as any)._markets?.add(internalKey);
-    
-    // Initialize market in engine if needed
+    // fetch latest opened orders + history for THIS socket & market
     try {
-      native.init_market?.(internalKey);
-    } catch (e) {
-      console.warn('[subscribeMarket] init error', e);
+      const openedRaw  = (native as any).get_open_orders_by_socket?.(sid, internalKey);
+      const historyRaw = (native as any).getOrderHistoryBySocket?.(sid, internalKey);
+
+      const opened = typeof openedRaw  === 'string'
+        ? JSON.parse(openedRaw)
+        : (Array.isArray(openedRaw) ? openedRaw : []);
+
+      const orderHistory = typeof historyRaw === 'string'
+        ? JSON.parse(historyRaw)
+        : (Array.isArray(historyRaw) ? historyRaw : []);
+
+      ws.send(JSON.stringify({
+        event: EmitEvents.PLACED_ORDERS,
+        openedOrders: opened,
+        orderHistory,
+      }));
+    } catch (err) {
+      console.warn('[close-order] post-cancel fetch/send err', err);
+      ws.send(JSON.stringify({
+        event: EmitEvents.PLACED_ORDERS,
+        openedOrders: [],
+        orderHistory: [],
+      }));
     }
-    
-    // Send initial snapshot
-    this.sendOrderbookSnapshot(ws, market, this._depth, network);
   }
 
-  private unsubscribeMarket(socketId: string, market: string, network?: string): void {
-    const internalKey = this.makeInternalKey(market, network);
-    this._marketSubs.get(internalKey)?.delete(socketId);
-    
-    const ws = this._liveSessions.get(socketId);
-    if (ws) {
-      (ws as any)._markets?.delete(internalKey);
-    }
-  }
+  // === Update snapshot request ===
+  private handleUpdateOrderbook(ws: WS, data: any) {
+    // Accept: {marketKey}, {symbol}, {filter:{...}}, or flat fields
+    const payload = (data && typeof data === 'object') ? data : {};
+    const filter  = (payload.filter && typeof payload.filter === 'object') ? payload.filter : payload;
+    const network = data.network || filter.network;
 
-  private broadcastToMarket(marketKey: string, payload: any): void {
-    const subs = this._marketSubs.get(marketKey);
-    if (!subs || subs.size === 0) return;
-    
-    const msg = JSON.stringify(payload);
-    for (const socketId of subs) {
-      const ws = this._liveSessions.get(socketId);
-      if (ws) {
-        try {
-          ws.send(msg);
-        } catch (e) {
-          console.warn('[broadcast] send error', e);
+    // Prefer explicit on-wire key first
+    let mk: string | undefined =
+      (typeof payload.marketKey === 'string' && payload.marketKey) ||
+      (typeof payload.symbol === 'string' && payload.symbol)     ||
+      undefined;
+
+    // Try to derive when not provided
+    if (!mk) {
+      const type = String(filter.type || payload.type || '').toUpperCase();
+
+      if (type === 'SPOT') {
+        // tolerate several field names
+        const a = Number(filter.first_token ?? filter.base ?? filter.id_for_sale ?? filter.pair?.[0]);
+        const b = Number(filter.second_token ?? filter.quote ?? filter.id_desired ?? filter.pair?.[1]);
+        if (Number.isFinite(a) && Number.isFinite(b)) {
+          const base  = Math.min(a, b);
+          const quote = Math.max(a, b);
+          mk = `${base}-${quote}`;
+        }
+      } else if (type === 'FUTURES') {
+        const cid = Number(filter.contract_id ?? filter.id ?? payload.contract_id ?? payload.id);
+        if (Number.isFinite(cid)) {
+          mk = `${cid}-perp`;
         }
       }
+
+      // Last chance: if a legacy marketKey/symbol is lurking inside filter
+      if (!mk && typeof filter.marketKey === 'string') mk = filter.marketKey;
+      if (!mk && typeof filter.symbol    === 'string') mk = filter.symbol;
     }
+
+    // Depth handling (accept string/number anywhere)
+    const rawDepth = filter.depth ?? payload.depth;
+    const depth = Number.isFinite(Number(rawDepth)) ? Number(rawDepth) : 50;
+    console.log('inside handle orderbook update '+mk)
+    if (!mk) {
+      // No way to resolve — reply with an empty snapshot object (FE renders this shape)
+      ws.send(JSON.stringify({
+        event: EmitEvents.ORDERBOOK_DATA,
+        marketKey: '',
+        orders: { symbol: '', timestamp: Date.now(), bids: [], asks: [], checksum: '' },
+        isDelta: false,
+        openedOrders: [],
+        history: [],
+      }));
+      return;
+    }
+
+    // Emit a fresh snapshot right away
+    this.sendOrderbookSnapshot(ws, mk, depth, network);
   }
 
-  private sendOrderbookSnapshot(ws: WS, market: string, depth: number, network?: string): void {
-    const internalKey = this.makeInternalKey(market, network);
+  // === Native exec fanout ===
+  private async _handleExecs(
+    marketKey: string,
+    execs: Array<{
+      price: number;
+      quantity: number;
+      maker_socketId?: string; maker_socket_id?: string;
+      taker_socketId?: string; taker_socket_id?: string;
+      maker_ext_uuid?: string;
+      taker_ext_uuid?: string;
+      side_of_taker?: 'BUY' | 'SELL'; sideOfTaker?: 'BUY' | 'SELL';
+      props?: any;
+      taker_keypair?: { address: string; pubkey: string };
+      maker_keypair?: { address: string; pubkey: string };
+    }>
+  ) {
+    // marketKey here is the internal key (e.g., "5-4-LTCTEST")
+    // Parse it to get base market for client display
+    const { market: baseMarket } = this.parseInternalKey(marketKey);
     
-    try {
-      const snapRaw = (native as any).snapshot?.(internalKey);
-      const snapObj = typeof snapRaw === 'string' ? JSON.parse(snapRaw) : snapRaw;
+    // Normalize first so logs/use are consistent
+    const normalized = (Array.isArray(execs) ? execs : []).map((raw: any) => {
+      const makerSocketId = raw.maker_socketId ?? raw.maker_socket_id ?? null;
+      const takerSocketId = raw.taker_socketId ?? raw.taker_socket_id ?? null;
+      const makerUuid     = raw.maker_ext_uuid ?? '';
+      const takerUuid     = raw.taker_ext_uuid ?? '';
+      const sideOfTaker   = (raw.side_of_taker ?? raw.sideOfTaker ?? 'BUY') as 'BUY' | 'SELL';
+      const price         = Number(raw.price) || 0;          // MATCH price
+      const quantity      = Number(raw.quantity) || 0;
+      const props         = raw.props ?? null;
+      const takerKeypair  = raw.taker_keypair ?? raw.takerKeypair ?? null;
+      const makerKeypair  = raw.maker_keypair ?? raw.makerKeypair ?? null;
+
+      // Derive buyer/seller socket ids
+      const buyerSocketId  = sideOfTaker === 'BUY' ? takerSocketId : makerSocketId;
+      const sellerSocketId = sideOfTaker === 'BUY' ? makerSocketId : takerSocketId;
+
+      // Derive: seller is maker iff taker buys
+      const sellerIsMaker = sideOfTaker === 'BUY';
+
+      // FUTURES detection (server-side convention)
+      const isFutures =
+        props && typeof props === 'object' &&
+        (props.contract_id != null || props.contractId != null);
+
+      // Enrich props idempotently
+      let nextProps: any;
+      if (props && typeof props === 'object') {
+        nextProps = Object.prototype.hasOwnProperty.call(props, 'sellerIsMaker')
+          ? props
+          : { ...props, sellerIsMaker };
+      } else {
+        nextProps = { sellerIsMaker };
+      }
+
+      // Only for FUTURES, attach canonical prices (don't overwrite if already present)
+      if (isFutures) {
+        const orderPriceNum = Number(nextProps?.price);
+        const orderPrice = Number.isFinite(orderPriceNum) ? orderPriceNum : null;
+        if (!Object.prototype.hasOwnProperty.call(nextProps, 'execPrice'))  nextProps.execPrice  = price;
+        if (!Object.prototype.hasOwnProperty.call(nextProps, 'orderPrice')) nextProps.orderPrice = orderPrice;
+      }
       
-      if (snapObj) {
-        ws.send(JSON.stringify({
-          event: EmitEvents.ORDERBOOK_DATA,
-          marketKey: market,
-          orders: snapObj,
-          isDelta: false,
-        }));
-      }
-    } catch (e) {
-      console.warn('[sendOrderbookSnapshot] error', e);
-    }
-  }
-
-  private handleUpdateOrderbook(ws: WS, data: any): void {
-    const market = this.resolveMarket(data);
-    const network = data.network;
-    if (market) {
-      this.sendOrderbookSnapshot(ws, market, this._depth, network);
-    }
-  }
-
-  private sweepOrders(socketId: string, reason: string): void {
-    console.log(`[sweepOrders] ${socketId}: ${reason}`);
-    // Cancel all orders for this socket across all markets
-    const markets = this._sessionSubs.get(socketId);
-    if (markets) {
-      for (const market of markets) {
-        try {
-          (native as any).cancel_all_by_socket?.(market, socketId);
-        } catch (e) {
-          console.warn('[sweepOrders] error', e);
-        }
-      }
-    }
-  }
-
-  private _handleExecs(symbol: string, execs: any[]): void {
-    // Handle execution reports from the engine
-    // Broadcast to relevant subscribers
-    this.broadcastToMarket(symbol, {
-      event: EmitEvents.TRADE_EXECUTED,
-      marketKey: symbol,
-      executions: execs,
+      return {
+        price,
+        quantity,
+        makerSocketId,
+        takerSocketId,
+        makerUuid,
+        takerUuid,
+        sideOfTaker,
+        props: nextProps,
+        takerKeypair,
+        makerKeypair,                 // <— normalized here
+        buyerSocketId,
+        sellerSocketId,
+        type: isFutures ? EOrderType.FUTURES : EOrderType.SPOT as const,
+      };
     });
+
+    console.log('[EXEC/IN]', marketKey, normalized.length, normalized[0]);
+
+    // Process each exec slice
+    for (const ex of normalized) {
+      try {
+        const {
+          price, quantity,
+          makerSocketId, takerSocketId,
+          makerUuid, takerUuid,
+          sideOfTaker, props, takerKeypair, makerKeypair,
+          buyerSocketId, sellerSocketId,
+          type,
+        } = ex;
+
+        if (!buyerSocketId || !sellerSocketId) {
+          console.warn('[EXEC] missing socket ids', { raw: ex, buyerSocketId, sellerSocketId });
+          continue;
+        }
+
+        // Role-aware identities
+        const buyerIsTaker = (sideOfTaker === 'BUY'); // if taker buys, taker is buyer
+        const buyerKey  = buyerIsTaker ? (takerKeypair ?? { address: undefined, pubkey: undefined })
+                                      : (makerKeypair ?? { address: undefined, pubkey: undefined });
+        const sellerKey = buyerIsTaker ? (makerKeypair ?? { address: undefined, pubkey: undefined })
+                                      : (takerKeypair ?? { address: undefined, pubkey: undefined });
+
+        let tradeProps: any;
+
+        if (type === EOrderType.FUTURES) {
+          // Ensure we carry contract id in a canonical field
+          const cidRaw = props?.contract_id ?? props?.contractId;
+          const contractId = Number(cidRaw);
+          if (!Number.isFinite(contractId)) {
+            console.warn('[EXEC] FUTURES missing/invalid contract_id', { marketKey, props });
+            continue; // skip malformed
+          }
+          tradeProps = {
+            ...props,
+            // canonical futures fields expected by channel/wallet
+            contract_id: contractId,
+            amount: quantity,
+            price: props?.execPrice ?? price, // exec (match) price drives PnL/fees
+            // initMargin / collateral / transfer are preserved if present in props
+          };
+        } else {
+          // SPOT shape: keep compatibility with existing wallet expectations
+          const idDesired = props?.id_desired ?? props?.idDesired;
+          const idForSale = props?.id_for_sale ?? props?.idForSale;
+
+          tradeProps = {
+            ...props,
+            propIdDesired: idDesired,
+            propIdForSale: idForSale,
+            amountDesired: safeNumber(quantity * price),
+            amountForSale: quantity,
+            price,
+          };
+        }
+
+        const tradeInfo: ITradeInfo = {
+          type,
+          buyer:  { socketId: buyerSocketId,  keypair: buyerKey,  uuid: takerUuid },
+          seller: { socketId: sellerSocketId, keypair: sellerKey, uuid: makerUuid },
+          taker: takerSocketId ?? '',
+          maker: makerSocketId ?? '',
+          props: tradeProps,
+        };
+
+        console.log('trade info '+JSON.stringify(tradeInfo))
+        const res = this.newChannel(tradeInfo, null);
+      } catch (e) {
+        console.error('[EXEC] handler threw', e);
+      }
+    }
+
+    // === Per-socket refresh (once per batch) ===
+    const sockets = new Set<string>(
+      (normalized ?? [])
+        .flatMap(ex => [ex.makerSocketId, ex.takerSocketId])
+        .filter((v): v is string => typeof v === 'string' && v.length > 0)
+    );
+
+    let payload = '';
+    try {
+      payload = JSON.stringify({ event: EmitEvents.UPDATE_ORDERS_REQUEST, marketKey: baseMarket });
+    } catch (e) {
+      console.error('[EXEC] refresh: payload stringify failed', { marketKey, e });
+      return;
+    }
+
+    for (const sid of sockets) {
+      const ws = this._liveSessions.get(sid);
+      if (!ws) {
+        console.warn('[EXEC] refresh: missing live session', { sid, marketKey });
+        continue;
+      }
+
+      // Best-effort OPEN check if the impl provides one
+      const rstate = (ws as any)?.readyState;
+      if (typeof rstate === 'number' && rstate !== 1 /* OPEN */) {
+        console.warn('[EXEC] refresh: socket not OPEN', { sid, state: rstate, marketKey });
+        continue;
+      }
+
+      try {
+        ws.send(payload);
+      } catch (e) {
+        console.error('[EXEC] refresh send failed', { sid, marketKey, e });
+      }
+    }
   }
 
-  // --- REMAINING METHODS FROM ORIGINAL FILE ---
-  // Copy the rest of your methods here (resolveMarket, deriveMarketFromOrder, etc.)
-  // I've included the critical ones for the auth flow to work
+  // === Market subscription helpers ===
+  private subscribeMarket(socketId: string, marketKey: string, ws: WS, network?: string) {
+    // Use internal key for subscription tracking
+    const internalKey = this.makeInternalKey(marketKey, network);
+    
+    if (!this._marketSubs.has(internalKey))
+      this._marketSubs.set(internalKey, new Set());
+    this._marketSubs.get(internalKey)!.add(socketId);
+
+    if (!this._sessionSubs.has(socketId))
+      this._sessionSubs.set(socketId, new Set());
+    this._sessionSubs.get(socketId)!.add(internalKey);
+
+    (ws as any)._markets.add(internalKey);
+    console.log('[sub] add', socketId, internalKey, 'size=', this._sessionSubs.get(socketId)?.size);
+
+    // one-shot snapshot
+    this.sendOrderbookSnapshot(ws, marketKey, 50, network);
+  }
+
+  private unsubscribeMarket(socketId: string, marketKey: string, network?: string) {
+    const internalKey = this.makeInternalKey(marketKey, network);
+    const ws = this._liveSessions.get(socketId);
+    this._marketSubs.get(internalKey)?.delete(socketId);
+    this._sessionSubs.get(socketId)?.delete(internalKey);
+    (ws as any)?._markets?.delete(internalKey);
+      console.log('[sub] del', socketId, internalKey, 'size=', this._sessionSubs.get(socketId)?.size);
+  }
+
+  // ensure socket↔market is indexed even if client never "joined"
+private ensureSocketMarketIndex(socketId: string, internalKey: string) {
+  if (!this._sessionSubs.has(socketId)) this._sessionSubs.set(socketId, new Set());
+  this._sessionSubs.get(socketId)!.add(internalKey);
+
+  if (!this._marketSubs.has(internalKey)) this._marketSubs.set(internalKey, new Set());
+  this._marketSubs.get(internalKey)!.add(socketId);
+
+  const ws = this._liveSessions.get(socketId) as any;
+  if (ws?._markets instanceof Set) ws._markets.add(internalKey);
+}
+
+
+  public broadcastToMarket(marketKey: string, msg: object) {
+    const ids = this._marketSubs.get(marketKey);
+    if (!ids || ids.size === 0) return;
+    const str = JSON.stringify(msg);
+    for (const id of ids) {
+      const ws = this._liveSessions.get(id);
+      if (!ws) continue;
+      try {
+        if ((ws as any).bufferedAmount && (ws as any).bufferedAmount > 1_000_000){continue};
+        ws.send(str);
+      } catch {}
+    }
+  }
+
+  public broadcastToAll(msg: object) {
+    const str = JSON.stringify(msg);
+    for (const ws of this._liveSessions.values()) {
+      try {
+        ws.send(str);
+      } catch {}
+    }
+  }
+// === Snapshots/opened tray ===
+private sendOrderbookSnapshot(ws: WS, marketKey: string, depth = 50, network?: string) {
+  // Scales — tune if your engine uses different scaling
+  const PRICE_SCALE = 100;      // 100 -> price=1.00, 10000 -> 100.00
+  const QTY_SCALE   = 1e8;      // 10_000_000 -> 0.1
+
+  const internalKey = this.makeInternalKey(marketKey, network);
+
+  const levelsFrom = (arr: any[] | undefined) => {
+    return (arr ?? []).map(l => {
+      // prefer visible_quantity; fall back to amount if present
+      const rawQty = l.visible_quantity ?? l.amount ?? 0;
+      return {
+        price: Number(l.price) / PRICE_SCALE,
+        amount: Math.abs(Number(rawQty)) / QTY_SCALE,
+        count: Number(l.order_count ?? l.count ?? 0),
+      };
+    })
+    .filter(x => isFinite(x.price) && isFinite(x.amount) && x.price > 0 && x.amount > 0);
+  };
+
+  if (!marketKey) {
+    const payload = {
+      event: EmitEvents.ORDERBOOK_DATA,
+      marketKey: '',
+      orders: { symbol: '', timestamp: Date.now(), bids: [], asks: [], checksum: '' },
+      isDelta: false,
+      openedOrders: [],
+      history: [],
+    };
+    ws.send(JSON.stringify(payload));
+    return;
+  }
+
+  try {
+    // 1) Pull engine snapshot with internal key
+    const snapRaw = (native as any).snapshot?.(internalKey, depth);
+    const snapObj = parseMaybeJson<any>(snapRaw, null);
+
+    // 2) Coerce to the FE's L2 shape directly
+    const core = snapObj?.snapshot ?? snapObj ?? {};
+    const symbol    = core?.symbol ?? marketKey;
+    const timestamp = Number(core?.timestamp ?? Date.now());
+    const checksum  = String(snapObj?.checksum ?? core?.checksum ?? '');
+
+    const bids = levelsFrom(core?.bids);
+    const asks = levelsFrom(core?.asks);
+
+    // 3) Opened orders tray (leave exactly as you had it)
+    const socketId = (ws as any).id as string;
+    let opened: any[] = [];
+    try {
+      if (typeof (native as any).get_open_orders_by_socket === 'function') {
+        let openedRaw = (native as any).get_open_orders_by_socket(socketId, internalKey);
+        if (!Array.isArray(openedRaw)) {
+          openedRaw = (native as any).get_open_orders_by_socket(internalKey, socketId);
+        }
+        opened = Array.isArray(openedRaw) ? openedRaw : [];
+      }
+    } catch {}
+
+    const payload = {
+      event: EmitEvents.ORDERBOOK_DATA,
+      marketKey,
+      orders: { symbol, timestamp, bids, asks, checksum }, // <-- L2 object your FE already renders
+      isDelta: false,
+      openedOrders: opened,
+      history: [],
+    };
+
+    // 4) Send exactly once.
+    //    EITHER: send only to this client:
+    ws.send(JSON.stringify(payload));
+
+    //    OR: broadcast to room WITHOUT echoing back to this socket (if your broadcast supports excluding sender).
+    // this.broadcastToMarketExcept(ws, marketKey, payload);
+
+  } catch {
+    const payload = {
+      event: EmitEvents.ORDERBOOK_DATA,
+      marketKey,
+      orders: { symbol: marketKey, timestamp: Date.now(), bids: [], asks: [], checksum: '' },
+      isDelta: false,
+      openedOrders: [],
+      history: [],
+    };
+    ws.send(JSON.stringify(payload));
+  }
+}
+
+  // === WS lifecycle ===
+  private handleClose(ws: WS) {
+    const id = (ws as any).id as string;
+
+    // Capture markets BEFORE mutating indices
+    const joined = new Set(this._sessionSubs.get(id) ?? []);
+
+    // Do the sweep first so listJoinedMarkets (or the captured set) has data
+    this.sweepOrders(id, 'tcp-close', joined);
+
+    // Now clean indices
+    if (joined.size) {
+      for (const mk of joined) this._marketSubs.get(mk)?.delete(id);
+    }
+    this._sessionSubs.delete(id);
+    this._liveSessions.delete(id);
+
+    console.log(`[SM] Connection closed: ${id}`);
+  }
+
+  private _seenClose(ws: WS, uuid: string, ms = 1500) {
+    const sid = (ws as any).id as string;
+    if (!uuid) return false; // don't block if input is bad
+
+    let byUuid = this._recentClose.get(sid);
+    if (!byUuid) this._recentClose.set(sid, (byUuid = new Map<string, number>()));
+
+    const now  = Date.now();
+    const prev = byUuid.get(uuid);   // ← undefined on first sighting
+    byUuid.set(uuid, now);
+    console.log('dupe cancel? '+prev+' '+now+' '+prev+' '+Boolean(prev != null && (now - prev) < ms))
+    // only treat as dup if we actually saw it before
+    return prev != null && (now - prev) < ms;
+  }
+
+  /** Return all market keys this socket is currently subscribed to */
+  public listJoinedMarkets(socketId: string): string[] {
+    return Array.from(this._sessionSubs.get(socketId) ?? []);
+  }
+
+  private callPerMarket = (mk: string, id: string) => {
+    const f = (native as any).cancel_all_by_socket;
+    console.log('[typeof cancel_all_by_socket]', typeof f);
+    if (typeof f !== 'function') {
+      throw new Error('native.cancel_all_by_socket is missing on this object');
+    }
+    const r = f(mk, id);
+    console.log('[sweep] cancel_all_by_socket(', mk, ',', id, ') ->', r);
+    return r;
+  };
+
+ private sweepOrders(id: string, reason = 'tcp-close', markets?: Set<string> | string[]) {
+    let list: string[] =
+      (Array.isArray(markets) ? markets :
+      markets instanceof Set ? Array.from(markets) :
+      Array.from(this._sessionSubs.get(id) ?? []));
+
+    if (list.length === 0) list = Array.from(this._marketSubs.keys());
+
+    console.log('sweepOrders markets', list.length, list);
+
+    const global = (native as any).cancel_all_by_socket_global;
+  if (typeof global === 'function') {
+    try {
+      const r = global(id);
+      console.log('[sweep] cancel_all_by_socket_global(', id, ') ->', r);
+    } catch (e) {
+      console.warn('[sweep] global cancel failed', e);
+    }
+    // 🔁 short delayed retry to catch races
+    setTimeout(() => {
+      try {
+        const r2 = (native as any).cancel_all_by_socket_global?.(id);
+        console.log('[sweep] delayed global retry(', id, ') ->', r2);
+      } catch (e) {
+        console.warn('[sweep] delayed global retry failed', e);
+      }
+    }, 200);
+  } else {
+    console.warn('[sweep] global cancel not available on native');
+  }
+
+    // NEW: broadcast a fresh snapshot to all subs for each market
+    for (const internalKey of list) {
+      try {
+        const snapRaw = (native as any).snapshot?.(internalKey, this._depth);
+        const snapObj = parseMaybeJson<any>(snapRaw, null);
+        // Parse to get base market for broadcast
+        const { market: baseMarket } = this.parseInternalKey(internalKey);
+        
+         const normalized =
+          snapObj && snapObj.snapshot
+            ? {
+                symbol: snapObj.snapshot.symbol,
+                timestamp: snapObj.snapshot.timestamp,
+                bids: (snapObj.snapshot.bids ?? []).map((b: any) => ({
+                  price: PRICE_SCALE ? b.price / PRICE_SCALE : b.price,
+                  amount: (b.visible_quantity ?? 0) / QTY_SCALE,  
+                  count: b.order_count,
+                })),
+                asks: (snapObj.snapshot.asks ?? []).map((a: any) => ({
+                  price: PRICE_SCALE ? a.price / PRICE_SCALE : a.price,
+                  amount: (a.visible_quantity ?? 0) / QTY_SCALE,   
+                  count: a.order_count,
+                })),
+                checksum: snapObj.checksum,
+              }
+            : null;
+  console.log('checking normalized in sweep '+JSON.stringify(normalized))
+        this.broadcastToMarket(internalKey, {
+        event: EmitEvents.ORDERBOOK_DATA,
+        orders: normalized,
+        isDelta: false,
+        history: [],
+      });
+
+      } catch (e) {
+        console.warn('[sweep snapshot err]', internalKey, e);
+      }
+    }
+
+    this._liveSessions.delete(id);
+    console.log(`${id} disconnected (${reason})`);
+  }
+
+
+  // === Utilities ===
+  private generateUniqueId(): string {
+    return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  }
 
   private deriveMarketFromOrder(data: any): string | null {
-    // Implementation from your original file
-    return null;
-  }
+      const o = data?.order ?? data;
+      console.log('data in deriver market '+JSON.stringify(data))
+      // explicit beats inference
+      const mk =
+        o?.marketKey ??
+        o?.symbol ??
+        o?.props?.marketKey ??
+        o?.props?.symbol;
+      if (mk) return String(mk);
 
-  private resolveMarket(data: any): string {
-    // Try close-order style fields first (they often differ from standard payloads)
-    if (data.event === OnEvents.CLOSE_ORDER || data.event === 'close-order') {
-      const explicit = data.marketKey ?? data.market ?? data.filter?.marketKey;
-      if (explicit) return String(explicit);
+      // SPOT inference by IDs → "min-max"
+      const f = o?.props?.id_for_sale ?? o?.id_for_sale;
+      const d = o?.props?.id_desired  ?? o?.id_desired;
+      const spot = this.spotKeyFromIds(f, d);
+      if (spot) return spot;
 
-      // FUTURES
-      const cid = data.contract_id ?? data.contractId ??
-        data.filter?.contract_id ?? data.filter?.contractId;
-      const exp = data.expiry ?? data.maturity_block ??
-        data.filter?.expiry ?? data.filter?.maturity_block;
-      if (cid != null && this.futKey) {
-        const fut = this.futKey(cid, exp);
+      // FUTURES inference
+      const cid = o?.props?.contract_id ?? o?.props?.contractId;
+      const exp = o?.props?.expiry ?? o?.props?.maturity_block;
+      const fut = this.futKey(cid, exp);
+      if (fut) return fut;
+
+      return null;
+    }
+
+    /** Return a canonical market key for any inbound payload shape. */
+    private resolveMarket(data: any): string | null {
+
+      // 1) If this is a close-order envelope, be lenient with fields
+      const evt = data?.event ?? data?.type ?? '';
+      if (String(evt) === 'close-order') {
+        // FUTURES: contract id (+ optional expiry/maturity)
+        const cid =
+          data?.contract_id ?? data?.contractId ??
+          data?.props?.contract_id ?? data?.props?.contractId ??
+          data?.order?.contract_id ?? data?.order?.contractId ??
+          data?.payload?.contract_id ?? data?.payload?.contractId;
+
+        const exp =
+          data?.expiry ?? data?.maturity_block ??
+          data?.props?.expiry ?? data?.props?.maturity_block ??
+          data?.order?.expiry ?? data?.order?.maturity_block ??
+          data?.payload?.expiry ?? data?.payload?.maturity_block;
+
+        if (cid != null && this.futKey) {
+          const fut = this.futKey(cid, exp);
+          if (fut) return fut;
+        }
+
+        // SPOT: id_for_sale + id_desired
+        const f =
+          data?.id_for_sale ?? data?.props?.id_for_sale ??
+          data?.order?.id_for_sale ?? data?.payload?.id_for_sale;
+        const d =
+          data?.id_desired ?? data?.props?.id_desired ??
+          data?.order?.id_desired ?? data?.payload?.id_desired;
+
+        if (f != null && d != null && this.spotKeyFromIds) {
+          const spot = this.spotKeyFromIds(f, d);
+          if (spot) return spot;
+        }
+      }
+
+        const direct =
+            data?.marketKey ??
+            data?.filter?.marketKey ??
+            this.deriveMarketFromOrder?.(data);
+          if (direct) return String(direct);
+
+      // 3) Generic inference for non-close frames (or missed fields)
+      const o = data?.order ?? data?.payload ?? data;
+
+      // FUTURES from nested props
+      const cid2 = o?.props?.contract_id ?? o?.props?.contractId ?? o?.contract_id ?? o?.contractId;
+      const exp2 = o?.props?.expiry ?? o?.props?.maturity_block ?? o?.expiry ?? o?.maturity_block;
+      if (cid2 != null && this.futKey) {
+        const fut = this.futKey(cid2, exp2);
         if (fut) return fut;
       }
 
-      // SPOT
-      const f =
-        data.id_for_sale ?? data.filter?.id_for_sale ??
-        data.order?.id_for_sale ?? data.payload?.id_for_sale;
-      const d =
-        data.id_desired ?? data.props?.id_desired ??
-        data.order?.id_desired ?? data.payload?.id_desired;
-
-      if (f != null && d != null && this.spotKeyFromIds) {
-        const spot = this.spotKeyFromIds(f, d);
+      // SPOT from nested ids
+      const f2 = o?.props?.id_for_sale ?? o?.id_for_sale;
+      const d2 = o?.props?.id_desired ?? o?.id_desired;
+      if (f2 != null && d2 != null && this.spotKeyFromIds) {
+        const spot = this.spotKeyFromIds(f2, d2);
         if (spot) return spot;
       }
+
+      // 4) Symbol fallback (ensure -perp for futures-like symbols)
+      const sym = data?.symbol ?? o?.symbol;
+      if (sym) return this.ensurePerpSymbol(sym);
+
+      return null;
     }
-
-      const direct =
-          data?.marketKey ??
-          data?.filter?.marketKey ??
-          this.deriveMarketFromOrder?.(data);
-        if (direct) return String(direct);
-
-    // 3) Generic inference for non-close frames (or missed fields)
-    const o = data?.order ?? data?.payload ?? data;
-
-    // FUTURES from nested props
-    const cid2 = o?.props?.contract_id ?? o?.props?.contractId ?? o?.contract_id ?? o?.contractId;
-    const exp2 = o?.props?.expiry ?? o?.props?.maturity_block ?? o?.expiry ?? o?.maturity_block;
-    if (cid2 != null && this.futKey) {
-      const fut = this.futKey(cid2, exp2);
-      if (fut) return fut;
-    }
-
-    // SPOT from nested ids
-    const f2 = o?.props?.id_for_sale ?? o?.id_for_sale;
-    const d2 = o?.props?.id_desired ?? o?.id_desired;
-    if (f2 != null && d2 != null && this.spotKeyFromIds) {
-      const spot = this.spotKeyFromIds(f2, d2);
-      if (spot) return spot;
-    }
-
-    // 4) Symbol fallback (ensure -perp for futures-like symbols)
-    const sym = data?.symbol ?? o?.symbol;
-    if (sym) return this.ensurePerpSymbol(sym);
-
-    return null;
-  }
 
   /** Ensure a futures-like symbol is canonicalized (adds -perp when appropriate). */
   private ensurePerpSymbol(sym: any): string {
@@ -1149,7 +1540,7 @@ export class SocketManager {
     private toJsOrder(o: {
       uuid: string;
       socketId: string;
-      traderAddress?: string;
+      traderAddress?: string;  // NEW: added field
       side?: string;
       type?: 'SPOT' | 'FUTURES';
       action?: 'BUY' | 'SELL';
@@ -1164,7 +1555,7 @@ export class SocketManager {
         uuid: o.uuid,
         socketId: o.socketId,          // camelCase for your code
         socket_id: o.socketId,         // <-- snake_case for native/Rust
-        trader_address: o.traderAddress, // bound identity
+        trader_address: o.traderAddress,  // NEW: bound identity
         side: side === 'SELL' ? 'SELL' : 'BUY',
         price: Number(o.price),
         amount: Number(o.amount ?? o.quantity ?? 0),
