@@ -1,42 +1,27 @@
 import * as fs from 'fs';
 import { FastifyInstance } from "fastify";
 import { Server, Socket } from "socket.io";
+import { envConfig } from "../../config/env.config";
 import { TFilter } from "../../utils/types/markets.types";
+import { TokenBucketLimiter } from "../../utils/pure/rate-limit.pure";
 import { TOrder, TRawOrder } from "../../utils/types/orderbook.types";
 import { orderbookManager } from "../orderbook";
 import { orderFactory } from "../orderbook/order.factory";
 import { EmitEvents, OnEvents, OrderEmitEvents } from "./events";
 
 // DoS bounds: max orders per many-orders batch, max socket.io message size,
-// and a small dependency-free per-socket token bucket for order events.
+// and dependency-free per-socket token buckets for order events and queries.
+// The order burst must cover a full many-orders batch (MAX_BATCH_ORDERS) so a
+// legitimate ladder is never half-dropped by the limiter.
 const MAX_BATCH_ORDERS = 100;
 const MAX_HTTP_BUFFER_SIZE = 1e6;
 const ORDER_RATE_PER_SEC = 10;
-const ORDER_RATE_BURST = 50;
+const ORDER_RATE_BURST = 100;
+const QUERY_RATE_PER_SEC = 10;
+const QUERY_RATE_BURST = 50;
 
-interface IRateBucket {
-    tokens: number;
-    lastRefill: number;
-}
-
-const orderRateBuckets = new Map<string, IRateBucket>();
-
-const consumeOrderToken = (socketId: string): boolean => {
-    const now = Date.now();
-    let bucket = orderRateBuckets.get(socketId);
-    if (!bucket) {
-        bucket = { tokens: ORDER_RATE_BURST, lastRefill: now };
-        orderRateBuckets.set(socketId, bucket);
-    }
-    bucket.tokens = Math.min(
-        ORDER_RATE_BURST,
-        bucket.tokens + ((now - bucket.lastRefill) / 1000) * ORDER_RATE_PER_SEC,
-    );
-    bucket.lastRefill = now;
-    if (bucket.tokens < 1) return false;
-    bucket.tokens -= 1;
-    return true;
-};
+const orderRateLimiter = new TokenBucketLimiter(ORDER_RATE_PER_SEC, ORDER_RATE_BURST);
+const queryRateLimiter = new TokenBucketLimiter(QUERY_RATE_PER_SEC, QUERY_RATE_BURST);
 
 interface IClientSession {
     id: string;
@@ -68,7 +53,10 @@ export class SocketManager {
         const fastifyIO = require("fastify-socket.io");
        this.server.register(fastifyIO, {
             cors: {
-                origin: ["https://layerwallet.com", "https://www.layerwallet.com"], // Web origins allowed "https://layerwallet.com", "https://www.layerwallet.com", "http://localhost:4200",
+                // Same allowlist as the HTTP routes (CORS_ORIGINS): by default the
+                // origins the shipped wallet FE sends — `null` (the Electron UI is
+                // loaded from file://) and the layerwallet.com web origins.
+                origin: envConfig.CORS_ORIGINS.length ? envConfig.CORS_ORIGINS : false,
                 methods: ["GET", "POST"], // Allowed HTTP methods
                 credentials: true, // Allow cookies/auth headers
             },
@@ -113,8 +101,11 @@ const onManyOrders = (socket: Socket) => async (rawOrders: TRawOrder[]) => {
         return;
     }
     for (let i = 0; i < rawOrders.length; i++) {
-        if (!consumeOrderToken(socket.id)) {
-            socket.emit(OrderEmitEvents.ERROR, 'Rate limit exceeded');
+        if (!orderRateLimiter.consume(socket.id)) {
+            // Surface the dropped remainder instead of dropping it silently.
+            const dropped = rawOrders.length - i;
+            socket.emit(OrderEmitEvents.ERROR, `Rate limit exceeded: dropped ${dropped} of ${rawOrders.length} orders in batch`);
+            if (i > 0) socket.emit(OrderEmitEvents.SAVED);
             return;
         }
         const rawOrder = rawOrders[i];
@@ -129,14 +120,15 @@ const onManyOrders = (socket: Socket) => async (rawOrders: TRawOrder[]) => {
 }
 
 const onDisconnect = (socket: Socket) => (reason: string) => {
-    orderRateBuckets.delete(socket.id);
+    orderRateLimiter.drop(socket.id);
+    queryRateLimiter.drop(socket.id);
     const openedOrders = orderbookManager.getOrdersBySocketId(socket.id);
     openedOrders.forEach(o => orderbookManager.removeOrder(o.uuid, socket.id));
     console.log(`${socket.id} Disconnected! Reason: ${reason}`);
 };
 
 const onNewOrder = (socket: Socket) => async (rawOrder: TRawOrder) => {
-    if (!consumeOrderToken(socket.id)) {
+    if (!orderRateLimiter.consume(socket.id)) {
         socket.emit(OrderEmitEvents.ERROR, 'Rate limit exceeded');
         return;
     }
@@ -167,6 +159,10 @@ const onNewOrder = (socket: Socket) => async (rawOrder: TRawOrder) => {
 };
 
 const onUpdateOrderbook = (socket: Socket) => async (filter: TFilter) => {
+    if (!queryRateLimiter.consume(socket.id)) {
+        socket.emit(OrderEmitEvents.ERROR, 'Rate limit exceeded');
+        return;
+    }
     const orderbook = orderbookManager.orderbooks.find(e => e.findByFilter(filter))
     const orders = orderbook ? orderbook.orders.filter(o => !o.lock) : [];
     const history = orderbook ? orderbook.historyTrades.filter(o => o.txid) : [];
@@ -175,7 +171,7 @@ const onUpdateOrderbook = (socket: Socket) => async (filter: TFilter) => {
 
 const onClosedOrder = (socket: Socket) => (orderUUID: string) => {
     console.log('inside onClosedOrder '+orderUUID)
-    if (!consumeOrderToken(socket.id)) {
+    if (!orderRateLimiter.consume(socket.id)) {
         socket.emit(OrderEmitEvents.ERROR, 'Rate limit exceeded');
         return;
     }

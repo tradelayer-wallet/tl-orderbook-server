@@ -137,9 +137,12 @@ export class Orderbook {
     }
 
     updatePlacedOrdersForSocketId(socketid: string) {
+        const socketObj = socketService.io.sockets.sockets.get(socketid);
+        // The socket may already be gone (e.g. the counterparty disconnected
+        // mid-swap) — nothing to update in that case.
+        if (!socketObj) return;
         const openedOrders = orderbookManager.getOrdersBySocketId(socketid);
         const orderHistory = orderbookManager.getOrdersHistory();
-        const socketObj = socketService.io.sockets.sockets.get(socketid);
         socketObj.emit(EmitEvents.PLACED_ORDERS, { openedOrders, orderHistory });
     }
 
@@ -210,7 +213,6 @@ export class Orderbook {
 
                 if (noTrades) return;
                 this.lockOrder(matchRes.data.match);
-                updateOrderLog(this.orderbookName, matchRes.data.match.uuid, 'FILLED');
                 const buildTradeRes = buildTrade(order, matchRes.data.match);
                 if (buildTradeRes.error || !buildTradeRes.data) {
                     throw new Error(`${buildTradeRes.error || "Building Trade Failed. Code 2"}`);
@@ -223,9 +225,15 @@ export class Orderbook {
                         // taken above so the maker order cannot stay locked forever.
                         this.lockOrder(matchRes.data.match, false);
                     } else {
-                        matchRes.data.match.socket_id !== newChannelRes.socketId
-                            ? this.lockOrder(matchRes.data.match, false)
-                            : this.removeOrder(matchRes.data.match.uuid, matchRes.data.match.socket_id);
+                        // `newChannelRes.socketId` is the server-derived terminator
+                        // (the socket that actually emitted TERMINATE_TRADE). Only
+                        // the owner of the resting order may cancel it out of the
+                        // book; anyone else terminating the trade just unlocks it.
+                        if (newChannelRes.socketId && newChannelRes.socketId === matchRes.data.match.socket_id) {
+                            this.removeOrder(matchRes.data.match.uuid, newChannelRes.socketId);
+                        } else {
+                            this.lockOrder(matchRes.data.match, false);
+                        }
                     }
                     this.updatePlacedOrdersForSocketId(matchRes.data.match.socket_id);
                     throw new Error(`${newChannelRes.error || "Undefined Error"}`);
@@ -235,6 +243,10 @@ export class Orderbook {
                     matchRes.data.match.props.amount = buildTradeRes.data.unfilled.props.amount;
                     this.lockOrder(matchRes.data.match, false);
                 } else {
+                    // The matched order is fully filled. The FILLED marker is only
+                    // written now that the swap has actually settled — never before,
+                    // so an aborted/timed-out swap cannot mark a live order FILLED.
+                    updateOrderLog(this.orderbookName, matchRes.data.match.uuid, 'FILLED');
                     this.removeOrder(matchRes.data.match.uuid, matchRes.data.match.socket_id);
                 }
                 this.updatePlacedOrdersForSocketId(matchRes.data.match.socket_id);
