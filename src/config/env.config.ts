@@ -10,12 +10,11 @@ const parsePositiveInt = (value: any, fallback: number): number => {
     return isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
-// Origins the shipped wallet FE actually sends:
+// Default CORS allowlist (enforced by config/cors.ts):
 //  - `null` (the literal opaque origin): the Electron UI is loaded from file://,
-//    which serializes its origin as `null` — same policy as the wallet's own
-//    socket.io server (see tradelayer-wallet wallet-server socket.service.ts),
-//    which also admits `null` for the file:// UI.
-//  - the layerwallet.com web origins (previously hardcoded for socket.io).
+//    which serializes its origin as `null`. Compatibility only; no credentials
+//    are ever sent to it.
+//  - the layerwallet.com web origins.
 // Override with CORS_ORIGINS (comma-separated). Set CORS_ORIGINS=off to deny
 // all cross-origin access.
 export const DEFAULT_CORS_ORIGINS = ['null', 'https://layerwallet.com', 'https://www.layerwallet.com'];

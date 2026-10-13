@@ -26,9 +26,10 @@ export class OrderbookManager {
 
     async addOrder(order: TOrder, noTrades: boolean = false): Promise<IResult<{ order?: TOrder, trade?: any }>> {
             try {
-                // The one entry point for orders into the book, whether a client
-                // order or the taker remainder of a swap. An order whose owner is
-                // gone is refused, so no ghost order can rest or be matched.
+                // Every order that enters the book goes through this method: client
+                // orders, and the taker remainder of a swap (see orderbook.class.ts).
+                // An order whose owner is not connected is refused here, so no ghost
+                // order can rest or be matched.
                 if (!getConnectedSocket(order.socket_id)) {
                     return { error: 'Order owner is not connected' };
                 }

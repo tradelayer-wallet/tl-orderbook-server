@@ -1,5 +1,6 @@
 // Every limiter instance, so that a key (a socket id) can be released from all of
-// them at once. Limiters are created once at module load, so this does not grow.
+// them at once. Instances are only created at module load (see services/socket/limiters.ts),
+// so the set has a fixed size.
 const allLimiters = new Set<TokenBucketLimiter>();
 
 // Minimal dependency-free token bucket used to rate limit socket event traffic
@@ -16,7 +17,7 @@ export class TokenBucketLimiter {
         allLimiters.add(this);
     }
 
-    // Releases the bucket held for `key` in every limiter (see releaseKeyFromAllLimiters).
+    // Releases the bucket held for `key`. Reached only via releaseKeyFromAll.
     private dropKey(key: string): void {
         this.buckets.delete(key);
     }
