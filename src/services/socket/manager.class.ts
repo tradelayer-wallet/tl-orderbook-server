@@ -1,4 +1,4 @@
-import fs from 'fs';
+import * as fs from 'fs';
 import { FastifyInstance } from "fastify";
 import { Server, Socket } from "socket.io";
 import { TFilter } from "../../utils/types/markets.types";
@@ -6,6 +6,37 @@ import { TOrder, TRawOrder } from "../../utils/types/orderbook.types";
 import { orderbookManager } from "../orderbook";
 import { orderFactory } from "../orderbook/order.factory";
 import { EmitEvents, OnEvents, OrderEmitEvents } from "./events";
+
+// DoS bounds: max orders per many-orders batch, max socket.io message size,
+// and a small dependency-free per-socket token bucket for order events.
+const MAX_BATCH_ORDERS = 100;
+const MAX_HTTP_BUFFER_SIZE = 1e6;
+const ORDER_RATE_PER_SEC = 10;
+const ORDER_RATE_BURST = 50;
+
+interface IRateBucket {
+    tokens: number;
+    lastRefill: number;
+}
+
+const orderRateBuckets = new Map<string, IRateBucket>();
+
+const consumeOrderToken = (socketId: string): boolean => {
+    const now = Date.now();
+    let bucket = orderRateBuckets.get(socketId);
+    if (!bucket) {
+        bucket = { tokens: ORDER_RATE_BURST, lastRefill: now };
+        orderRateBuckets.set(socketId, bucket);
+    }
+    bucket.tokens = Math.min(
+        ORDER_RATE_BURST,
+        bucket.tokens + ((now - bucket.lastRefill) / 1000) * ORDER_RATE_PER_SEC,
+    );
+    bucket.lastRefill = now;
+    if (bucket.tokens < 1) return false;
+    bucket.tokens -= 1;
+    return true;
+};
 
 interface IClientSession {
     id: string;
@@ -41,6 +72,7 @@ export class SocketManager {
                 methods: ["GET", "POST"], // Allowed HTTP methods
                 credentials: true, // Allow cookies/auth headers
             },
+            maxHttpBufferSize: MAX_HTTP_BUFFER_SIZE,
             serverOptions: httpsOptions,
         });
         this.server.ready().then(() => {
@@ -72,26 +104,52 @@ const onConnection = (socket: Socket) => {
 }
 
 const onManyOrders = (socket: Socket) => async (rawOrders: TRawOrder[]) => {
+    if (!Array.isArray(rawOrders)) {
+        socket.emit(OrderEmitEvents.ERROR, 'Invalid many-orders payload: expected an array of orders');
+        return;
+    }
+    if (rawOrders.length > MAX_BATCH_ORDERS) {
+        socket.emit(OrderEmitEvents.ERROR, `Batch too large: ${rawOrders.length} > ${MAX_BATCH_ORDERS}`);
+        return;
+    }
     for (let i = 0; i < rawOrders.length; i++) {
+        if (!consumeOrderToken(socket.id)) {
+            socket.emit(OrderEmitEvents.ERROR, 'Rate limit exceeded');
+            return;
+        }
         const rawOrder = rawOrders[i];
-        const order: TOrder = orderFactory(rawOrder, socket.id);
-        await orderbookManager.addOrder(order, true);
+        const factoryRes = orderFactory(rawOrder, socket.id);
+        if (factoryRes.error || !factoryRes.data) {
+            socket.emit(OrderEmitEvents.ERROR, factoryRes.error || 'Invalid order');
+            continue;
+        }
+        await orderbookManager.addOrder(factoryRes.data, true);
     }
     socket.emit(OrderEmitEvents.SAVED);
 }
 
 const onDisconnect = (socket: Socket) => (reason: string) => {
+    orderRateBuckets.delete(socket.id);
     const openedOrders = orderbookManager.getOrdersBySocketId(socket.id);
     openedOrders.forEach(o => orderbookManager.removeOrder(o.uuid, socket.id));
     console.log(`${socket.id} Disconnected! Reason: ${reason}`);
 };
 
 const onNewOrder = (socket: Socket) => async (rawOrder: TRawOrder) => {
-    if (!rawOrder.isLimitOrder) {
+    if (!consumeOrderToken(socket.id)) {
+        socket.emit(OrderEmitEvents.ERROR, 'Rate limit exceeded');
+        return;
+    }
+    if (!rawOrder || !rawOrder.isLimitOrder) {
         socket.emit(OrderEmitEvents.ERROR, 'Merket Orders Not allowed');
         return;
     }
-    const order: TOrder = orderFactory(rawOrder, socket.id);
+    const factoryRes = orderFactory(rawOrder, socket.id);
+    if (factoryRes.error || !factoryRes.data) {
+        socket.emit(OrderEmitEvents.ERROR, factoryRes.error || 'Invalid order');
+        return;
+    }
+    const order: TOrder = factoryRes.data;
     const res = await orderbookManager.addOrder(order);
     console.log('order res '+JSON.stringify(res))
     if (res.error || !res.data) {
@@ -117,6 +175,10 @@ const onUpdateOrderbook = (socket: Socket) => async (filter: TFilter) => {
 
 const onClosedOrder = (socket: Socket) => (orderUUID: string) => {
     console.log('inside onClosedOrder '+orderUUID)
+    if (!consumeOrderToken(socket.id)) {
+        socket.emit(OrderEmitEvents.ERROR, 'Rate limit exceeded');
+        return;
+    }
     const res = orderbookManager.removeOrder(orderUUID, socket.id);
     const openedOrders = orderbookManager.getOrdersBySocketId(socket.id);
     const orderHistory = orderbookManager.getOrdersHistory();

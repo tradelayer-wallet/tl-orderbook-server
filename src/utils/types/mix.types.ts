@@ -7,4 +7,5 @@ export interface IResultChannelSwap<T = any> {
     data?: T;
     error?: string;
     socketId?: string;
+    timedOut?: boolean;
 }

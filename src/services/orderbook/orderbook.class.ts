@@ -8,7 +8,7 @@ import {
     TOrder,
 } from "../../utils/types/orderbook.types";
 import { IResult, IResultChannelSwap } from "../../utils/types/mix.types";
-import { safeNumber, saveLog, updateOrderLog } from "../../utils/pure/mix.pure";
+import { isNonNegativeSafeInteger, isValidOrderIdProp, safeNumber, saveLog, updateOrderLog } from "../../utils/pure/mix.pure";
 import { socketService } from "../socket";
 import { ChannelSwap } from "../channel-swap/channel-swap.class";
 import { TFilter } from "../../utils/types/markets.types";
@@ -83,25 +83,23 @@ export class Orderbook {
         }
     }
 
-    private addProps(order: TOrder): IResult {
-        try {
-            if (this.props) {
-                throw new Error(`Props for this orderbook already exist`);
-            }
+    private addProps(order: TOrder): void {
+        const propsError = validateOrderbookNameProps(order);
+        if (propsError) throw new Error(propsError);
 
-            const { type } = order;
-            if (type === EOrderType.SPOT) {
-                const { id_desired, id_for_sale } = order.props;
-                this.props = { id_desired, id_for_sale } as ISpotOrderProps;
-            }
+        if (this.props) {
+            throw new Error(`Props for this orderbook already exist`);
+        }
 
-            if (type === EOrderType.FUTURES) {
-                const { contract_id } = order.props;
-                this.props = { contract_id } as IFuturesOrderProps;
-            }
+        const { type } = order;
+        if (type === EOrderType.SPOT) {
+            const { id_desired, id_for_sale } = order.props;
+            this.props = { id_desired, id_for_sale } as ISpotOrderProps;
+        }
 
-        } catch (error) {
-            return { error: error.message };
+        if (type === EOrderType.FUTURES) {
+            const { contract_id } = order.props;
+            this.props = { contract_id } as IFuturesOrderProps;
         }
     }
 
@@ -172,7 +170,7 @@ export class Orderbook {
                         ? o.props.price >= price
                         : false;
                 const lockCheck = !o.lock;
-                return idChecks && buySellCheck && priceCheck && lockCheck && lockCheck;
+                return idChecks && buySellCheck && priceCheck && lockCheck;
             }).sort(sortFunc);
             if (filteredOrders.length) {
                 const matchOrder= filteredOrders[0];
@@ -192,6 +190,11 @@ export class Orderbook {
 
     async addOrder(order: TOrder, noTrades: boolean = false): Promise<IResult<{ order?: TOrder, trade?: ITradeInfo }>> {
         try {
+            const propsError = validateOrderbookNameProps(order);
+            if (propsError) {
+                throw new Error(propsError);
+            }
+
             if (!this.checkCompatible(order)) {
                 throw new Error(`Order missmatch current orderbook interface or type`);
             }
@@ -215,9 +218,15 @@ export class Orderbook {
 
                 const newChannelRes = await this.newChannel(buildTradeRes.data.tradeInfo, buildTradeRes.data.unfilled);
                 if (newChannelRes.error || !newChannelRes.data) {
-                    matchRes.data.match.socket_id !== newChannelRes.socketId
-                        ? this.lockOrder(matchRes.data.match, false)
-                        : this.removeOrder(matchRes.data.match.uuid, matchRes.data.match.socket_id);
+                    if (newChannelRes.timedOut) {
+                        // The swap timed out (silent counterparty): reverse the lock
+                        // taken above so the maker order cannot stay locked forever.
+                        this.lockOrder(matchRes.data.match, false);
+                    } else {
+                        matchRes.data.match.socket_id !== newChannelRes.socketId
+                            ? this.lockOrder(matchRes.data.match, false)
+                            : this.removeOrder(matchRes.data.match.uuid, matchRes.data.match.socket_id);
+                    }
                     this.updatePlacedOrdersForSocketId(matchRes.data.match.socket_id);
                     throw new Error(`${newChannelRes.error || "Undefined Error"}`);
                 }
@@ -308,6 +317,28 @@ export class Orderbook {
         }
     }
 }
+
+// The values below end up in `orderbookName`, which is used to build log file
+// names. They must be non-negative safe integers (or whitelisted string ids)
+// at runtime — the type annotations alone do not protect against raw JSON input.
+const validateOrderbookNameProps = (order: TOrder): string | null => {
+    const { type } = order;
+    if (type === EOrderType.SPOT) {
+        const { id_for_sale, id_desired } = order.props;
+        if (!isValidOrderIdProp(id_for_sale) || !isValidOrderIdProp(id_desired)) {
+            return `Invalid order props: id_for_sale and id_desired must be non-negative safe integers or whitelisted ids`;
+        }
+        return null;
+    }
+    if (type === EOrderType.FUTURES) {
+        const { contract_id } = order.props;
+        if (!isNonNegativeSafeInteger(contract_id)) {
+            return `Invalid order props: contract_id must be a non-negative safe integer`;
+        }
+        return null;
+    }
+    return `Invalid order type`;
+};
 
 const buildTrade = (new_order: TOrder, old_order: TOrder): IResult<{ unfilled: TOrder, tradeInfo: ITradeInfo }> => {
     try {
