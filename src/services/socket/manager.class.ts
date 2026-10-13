@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import { FastifyInstance } from "fastify";
 import { Server, Socket } from "socket.io";
-import { envConfig } from "../../config/env.config";
+import { socketIoCorsOptions } from "../../config/cors";
 import { TFilter } from "../../utils/types/markets.types";
 import { TokenBucketLimiter } from "../../utils/pure/rate-limit.pure";
 import { TOrder, TRawOrder } from "../../utils/types/orderbook.types";
@@ -51,15 +51,9 @@ export class SocketManager {
             cert: fs.readFileSync('/etc/letsencrypt/live/ws.layerwallet.com/fullchain.pem'),
         };
         const fastifyIO = require("fastify-socket.io");
-       this.server.register(fastifyIO, {
-            cors: {
-                // Same allowlist as the HTTP routes (CORS_ORIGINS): by default the
-                // origins the shipped wallet FE sends — `null` (the Electron UI is
-                // loaded from file://) and the layerwallet.com web origins.
-                origin: envConfig.CORS_ORIGINS.length ? envConfig.CORS_ORIGINS : false,
-                methods: ["GET", "POST"], // Allowed HTTP methods
-                credentials: true, // Allow cookies/auth headers
-            },
+        this.server.register(fastifyIO, {
+            // Same decision as the HTTP routes (config/cors.ts).
+            cors: socketIoCorsOptions,
             maxHttpBufferSize: MAX_HTTP_BUFFER_SIZE,
             serverOptions: httpsOptions,
         });
