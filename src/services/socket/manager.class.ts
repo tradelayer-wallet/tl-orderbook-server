@@ -3,26 +3,18 @@ import { FastifyInstance } from "fastify";
 import { Server, Socket } from "socket.io";
 import { socketIoCorsOptions } from "../../config/cors";
 import { TFilter } from "../../utils/types/markets.types";
-import { TokenBucketLimiter } from "../../utils/pure/rate-limit.pure";
 import { TOrder, TRawOrder } from "../../utils/types/orderbook.types";
 import { orderbookManager } from "../orderbook";
 import { orderFactory } from "../orderbook/order.factory";
 import { routeSwapEvent } from "../channel-swap/channel-swap.class";
 import { EmitEvents, OnEvents, OrderEmitEvents } from "./events";
+import { orderRateLimiter, queryRateLimiter, releaseSocketLimiters } from "./limiters";
 
-// DoS bounds: max orders per many-orders batch, max socket.io message size,
-// and dependency-free per-socket token buckets for order events and queries.
-// The order burst must cover a full many-orders batch (MAX_BATCH_ORDERS) so a
+// DoS bounds: max orders per many-orders batch and max socket.io message size.
+// The order burst (see limiters.ts) covers a full many-orders batch, so a
 // legitimate ladder is never half-dropped by the limiter.
 const MAX_BATCH_ORDERS = 100;
 const MAX_HTTP_BUFFER_SIZE = 1e6;
-const ORDER_RATE_PER_SEC = 10;
-const ORDER_RATE_BURST = 100;
-const QUERY_RATE_PER_SEC = 10;
-const QUERY_RATE_BURST = 50;
-
-const orderRateLimiter = new TokenBucketLimiter(ORDER_RATE_PER_SEC, ORDER_RATE_BURST);
-const queryRateLimiter = new TokenBucketLimiter(QUERY_RATE_PER_SEC, QUERY_RATE_BURST);
 
 interface IClientSession {
     id: string;
@@ -60,31 +52,36 @@ export class SocketManager {
         });
         this.server.ready().then(() => {
             console.log(`Socket Service Initialized`);
-            this.io.on(OnEvents.CONNECTION, onConnection);
-            this.io.on(OnEvents.CONNECTION, this.handleLiveSessions.bind(this));
+            this.io.on(OnEvents.CONNECTION, (socket: Socket) => this.onConnection(socket));
         });
     }
 
-    handleLiveSessions(socket: Socket) {
+    // Per-connection setup: the live-session entry and every event handler.
+    private onConnection(socket: Socket) {
+        console.log(`New Connection: ${socket.id}`);
         this._liveSessions.push({
             id: socket.id,
             startTime: Date.now(),
             ip: socket.client.conn.remoteAddress,
         });
-        socket.on(OnEvents.DISCONNECT, () => {
-            this._liveSessions = this._liveSessions.filter(q => q.id !== socket.id);
-        });
+        socket.on(OnEvents.DISCONNECT, (reason: string) => this.onDisconnect(socket, reason));
+        socket.on(OnEvents.NEW_ORDER, onNewOrder(socket));
+        socket.on(OnEvents.UPDATE_ORDERBOOK, onUpdateOrderbook(socket));
+        socket.on(OnEvents.CLOSE_ORDER, onClosedOrder(socket));
+        socket.on(OnEvents.MANY_ORDERS, onManyOrders(socket));
+        socket.on(OnEvents.SWAP, (payload: unknown) => routeSwapEvent(socket, payload));
     }
-}
 
-const onConnection = (socket: Socket) => {
-    console.log(`New Connection: ${socket.id}`);
-    socket.on(OnEvents.DISCONNECT, onDisconnect(socket));
-    socket.on(OnEvents.NEW_ORDER, onNewOrder(socket));
-    socket.on(OnEvents.UPDATE_ORDERBOOK, onUpdateOrderbook(socket));
-    socket.on(OnEvents.CLOSE_ORDER, onClosedOrder(socket));
-    socket.on(OnEvents.MANY_ORDERS, onManyOrders(socket));
-    socket.on(OnEvents.SWAP, (payload: unknown) => routeSwapEvent(socket, payload));
+    // The single disconnect hook: every piece of per-socket state is released here
+    // (live-session entry, rate-limit buckets, resting orders). Swap sessions are not
+    // per-socket. They end by settlement or timeout, and they reach a socket only
+    // through their own registry entry.
+    private onDisconnect(socket: Socket, reason: string) {
+        this._liveSessions = this._liveSessions.filter(q => q.id !== socket.id);
+        releaseSocketLimiters(socket.id);
+        orderbookManager.removeOrdersOfSocket(socket.id);
+        console.log(`${socket.id} Disconnected! Reason: ${reason}`);
+    }
 }
 
 const onManyOrders = (socket: Socket) => async (rawOrders: TRawOrder[]) => {
@@ -114,14 +111,6 @@ const onManyOrders = (socket: Socket) => async (rawOrders: TRawOrder[]) => {
     }
     socket.emit(OrderEmitEvents.SAVED);
 }
-
-const onDisconnect = (socket: Socket) => (reason: string) => {
-    orderRateLimiter.drop(socket.id);
-    queryRateLimiter.drop(socket.id);
-    const openedOrders = orderbookManager.getOrdersBySocketId(socket.id);
-    openedOrders.forEach(o => orderbookManager.removeOrder(o.uuid, socket.id));
-    console.log(`${socket.id} Disconnected! Reason: ${reason}`);
-};
 
 const onNewOrder = (socket: Socket) => async (rawOrder: TRawOrder) => {
     if (!orderRateLimiter.consume(socket.id)) {
@@ -176,4 +165,3 @@ const onClosedOrder = (socket: Socket) => (orderUUID: string) => {
     const orderHistory = orderbookManager.getOrdersHistory();
     socket.emit(EmitEvents.PLACED_ORDERS, { openedOrders, orderHistory });
 };
-

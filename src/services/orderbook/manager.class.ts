@@ -4,6 +4,7 @@ import { Orderbook } from "./orderbook.class";
 import { saveLog, updateOrderLog } from "../../utils/pure/mix.pure";
 import moment = require("moment");
 import { readdirSync, readFileSync } from "fs";
+import { getConnectedSocket } from "../socket";
 
 export class OrderbookManager {
     orderbooks: Orderbook[] = [];
@@ -25,6 +26,12 @@ export class OrderbookManager {
 
     async addOrder(order: TOrder, noTrades: boolean = false): Promise<IResult<{ order?: TOrder, trade?: any }>> {
             try {
+                // The one entry point for orders into the book, whether a client
+                // order or the taker remainder of a swap. An order whose owner is
+                // gone is refused, so no ghost order can rest or be matched.
+                if (!getConnectedSocket(order.socket_id)) {
+                    return { error: 'Order owner is not connected' };
+                }
                 const existingOrderbook = this.orderbooks.find(b => b.checkCompatible(order));
                 const res = existingOrderbook
                     ? await existingOrderbook.addOrder(order, noTrades)
@@ -55,6 +62,12 @@ export class OrderbookManager {
         } catch (error) {
             return { error: error.message };
         }
+    }
+
+    // Removes every resting order owned by a socket. Called from the socket
+    // disconnect hook, the only place a socket's book state is released.
+    removeOrdersOfSocket(socket_id: string): void {
+        this.getOrdersBySocketId(socket_id).forEach(o => this.removeOrder(o.uuid, socket_id));
     }
 
     getOrdersBySocketId(id: string) {

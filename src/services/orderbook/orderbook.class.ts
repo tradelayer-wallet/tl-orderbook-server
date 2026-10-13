@@ -252,7 +252,10 @@ export class Orderbook {
                 this.updatePlacedOrdersForSocketId(matchRes.data.match.socket_id);
 
                 if (buildTradeRes.data.unfilled?.uuid === order.uuid) {
-                    const res = await this.addOrder(buildTradeRes.data.unfilled);
+                    // The taker's remainder re-enters through the manager, the single
+                    // entry point. If the taker has disconnected meanwhile, the
+                    // remainder is refused there and the completed trade still stands.
+                    const res = await orderbookManager.addOrder(buildTradeRes.data.unfilled);
                     return { data: res.data };
                 }
                 this.updatePlacedOrdersForSocketId(order.socket_id);

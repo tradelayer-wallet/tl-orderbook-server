@@ -1,3 +1,7 @@
+// Every limiter instance, so that a key (a socket id) can be released from all of
+// them at once. Limiters are created once at module load, so this does not grow.
+const allLimiters = new Set<TokenBucketLimiter>();
+
 // Minimal dependency-free token bucket used to rate limit socket event traffic
 // per connection. One instance is kept per event family so that a burst of one
 // kind of traffic cannot starve another (e.g. order placement vs swap relay vs
@@ -8,7 +12,18 @@ export class TokenBucketLimiter {
     constructor(
         private ratePerSec: number,
         private burst: number,
-    ) {}
+    ) {
+        allLimiters.add(this);
+    }
+
+    // Releases the bucket held for `key` in every limiter (see releaseKeyFromAllLimiters).
+    private dropKey(key: string): void {
+        this.buckets.delete(key);
+    }
+
+    static releaseKeyFromAll(key: string): void {
+        allLimiters.forEach(limiter => limiter.dropKey(key));
+    }
 
     consume(key: string): boolean {
         const now = Date.now();
@@ -25,10 +40,5 @@ export class TokenBucketLimiter {
         if (bucket.tokens < 1) return false;
         bucket.tokens -= 1;
         return true;
-    }
-
-    // Call when the key (socket id) goes away so state does not accumulate.
-    drop(key: string): void {
-        this.buckets.delete(key);
     }
 }
