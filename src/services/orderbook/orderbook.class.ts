@@ -10,7 +10,7 @@ import {
 import { IResult, IResultChannelSwap } from "../../utils/types/mix.types";
 import { isNonNegativeSafeInteger, isValidOrderIdProp, safeNumber, saveLog, updateOrderLog } from "../../utils/pure/mix.pure";
 import { socketService } from "../socket";
-import { ChannelSwap } from "../channel-swap/channel-swap.class";
+import { ChannelSwap, resolveSwapParticipants } from "../channel-swap/channel-swap.class";
 import { TFilter } from "../../utils/types/markets.types";
 import { orderbookManager } from ".";
 import { EmitEvents } from "../socket/events";
@@ -105,12 +105,12 @@ export class Orderbook {
 
     private async newChannel(tradeInfo: ITradeInfo, unfilled: TOrder): Promise<IResultChannelSwap> {
         try {
-            const buyerSocketId = tradeInfo.buyer.socketId;
-            const sellerSocketId = tradeInfo.seller.socketId;
-            const buyerSocket = socketService.io.sockets.sockets.get(buyerSocketId);
-            const sellerSocket = socketService.io.sockets.sockets.get(sellerSocketId);
-            const channel = new ChannelSwap(buyerSocket, sellerSocket, tradeInfo, unfilled);
-            const channelRes = await channel.onReady();
+            const participants = resolveSwapParticipants(socketService.io, tradeInfo);
+            if (participants.error || !participants.data) {
+                return { error: participants.error || 'Counterparty is not connected' };
+            }
+            const channel = new ChannelSwap(participants.data.buyer, participants.data.seller, tradeInfo, unfilled);
+            const channelRes = await channel.ready;
             if (channelRes.error || !channelRes.data) return channelRes;
 
             const historyTrade: IHistoryTrade = {

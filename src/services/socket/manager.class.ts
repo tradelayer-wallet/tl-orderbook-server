@@ -7,6 +7,7 @@ import { TokenBucketLimiter } from "../../utils/pure/rate-limit.pure";
 import { TOrder, TRawOrder } from "../../utils/types/orderbook.types";
 import { orderbookManager } from "../orderbook";
 import { orderFactory } from "../orderbook/order.factory";
+import { routeSwapEvent } from "../channel-swap/channel-swap.class";
 import { EmitEvents, OnEvents, OrderEmitEvents } from "./events";
 
 // DoS bounds: max orders per many-orders batch, max socket.io message size,
@@ -83,6 +84,7 @@ const onConnection = (socket: Socket) => {
     socket.on(OnEvents.UPDATE_ORDERBOOK, onUpdateOrderbook(socket));
     socket.on(OnEvents.CLOSE_ORDER, onClosedOrder(socket));
     socket.on(OnEvents.MANY_ORDERS, onManyOrders(socket));
+    socket.on(OnEvents.SWAP, (payload: unknown) => routeSwapEvent(socket, payload));
 }
 
 const onManyOrders = (socket: Socket) => async (rawOrders: TRawOrder[]) => {
