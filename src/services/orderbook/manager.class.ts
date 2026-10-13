@@ -46,7 +46,11 @@ export class OrderbookManager {
                 throw new Error(`Order with uuid: ${uuid} dont exist`);
             }
             const res = orderbook.removeOrder(uuid, socket_id);
-            updateOrderLog(orderbook.orderbookName,order.uuid, "CANCALED");
+            // The audit state follows the outcome of the removal. A rejected
+            // removal (not the owner, order gone) must leave the log untouched.
+            if (!res.error) {
+                updateOrderLog(orderbook.orderbookName, order.uuid, "CANCALED");
+            }
             return res;
         } catch (error) {
             return { error: error.message };
