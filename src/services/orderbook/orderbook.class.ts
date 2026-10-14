@@ -211,7 +211,9 @@ export class Orderbook {
                 return { data: { order } };
             } else {
 
-                if (noTrades) return;
+                // Without trades an order that crosses the book is refused explicitly,
+                // so it is neither silently dropped nor rested as a crossed book entry.
+                if (noTrades) return { error: 'Order crosses the book and was not placed: trades are disabled for this batch' };
                 this.lockOrder(matchRes.data.match);
                 const buildTradeRes = buildTrade(order, matchRes.data.match);
                 if (buildTradeRes.error || !buildTradeRes.data) {
@@ -230,7 +232,8 @@ export class Orderbook {
                         // the owner of the resting order may cancel it out of the
                         // book; anyone else terminating the trade just unlocks it.
                         if (newChannelRes.socketId && newChannelRes.socketId === matchRes.data.match.socket_id) {
-                            this.removeOrder(matchRes.data.match.uuid, newChannelRes.socketId);
+                            // Removal goes through the manager so the CANCALED audit state is written.
+                            orderbookManager.removeOrder(matchRes.data.match.uuid, newChannelRes.socketId);
                         } else {
                             this.lockOrder(matchRes.data.match, false);
                         }
@@ -255,8 +258,8 @@ export class Orderbook {
                     // The taker's remainder re-enters through the manager, the single
                     // entry point. If the taker has disconnected meanwhile, the
                     // remainder is refused there and the completed trade still stands.
-                    const res = await orderbookManager.addOrder(buildTradeRes.data.unfilled);
-                    return { data: res.data };
+                    // A refused remainder is returned as the error it is, so the caller reports it.
+                    return orderbookManager.addOrder(buildTradeRes.data.unfilled);
                 }
                 this.updatePlacedOrdersForSocketId(order.socket_id);
 

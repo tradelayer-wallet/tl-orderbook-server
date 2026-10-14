@@ -108,7 +108,9 @@ const onManyOrders = (socket: Socket) => async (rawOrders: TRawOrder[]) => {
             socket.emit(OrderEmitEvents.ERROR, factoryRes.error || 'Invalid order');
             continue;
         }
-        await orderbookManager.addOrder(factoryRes.data, true);
+        // Every entry gets its result reported; an entry that was not placed is never dropped silently.
+        const res = await orderbookManager.addOrder(factoryRes.data, true);
+        if (res.error) socket.emit(OrderEmitEvents.ERROR, res.error);
     }
     socket.emit(OrderEmitEvents.SAVED);
 }
