@@ -8,17 +8,31 @@ import { swapRelayLimiter } from "../socket/limiters";
 
 // Swap wire protocol (server <-> wallet client):
 //   'new-channel'  server -> each participant : { tradeInfo, unfilled, isBuyer, sessionId }
-//   'swap'         participant -> server      : { sessionId, eventName, socketId, data }
-//   'swap'         server -> counterparty     : the same payload, relayed unchanged
+//   'swap'         participant -> server      : { sessionId, eventName, data }
+//   'swap'         server -> counterparty     : { sessionId, eventName, socketId, data }
 // A swap is identified only by its server-generated sessionId. Socket ids and any
-// client-supplied field never select a session; `socketId` in a payload is advisory.
+// client-supplied field never select a session. The relayed `socketId` is stamped
+// by the server from the emitting socket, so a client cannot claim another identity.
 
-export interface ISwapEvent {
+export interface ISwapInbound {
     sessionId: string;
     eventName: string;
-    socketId?: string;
-    data?: any;
+    data?: unknown;
 }
+
+export interface ISwapEvent extends ISwapInbound {
+    // The emitting socket, stamped by the server. Never taken from the client.
+    socketId: string;
+}
+
+const MAX_EVENT_NAME_LENGTH = 64;
+// The reason a trade was terminated is relayed into the counterparty's order:error,
+// so it is bounded.
+const MAX_TERMINATE_REASON_LENGTH = 256;
+const TERMINATE_REASON_FALLBACK = 'Trade terminated by counterparty';
+// Bitcoin-family transaction id: 32 bytes as 64 hex characters. Anything else is
+// refused before it can be recorded as a fill or written to the public history.
+const TXID_PATTERN = /^[0-9a-f]{64}$/i;
 
 export interface ISwapParticipants {
     buyer: Socket;
@@ -50,6 +64,20 @@ export const activeSwapSessionCount = (): number => sessions.size;
 const isObject = (value: unknown): value is Record<string, unknown> =>
     typeof value === 'object' && value !== null;
 
+const terminationReason = (data: unknown): string =>
+    typeof data === 'string' && data.length > 0
+        ? data.slice(0, MAX_TERMINATE_REASON_LENGTH)
+        : TERMINATE_REASON_FALLBACK;
+
+// Only the fields the protocol uses survive. Anything else the client sent is dropped.
+const parseSwapInbound = (payload: unknown): ISwapInbound | null => {
+    if (!isObject(payload)) return null;
+    const { sessionId, eventName, data } = payload;
+    if (typeof sessionId !== 'string') return null;
+    if (typeof eventName !== 'string' || eventName.length > MAX_EVENT_NAME_LENGTH) return null;
+    return { sessionId, eventName, data };
+};
+
 // Single entry point for every inbound swap event. The sessionId selects the
 // session, and the emitting socket must be one of that session's two participants.
 // Unknown and foreign sessions get the same error, so responses do not reveal which
@@ -59,13 +87,17 @@ export const routeSwapEvent = (from: Socket, payload: unknown): void => {
         from.emit(OrderEmitEvents.ERROR, 'Rate limit exceeded');
         return;
     }
-    const sessionId = isObject(payload) && typeof payload.sessionId === 'string' ? payload.sessionId : null;
-    const session = sessionId !== null ? sessions.get(sessionId) : undefined;
+    const inbound = parseSwapInbound(payload);
+    if (!inbound) {
+        from.emit(OrderEmitEvents.ERROR, 'Invalid swap event: sessionId and eventName (string) are required');
+        return;
+    }
+    const session = sessions.get(inbound.sessionId);
     if (!session || !session.hasParticipant(from)) {
         from.emit(OrderEmitEvents.ERROR, 'Invalid swap event: unknown or foreign sessionId');
         return;
     }
-    session.handle(from, payload as ISwapEvent);
+    session.handle(from, inbound);
 };
 
 export class ChannelSwap {
@@ -97,20 +129,28 @@ export class ChannelSwap {
     }
 
     // Only called by routeSwapEvent, after `from` was verified as a participant.
-    handle(from: Socket, swapEvent: ISwapEvent): void {
-        // Relay only to this session's counterparty.
-        const counterparty = from === this.buyer ? this.seller : this.buyer;
-        counterparty.emit(EmitEvents.SWAP, swapEvent);
+    handle(from: Socket, inbound: ISwapInbound): void {
+        const { eventName, data } = inbound;
+        const isBuyerFill = eventName === 'BUYER:STEP6' && from === this.buyer;
+        // Only the buyer completes the swap; the seller cannot fake a fill. The txid
+        // is refused unless well-formed, and the session stays open so the buyer can resend.
+        if (isBuyerFill && !(typeof data === 'string' && TXID_PATTERN.test(data))) {
+            from.emit(OrderEmitEvents.ERROR, 'Invalid BUYER:STEP6: txid must be 64 hex characters');
+            return;
+        }
 
-        const { eventName, data } = swapEvent;
-        if (eventName === 'BUYER:STEP6' && from === this.buyer) {
-            // Only the buyer completes the swap; the seller cannot fake a fill.
+        // Relay only to this session's counterparty, with the sender stamped by the server.
+        const counterparty = from === this.buyer ? this.seller : this.buyer;
+        const relayed: ISwapEvent = { sessionId: this.sessionId, eventName, socketId: from.id, data };
+        counterparty.emit(EmitEvents.SWAP, relayed);
+
+        if (isBuyerFill) {
             this.settle({ data: { txid: data } });
         }
         if (eventName === 'TERMINATE_TRADE') {
-            // The terminator is the participant that emitted the event. The
-            // client-supplied socketId is ignored for this decision.
-            this.settle({ error: data, socketId: from.id });
+            // The terminator is the participant that emitted the event, derived from
+            // the socket and never from the payload.
+            this.settle({ error: terminationReason(data), socketId: from.id });
         }
     }
 

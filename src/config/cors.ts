@@ -34,3 +34,16 @@ export const socketIoCorsOptions = {
     origin: resolveOrigin,
     methods: ["GET", "POST"],
 };
+
+// Engine.io handshake gate (passed as `allowRequest`). CORS headers only govern
+// browser XHR, so they do not restrict a WebSocket upgrade. This gate applies the
+// same decision to every new handshake, polling or WebSocket. A handshake carrying
+// no Origin header is not a cross-origin browser request, so it is not refused here.
+export const socketIoAllowRequest = (
+    req: { headers: { origin?: string } },
+    cb: (message: string | null, success: boolean) => void,
+): void => {
+    const origin = req.headers.origin;
+    const allowed = !origin || decideCorsOrigin(origin) !== null;
+    cb(allowed ? null : 'Origin not allowed', allowed);
+};

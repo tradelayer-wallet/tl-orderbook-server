@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import { FastifyInstance } from "fastify";
 import { Server, Socket } from "socket.io";
-import { socketIoCorsOptions } from "../../config/cors";
+import { socketIoAllowRequest, socketIoCorsOptions } from "../../config/cors";
 import { TFilter } from "../../utils/types/markets.types";
 import { TOrder, TRawOrder } from "../../utils/types/orderbook.types";
 import { orderbookManager } from "../orderbook";
@@ -45,8 +45,9 @@ export class SocketManager {
         };
         const fastifyIO = require("fastify-socket.io");
         this.server.register(fastifyIO, {
-            // Same decision as the HTTP routes (config/cors.ts).
+            // Same decision as the HTTP routes (config/cors.ts), applied to every handshake.
             cors: socketIoCorsOptions,
+            allowRequest: socketIoAllowRequest,
             maxHttpBufferSize: MAX_HTTP_BUFFER_SIZE,
             serverOptions: httpsOptions,
         });
