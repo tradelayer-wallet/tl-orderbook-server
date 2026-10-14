@@ -4,3 +4,4 @@ dist
 *.hist
 *.log
 src/**/*.js
+test/.build/
