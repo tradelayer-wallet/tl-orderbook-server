@@ -178,7 +178,15 @@ export class Orderbook {
                 return idChecks && buySellCheck && priceCheck && lockCheck && amountCheck;
             }).sort(sortFunc);
             if (filteredOrders.length) {
-                const matchOrder= filteredOrders[0];
+                // A crossing order whose trade cannot settle exactly is skipped when a settleable
+                // one exists. Otherwise one such order at the best price would block every taker
+                // at that price, at no cost to its owner. When none is settleable, the taker is
+                // refused (below), so no order ever rests crossing the book.
+                const settleable = filteredOrders.filter(o => tradeSettles(order, o));
+                if (!settleable.length) {
+                    return { error: 'Trade value is not a whole number of satoshis: the match is refused' };
+                }
+                const matchOrder = settleable[0];
                 if (matchOrder.socket_id === order.socket_id) {
                     throw new Error("Match of the order from the same Account");
                 }
@@ -207,6 +215,8 @@ export class Orderbook {
             const matchRes = this.checkMatch(order);
             if (matchRes.error || !matchRes.data) throw new Error(`${matchRes.error || "Undefined Error"}`);
             if (!matchRes.data.match) {
+                const restingError = orderbookManager.restingCapError(order);
+                if (restingError) throw new Error(restingError);
                 saveLog(this.orderbookName, "ORDER", order);
                 orderbookManager.recordOrderHistory(order);
                 this.orders = [...this.orders, order];
@@ -222,6 +232,12 @@ export class Orderbook {
                 const buildTradeRes = buildTrade(order, matchRes.data.match);
                 if (buildTradeRes.error || !buildTradeRes.data) {
                     throw new Error(`${buildTradeRes.error || "Building Trade Failed. Code 2"}`);
+                }
+                // A taker remainder will rest after the trade. If it could not rest, refuse before
+                // the maker is locked or any swap starts, so no trade settles that the book cannot hold.
+                if (buildTradeRes.data.unfilled?.uuid === order.uuid) {
+                    const restingError = orderbookManager.restingCapError(order);
+                    if (restingError) throw new Error(restingError);
                 }
                 this.lockOrder(matchRes.data.match);
 
@@ -373,6 +389,19 @@ const validateOrderbookNameProps = (order: TOrder): string | null => {
         return null;
     }
     return `Invalid order type`;
+};
+
+// True when a trade between these two orders settles exactly: the matched quantity is a whole
+// number of units and its value is a whole number of satoshis at the maker's price. Futures
+// carry no such value. Same arithmetic as buildTrade, which still refuses any pair this rejects.
+const tradeSettles = (taker: TOrder, maker: TOrder): boolean => {
+    if (taker.type !== EOrderType.SPOT || maker.type !== EOrderType.SPOT) return true;
+    const takerUnits = toUnits(taker.props.amount);
+    const makerUnits = toUnits(maker.props.amount);
+    const priceUnits = toUnits(maker.props.price);
+    if (takerUnits === null || makerUnits === null || priceUnits === null) return false;
+    if (takerUnits <= 0 || makerUnits <= 0 || priceUnits <= 0) return false;
+    return mulDivUnits(Math.min(takerUnits, makerUnits), priceUnits) !== null;
 };
 
 const buildTrade = (new_order: TOrder, old_order: TOrder): IResult<{ unfilled: TOrder, tradeInfo: ITradeInfo }> => {

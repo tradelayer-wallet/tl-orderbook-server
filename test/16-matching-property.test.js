@@ -14,8 +14,9 @@
  *   - the book is never crossed (no resting bid at or above a resting ask);
  *   - conservation: 2 x traded + resting + dropped == placed.
  * The model uses BigInt and exact arithmetic. It applies the server's rules: best price,
- * then arrival order; a best match from the same socket or address refuses the order; a
- * trade whose LTC value is not a whole number of satoshis is refused; a remainder re-enters
+ * then arrival order, among crossing orders whose trade settles exactly (a whole number of
+ * satoshis); a crossing order that cannot settle is skipped, and when none settles the order is
+ * refused; a best match from the same socket or address refuses the order; a remainder re-enters
  * as a new order at the back of its price level.
  */
 const fs = require('fs');
@@ -78,17 +79,19 @@ class Model {
                 this.resting.push({ ...taker, seq: ++this.seq });
                 return 'rested';
             }
-            const m = opposite[0];
+            // Skipped: a crossing order whose trade cannot settle exactly. Refused: none settles.
+            const settleable = opposite.filter((m) => (taker.amountU < m.amountU ? taker.amountU : m.amountU) * m.priceU % UNIT === 0n);
+            if (settleable.length === 0) {
+                this.dropped += taker.amountU;
+                return 'refused-value';
+            }
+            const m = settleable[0];
             if (m.socket === taker.socket || m.address === taker.address) {
                 this.dropped += taker.amountU;
                 return 'refused-self';
             }
             const q = taker.amountU < m.amountU ? taker.amountU : m.amountU;
             const value = q * m.priceU;
-            if (value % UNIT !== 0n) {
-                this.dropped += taker.amountU;
-                return 'refused-value';
-            }
             const buyer = taker.action === 'BUY' ? taker.socket : m.socket;
             const seller = taker.action === 'BUY' ? m.socket : taker.socket;
             this.trades.push({ buyer, seller, qU: q, valueSats: value / UNIT });

@@ -36,6 +36,8 @@ export class OrderbookManager {
                     .slice(0, -1)
                     .forEach(q => records.push(JSON.parse(q)));
             });
+            // Files are per book and their order is not time order, so sort before taking the newest.
+            records.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
             return records.slice(-ORDER_HISTORY_LIMIT);
         } catch (error) {
             console.log(error);
@@ -81,19 +83,16 @@ export class OrderbookManager {
                 if (!getConnectedSocket(order.socket_id)) {
                     return { error: 'Order owner is not connected' };
                 }
-                // Resting orders are bounded per account and in total. Checked here, the one
-                // admission point, so a refusal leaves no state behind.
-                if (this.getOrdersBySocketId(order.socket_id).length >= envConfig.MAX_OPEN_ORDERS_PER_SOCKET) {
-                    return { error: `Too many open orders: at most ${envConfig.MAX_OPEN_ORDERS_PER_SOCKET} per account` };
-                }
-                if (this.openOrderCount() >= envConfig.MAX_OPEN_ORDERS) {
-                    return { error: `Too many open orders on this server: at most ${envConfig.MAX_OPEN_ORDERS}` };
-                }
                 const existingOrderbook = this.orderbooks.find(b => b.checkCompatible(order));
+                // A new book starts with this order resting, so the limits below apply to it.
                 // Any client can name a pair, so new books are capped. Refused before
                 // anything is created, so a refusal leaves no state behind.
-                if (!existingOrderbook && this.orderbooks.length >= envConfig.MAX_ORDERBOOKS) {
-                    return { error: `Too many orderbooks: the server holds at most ${envConfig.MAX_ORDERBOOKS}` };
+                if (!existingOrderbook) {
+                    const restingError = this.restingCapError(order);
+                    if (restingError) return { error: restingError };
+                    if (this.orderbooks.length >= envConfig.MAX_ORDERBOOKS) {
+                        return { error: `Too many orderbooks: the server holds at most ${envConfig.MAX_ORDERBOOKS}` };
+                    }
                 }
                 const res = existingOrderbook
                     ? await existingOrderbook.addOrder(order, noTrades)
@@ -140,6 +139,20 @@ export class OrderbookManager {
 
     openOrderCount(): number {
         return this.orderbooks.reduce((sum, ob) => sum + ob.orders.length, 0);
+    }
+
+    // Limits on resting orders: per socket (the account, as this server identifies it) and in
+    // total. Checked only where an order would come to rest (a new order that stays on the book,
+    // or the taker remainder of a trade), never for an order that trades at once. A refusal here
+    // leaves no state behind, since it is checked before anything rests or locks.
+    restingCapError(order: TOrder): string | null {
+        if (this.getOrdersBySocketId(order.socket_id).length >= envConfig.MAX_OPEN_ORDERS_PER_SOCKET) {
+            return `Too many open orders: at most ${envConfig.MAX_OPEN_ORDERS_PER_SOCKET} per account`;
+        }
+        if (this.openOrderCount() >= envConfig.MAX_OPEN_ORDERS) {
+            return `Too many open orders on this server: at most ${envConfig.MAX_OPEN_ORDERS}`;
+        }
+        return null;
     }
 
     getOrdersBySocketId(id: string) {
