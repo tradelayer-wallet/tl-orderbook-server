@@ -8,7 +8,7 @@ import {
     TOrder,
 } from "../../utils/types/orderbook.types";
 import { IResult, IResultChannelSwap } from "../../utils/types/mix.types";
-import { isNonNegativeSafeInteger, isValidOrderIdProp, safeNumber, saveLog, updateOrderLog } from "../../utils/pure/mix.pure";
+import { isNonNegativeSafeInteger, isValidOrderIdProp, mulDivUnits, saveLog, toUnits, UNIT_SCALE, updateOrderLog } from "../../utils/pure/mix.pure";
 import { socketService } from "../socket";
 import { ChannelSwap, resolveSwapParticipants } from "../channel-swap/channel-swap.class";
 import { TFilter } from "../../utils/types/markets.types";
@@ -173,7 +173,9 @@ export class Orderbook {
                         ? o.props.price >= price
                         : false;
                 const lockCheck = !o.lock;
-                return idChecks && buySellCheck && priceCheck && lockCheck;
+                // A resting order with no quantity left is never a match.
+                const amountCheck = o.props.amount > 0;
+                return idChecks && buySellCheck && priceCheck && lockCheck && amountCheck;
             }).sort(sortFunc);
             if (filteredOrders.length) {
                 const matchOrder= filteredOrders[0];
@@ -206,6 +208,7 @@ export class Orderbook {
             if (matchRes.error || !matchRes.data) throw new Error(`${matchRes.error || "Undefined Error"}`);
             if (!matchRes.data.match) {
                 saveLog(this.orderbookName, "ORDER", order);
+                orderbookManager.recordOrderHistory(order);
                 this.orders = [...this.orders, order];
                 this.updatePlacedOrdersForSocketId(order.socket_id);
                 return { data: { order } };
@@ -214,11 +217,13 @@ export class Orderbook {
                 // Without trades an order that crosses the book is refused explicitly,
                 // so it is neither silently dropped nor rested as a crossed book entry.
                 if (noTrades) return { error: 'Order crosses the book and was not placed: trades are disabled for this batch' };
-                this.lockOrder(matchRes.data.match);
+                // The trade is built before the maker is locked. A refusal here must not leave the
+                // maker locked: a locked order is hidden from matching and cannot be cancelled.
                 const buildTradeRes = buildTrade(order, matchRes.data.match);
                 if (buildTradeRes.error || !buildTradeRes.data) {
                     throw new Error(`${buildTradeRes.error || "Building Trade Failed. Code 2"}`);
                 }
+                this.lockOrder(matchRes.data.match);
 
                 const newChannelRes = await this.newChannel(buildTradeRes.data.tradeInfo, buildTradeRes.data.unfilled);
                 if (newChannelRes.error || !newChannelRes.data) {
@@ -251,6 +256,7 @@ export class Orderbook {
                     // written now that the swap has actually settled — never before,
                     // so an aborted/timed-out swap cannot mark a live order FILLED.
                     updateOrderLog(this.orderbookName, matchRes.data.match.uuid, 'FILLED');
+                    orderbookManager.markOrderHistory(matchRes.data.match.uuid, 'FILLED');
                     this.removeOrder(matchRes.data.match.uuid, matchRes.data.match.socket_id, true);
                 }
                 this.updatePlacedOrdersForSocketId(matchRes.data.match.socket_id);
@@ -272,6 +278,8 @@ export class Orderbook {
     }
 
     findByFilter(filter: TFilter) {
+        // A client filter is untrusted: anything that is not an object matches nothing.
+        if (!filter || typeof filter !== 'object') return false;
         if (!this.props) return false;
         if (filter.type !== this.type) return false;
         if (filter.type === EOrderType.SPOT && 'id_desired' in this.props ) {
@@ -374,17 +382,34 @@ const buildTrade = (new_order: TOrder, old_order: TOrder): IResult<{ unfilled: T
         const sellOrder = ordersArray.find(t => t.action === EOrderAction.SELL);
 
         if (!buyOrder || !sellOrder) throw new Error("Building Trade Failed. Code 1");
-        const newOrderAmount = new_order.props.amount;
-        const oldOrderAmount = old_order.props.amount
 
-        const unfilled = (newOrderAmount > oldOrderAmount
-            ? {...new_order, props: {...new_order.props, amount: safeNumber(newOrderAmount - oldOrderAmount)}}
-            : newOrderAmount < oldOrderAmount
-                ? {...old_order, props: {...old_order.props, amount: safeNumber(oldOrderAmount - newOrderAmount)}}
+        // All quantity math is exact, in units of 1e-8. No value is rounded: a remainder
+        // or a trade value that is not representable is refused, never adjusted.
+        const newUnits = toUnits(new_order.props.amount);
+        const oldUnits = toUnits(old_order.props.amount);
+        const priceUnits = toUnits(old_order.props.price);
+        if (newUnits === null || oldUnits === null || priceUnits === null || newUnits <= 0 || oldUnits <= 0 || priceUnits <= 0) {
+            throw new Error("Order amount and price must be positive multiples of 1e-8");
+        }
+        const amountUnits = Math.min(newUnits, oldUnits);
+        const remainderUnits = Math.abs(newUnits - oldUnits);
+
+        const unfilled = (newUnits > oldUnits
+            ? {...new_order, props: {...new_order.props, amount: remainderUnits / UNIT_SCALE}}
+            : newUnits < oldUnits
+                ? {...old_order, props: {...old_order.props, amount: remainderUnits / UNIT_SCALE}}
                 : null) as TOrder;
 
-        const amount = Math.min(newOrderAmount, oldOrderAmount);
         const price = old_order.props.price;
+        const amount = amountUnits / UNIT_SCALE;
+
+        // LTC value of the trade in satoshis: amount units * price units / 1e8, exact.
+        // A trade whose value is not a whole number of satoshis is refused, not rounded.
+        const isFutures = buyOrder.type === EOrderType.FUTURES;
+        const valueSats = isFutures ? 0 : mulDivUnits(amountUnits, priceUnits);
+        if (!isFutures && (valueSats === null || valueSats <= 0)) {
+            throw new Error("Trade value is not a whole number of satoshis: the match is refused");
+        }
 
         const tradeInfo: ITradeInfo = {
             type: new_order.type,
@@ -404,7 +429,7 @@ const buildTrade = (new_order: TOrder, old_order: TOrder): IResult<{ unfilled: T
             },
             taker: new_order.socket_id,
             maker: old_order.socket_id,
-            props: buyOrder.type === EOrderType.FUTURES 
+            props: isFutures
                 ? {
                     amount: amount,
                     contract_id: buyOrder.props.contract_id,
@@ -416,7 +441,7 @@ const buildTrade = (new_order: TOrder, old_order: TOrder): IResult<{ unfilled: T
                     propIdDesired: buyOrder.props.id_desired,
                     propIdForSale:  buyOrder.props.id_for_sale,
                     amountDesired: amount,
-                    amountForSale: safeNumber(amount * price),
+                    amountForSale: (valueSats as number) / UNIT_SCALE,
                 }
         };
         return { data: { unfilled, tradeInfo }}

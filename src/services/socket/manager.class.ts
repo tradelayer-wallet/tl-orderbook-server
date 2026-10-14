@@ -65,12 +65,14 @@ export class SocketManager {
             startTime: Date.now(),
             ip: socket.client.conn.remoteAddress,
         });
-        socket.on(OnEvents.DISCONNECT, (reason: string) => this.onDisconnect(socket, reason));
-        socket.on(OnEvents.NEW_ORDER, onNewOrder(socket));
-        socket.on(OnEvents.UPDATE_ORDERBOOK, onUpdateOrderbook(socket));
-        socket.on(OnEvents.CLOSE_ORDER, onClosedOrder(socket));
-        socket.on(OnEvents.MANY_ORDERS, onManyOrders(socket));
-        socket.on(OnEvents.SWAP, (payload: unknown) => routeSwapEvent(socket, payload));
+        // Every client event goes through guarded(): nothing in this process catches a throw
+        // or a rejection from a listener, so one bad payload would take the whole server down.
+        socket.on(OnEvents.DISCONNECT, guarded(socket, OnEvents.DISCONNECT, (reason: string) => this.onDisconnect(socket, reason)));
+        socket.on(OnEvents.NEW_ORDER, guarded(socket, OnEvents.NEW_ORDER, onNewOrder(socket)));
+        socket.on(OnEvents.UPDATE_ORDERBOOK, guarded(socket, OnEvents.UPDATE_ORDERBOOK, onUpdateOrderbook(socket)));
+        socket.on(OnEvents.CLOSE_ORDER, guarded(socket, OnEvents.CLOSE_ORDER, onClosedOrder(socket)));
+        socket.on(OnEvents.MANY_ORDERS, guarded(socket, OnEvents.MANY_ORDERS, onManyOrders(socket)));
+        socket.on(OnEvents.SWAP, guarded(socket, OnEvents.SWAP, (payload: unknown) => routeSwapEvent(socket, payload)));
     }
 
     // The single disconnect hook: every piece of per-socket state is released here
@@ -84,6 +86,25 @@ export class SocketManager {
         console.log(`${socket.id} Disconnected! Reason: ${reason}`);
     }
 }
+
+// Wraps one client event handler. A synchronous throw and a rejected promise both end up here:
+// the failure is logged without any payload, the sender gets a refusal, and the server keeps
+// running. Nothing else in this process would catch them.
+const guarded = (socket: Socket, name: string, handler: (...args: any[]) => unknown) =>
+    (...args: any[]): void => {
+        const refuse = (error: unknown) => {
+            console.log(`${socket.id} ${name} refused: ${(error as Error)?.message || 'handler failed'}`);
+            if (socket.connected) socket.emit(OrderEmitEvents.ERROR, 'Internal error: request refused');
+        };
+        try {
+            const result = handler(...args);
+            if (result && typeof (result as Promise<unknown>).catch === 'function') {
+                (result as Promise<unknown>).catch(refuse);
+            }
+        } catch (error) {
+            refuse(error);
+        }
+    };
 
 const onManyOrders = (socket: Socket) => async (rawOrders: TRawOrder[]) => {
     if (!Array.isArray(rawOrders)) {
@@ -152,6 +173,10 @@ const onNewOrder = (socket: Socket) => async (rawOrder: TRawOrder) => {
 const onUpdateOrderbook = (socket: Socket) => async (filter: TFilter) => {
     if (!queryRateLimiter.consume(socket.id)) {
         socket.emit(OrderEmitEvents.ERROR, 'Rate limit exceeded');
+        return;
+    }
+    if (!filter || typeof filter !== 'object') {
+        socket.emit(OrderEmitEvents.ERROR, 'Invalid orderbook filter: expected an object');
         return;
     }
     const orderbook = orderbookManager.orderbooks.find(e => e.findByFilter(filter))

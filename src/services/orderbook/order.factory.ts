@@ -1,6 +1,6 @@
 import { EOrderAction, EOrderType, IFuturesOrderProps, ISpotOrderProps, TOrder, TRawOrder } from "../../utils/types/orderbook.types";
 import { IResult } from "../../utils/types/mix.types";
-import { isNonNegativeSafeInteger, isPositiveFiniteNumber, isValidOrderIdProp } from "../../utils/pure/mix.pure";
+import { isNonNegativeSafeInteger, isPositiveFiniteNumber, isValidOrderIdProp, toUnits } from "../../utils/pure/mix.pure";
 import { v4 as uuidv4 } from 'uuid';
 
 const isNonEmptyString = (value: any): boolean =>
@@ -23,6 +23,10 @@ const validateRawOrder = (rawOrder: TRawOrder): string | null => {
     if (!props || typeof props !== 'object') return 'Invalid order props';
     if (!isPositiveFiniteNumber(props.amount)) return 'Order amount must be a finite number > 0';
     if (!isPositiveFiniteNumber(props.price)) return 'Order price must be a finite number > 0';
+    // Exact quantities only: at most 8 decimal places (the 1e-8 base unit), so no remainder or
+    // trade value has to be rounded (see orderbook.class.ts buildTrade).
+    if (toUnits(props.amount) === null) return 'Order amount must be a multiple of 1e-8 within the safe range';
+    if (toUnits(props.price) === null) return 'Order price must be a multiple of 1e-8 within the safe range';
 
     if (type === EOrderType.SPOT) {
         if (!isValidOrderIdProp(props.id_for_sale)) return 'Invalid id_for_sale';

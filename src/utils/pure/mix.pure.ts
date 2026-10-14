@@ -3,7 +3,48 @@ import { resolve, sep } from "path";
 import { IHistoryTrade, TOrder } from "../types/orderbook.types";
 import * as moment from 'moment';
 
-export const safeNumber = (n: number) => parseFloat((n).toFixed(6));
+// Quantities and prices are exact multiples of 1e-8 (the TradeLayer and LTC base unit). They
+// are held as integers of that unit ("units") so that the book never rounds a quantity.
+// Rounding a remainder to 6 decimals (the former safeNumber) created or destroyed quantity.
+export const UNIT_SCALE = 100000000;
+
+// The units of a number that is exactly a multiple of 1e-8, or null (more than 8 decimal
+// places, not finite, negative, or beyond the safe integer range).
+export const toUnits = (value: unknown): number | null => {
+    if (typeof value !== 'number' || !isFinite(value) || value < 0) return null;
+    const units = Math.round(value * UNIT_SCALE);
+    if (!Number.isSafeInteger(units)) return null;
+    return units / UNIT_SCALE === value ? units : null;
+};
+
+// Decimal product of two non-negative integers given as digit strings (no BigInt: the build
+// targets ES5 and has no BigInt lib). Returns the digit string without leading zeros.
+const mulDigitStrings = (x: string, y: string): string => {
+    const xs = x.split('').reverse().map(Number);
+    const ys = y.split('').reverse().map(Number);
+    const out: number[] = [];
+    for (let k = 0; k < xs.length + ys.length; k++) out.push(0);
+    for (let i = 0; i < xs.length; i++) {
+        for (let j = 0; j < ys.length; j++) out[i + j] += xs[i] * ys[j];
+    }
+    for (let k = 0; k < out.length - 1; k++) {
+        out[k + 1] += Math.floor(out[k] / 10);
+        out[k] = out[k] % 10;
+    }
+    return out.reverse().join('').replace(/^0+(?=\d)/, '');
+};
+
+// a * b / UNIT_SCALE, exact. Returns null when the quotient is not a whole number or is not
+// a safe integer. Used for the satoshi value of a trade: units(amount) * units(price) / 1e8.
+export const mulDivUnits = (a: number, b: number): number | null => {
+    if (!Number.isSafeInteger(a) || !Number.isSafeInteger(b) || a < 0 || b < 0) return null;
+    const product = mulDigitStrings(String(a), String(b));
+    if (product === '0') return 0;
+    if (product.length <= 8) return null;
+    if (!/^0{8}$/.test(product.slice(-8))) return null;
+    const quotient = Number(product.slice(0, -8));
+    return Number.isSafeInteger(quotient) ? quotient : null;
+};
 
 const MAX_SAFE_INTEGER = 9007199254740991;
 

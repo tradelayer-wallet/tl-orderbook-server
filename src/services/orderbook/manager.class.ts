@@ -7,11 +7,58 @@ import { readdirSync, readFileSync } from "fs";
 import { getConnectedSocket } from "../socket";
 import { envConfig } from "../../config/env.config";
 
+// Order history sent to clients, at most this many records. It is kept in memory: the
+// history is sent on every placement and cancel, and it must not re-read and re-parse the
+// day's log files each time (that cost grew with the log, see the review notes).
+export const ORDER_HISTORY_LIMIT = 500;
+
 export class OrderbookManager {
     orderbooks: Orderbook[] = [];
+    private recentOrders: any[] = [];
 
     constructor () {
         console.log(`Orderbook Service Initialized`);
+        this.recentOrders = this.loadRecentOrders();
+    }
+
+    // The most recent ORDER records of today and yesterday, read once at start-up.
+    private loadRecentOrders(): any[] {
+        try {
+            const today = moment().format('DD-MM-YYYY');
+            const yesterday = moment().subtract(1, 'days').format('DD-MM-YYYY');
+            const files = readdirSync('logs/')
+                .filter(f => f.startsWith('ORDER'))
+                .filter(f => f.includes(today) || f.includes(yesterday));
+            const records: any[] = [];
+            files.forEach(f => {
+                readFileSync(`logs/${f}`, 'utf8')
+                    .split('\n')
+                    .slice(0, -1)
+                    .forEach(q => records.push(JSON.parse(q)));
+            });
+            return records.slice(-ORDER_HISTORY_LIMIT);
+        } catch (error) {
+            console.log(error);
+            return [];
+        }
+    }
+
+    // Called when an order is saved to the ORDER log. The snapshot is what the log holds.
+    recordOrderHistory(order: TOrder): void {
+        this.recentOrders.push(JSON.parse(JSON.stringify(order)));
+        if (this.recentOrders.length > ORDER_HISTORY_LIMIT) {
+            this.recentOrders.splice(0, this.recentOrders.length - ORDER_HISTORY_LIMIT);
+        }
+    }
+
+    // Mirrors updateOrderLog: the state of a recent record follows the log.
+    markOrderHistory(uuid: string, state: "CANCALED" | "FILLED"): void {
+        for (let i = this.recentOrders.length - 1; i >= 0; i--) {
+            if (this.recentOrders[i].uuid === uuid) {
+                this.recentOrders[i].state = state;
+                return;
+            }
+        }
     }
 
     private newOrderbook(firstOrder: TOrder): IResult<{ order?: any, trade?: any }> {
@@ -33,6 +80,14 @@ export class OrderbookManager {
                 // order can rest or be matched.
                 if (!getConnectedSocket(order.socket_id)) {
                     return { error: 'Order owner is not connected' };
+                }
+                // Resting orders are bounded per account and in total. Checked here, the one
+                // admission point, so a refusal leaves no state behind.
+                if (this.getOrdersBySocketId(order.socket_id).length >= envConfig.MAX_OPEN_ORDERS_PER_SOCKET) {
+                    return { error: `Too many open orders: at most ${envConfig.MAX_OPEN_ORDERS_PER_SOCKET} per account` };
+                }
+                if (this.openOrderCount() >= envConfig.MAX_OPEN_ORDERS) {
+                    return { error: `Too many open orders on this server: at most ${envConfig.MAX_OPEN_ORDERS}` };
                 }
                 const existingOrderbook = this.orderbooks.find(b => b.checkCompatible(order));
                 // Any client can name a pair, so new books are capped. Refused before
@@ -67,6 +122,7 @@ export class OrderbookManager {
             // removal (not the owner, order gone) must leave the log untouched.
             if (!res.error) {
                 updateOrderLog(orderbook.orderbookName, order.uuid, "CANCALED");
+                this.markOrderHistory(order.uuid, "CANCALED");
             }
             return res;
         } catch (error) {
@@ -82,6 +138,10 @@ export class OrderbookManager {
         this.getOrdersBySocketId(socket_id).forEach(o => this.removeOrder(o.uuid, socket_id, true));
     }
 
+    openOrderCount(): number {
+        return this.orderbooks.reduce((sum, ob) => sum + ob.orders.length, 0);
+    }
+
     getOrdersBySocketId(id: string) {
         const orders = [];
         this.orderbooks.forEach(ob => {
@@ -93,28 +153,6 @@ export class OrderbookManager {
     }
 
     getOrdersHistory() {
-        try {
-            const _path = `logs/`;
-            const today = moment()
-                .format('DD-MM-YYYY');
-            const yesterday = moment()
-                .subtract(1, 'days')
-                .format('DD-MM-YYYY');
-            const files = readdirSync(_path)
-                .filter(f => f.startsWith('ORDER'))
-                .filter(f => f.includes(today) || f.includes(yesterday));
-            const resArray = [];
-            files.forEach(f => {
-                const filePath = _path + f;
-                readFileSync(filePath, 'utf8')
-                    .split('\n')
-                    .slice(0, -1)
-                    .forEach(q => resArray.push(JSON.parse(q)));
-            });
-            return  resArray.slice(0, 500);
-        } catch (error) {
-            console.log(error);
-            return [];
-        }
+        return this.recentOrders.slice();
     }
 }

@@ -29,6 +29,8 @@ export const envConfig: {
     ADMIN_API_KEY: string;
     CORS_ORIGINS: string[];
     MAX_ORDERBOOKS: number;
+    MAX_OPEN_ORDERS_PER_SOCKET: number;
+    MAX_OPEN_ORDERS: number;
 } = {
     SERVER_PORT: parseInt(process.env.SERVER_PORT),
     HTTP_PORT: parseInt(process.env.HTTP_PORT),
@@ -38,6 +40,10 @@ export const envConfig: {
     // is a new in-memory book plus log files, and any client can name a pair, so this
     // bounds the registry. Creating a book beyond the cap is refused explicitly.
     MAX_ORDERBOOKS: parsePositiveInt(process.env.MAX_ORDERBOOKS, 256),
+    // Resting orders. Each order is held in memory and sent to clients on every book change, and
+    // any number of sockets can connect, so the per-account and the total are both bounded.
+    MAX_OPEN_ORDERS_PER_SOCKET: parsePositiveInt(process.env.MAX_OPEN_ORDERS_PER_SOCKET, 500),
+    MAX_OPEN_ORDERS: parsePositiveInt(process.env.MAX_OPEN_ORDERS, 100000),
     // When unset, the /logs admin endpoints are disabled entirely (fail closed).
     ADMIN_API_KEY: (process.env.ADMIN_API_KEY || '').trim(),
     // Comma-separated allowlist of browser origins. Unset = the wallet FE
