@@ -5,6 +5,7 @@ import { saveLog, updateOrderLog } from "../../utils/pure/mix.pure";
 import moment = require("moment");
 import { readdirSync, readFileSync } from "fs";
 import { getConnectedSocket } from "../socket";
+import { envConfig } from "../../config/env.config";
 
 export class OrderbookManager {
     orderbooks: Orderbook[] = [];
@@ -34,6 +35,11 @@ export class OrderbookManager {
                     return { error: 'Order owner is not connected' };
                 }
                 const existingOrderbook = this.orderbooks.find(b => b.checkCompatible(order));
+                // Any client can name a pair, so new books are capped. Refused before
+                // anything is created, so a refusal leaves no state behind.
+                if (!existingOrderbook && this.orderbooks.length >= envConfig.MAX_ORDERBOOKS) {
+                    return { error: `Too many orderbooks: the server holds at most ${envConfig.MAX_ORDERBOOKS}` };
+                }
                 const res = existingOrderbook
                     ? await existingOrderbook.addOrder(order, noTrades)
                     : this.newOrderbook(order);
@@ -43,7 +49,10 @@ export class OrderbookManager {
             }
     }
 
-    removeOrder(uuid: string, socket_id: string): IResult {
+    // duringSettlement is false by default, so a caller that forgets it gets the
+    // safe behaviour (a locked order cannot be cancelled). Only internal settlement
+    // and disconnect paths pass true.
+    removeOrder(uuid: string, socket_id: string, duringSettlement: boolean = false): IResult {
         try {
             const orderbook = this.orderbooks.find(b => b.orders.find(o => o.uuid === uuid));
             if (!orderbook) {
@@ -53,7 +62,7 @@ export class OrderbookManager {
             if (!order) {
                 throw new Error(`Order with uuid: ${uuid} dont exist`);
             }
-            const res = orderbook.removeOrder(uuid, socket_id);
+            const res = orderbook.removeOrder(uuid, socket_id, duringSettlement);
             // The audit state follows the outcome of the removal. A rejected
             // removal (not the owner, order gone) must leave the log untouched.
             if (!res.error) {
@@ -66,9 +75,11 @@ export class OrderbookManager {
     }
 
     // Removes every resting order owned by a socket. Called from the socket
-    // disconnect hook, the only place a socket's book state is released.
+    // disconnect hook, the only place a socket's book state is released. A locked
+    // order is removed too: its owner is gone, and the settlement path tolerates a
+    // missing order.
     removeOrdersOfSocket(socket_id: string): void {
-        this.getOrdersBySocketId(socket_id).forEach(o => this.removeOrder(o.uuid, socket_id));
+        this.getOrdersBySocketId(socket_id).forEach(o => this.removeOrder(o.uuid, socket_id, true));
     }
 
     getOrdersBySocketId(id: string) {

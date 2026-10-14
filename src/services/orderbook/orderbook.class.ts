@@ -233,7 +233,8 @@ export class Orderbook {
                         // book; anyone else terminating the trade just unlocks it.
                         if (newChannelRes.socketId && newChannelRes.socketId === matchRes.data.match.socket_id) {
                             // Removal goes through the manager so the CANCALED audit state is written.
-                            orderbookManager.removeOrder(matchRes.data.match.uuid, newChannelRes.socketId);
+                            // The order is still locked here, so this is the settlement-owned removal.
+                            orderbookManager.removeOrder(matchRes.data.match.uuid, newChannelRes.socketId, true);
                         } else {
                             this.lockOrder(matchRes.data.match, false);
                         }
@@ -250,7 +251,7 @@ export class Orderbook {
                     // written now that the swap has actually settled — never before,
                     // so an aborted/timed-out swap cannot mark a live order FILLED.
                     updateOrderLog(this.orderbookName, matchRes.data.match.uuid, 'FILLED');
-                    this.removeOrder(matchRes.data.match.uuid, matchRes.data.match.socket_id);
+                    this.removeOrder(matchRes.data.match.uuid, matchRes.data.match.socket_id, true);
                 }
                 this.updatePlacedOrdersForSocketId(matchRes.data.match.socket_id);
 
@@ -311,7 +312,11 @@ export class Orderbook {
         return false;
     }
 
-    removeOrder(uuid: string, socket_id: string): IResult {
+    // The single removal decision. A client-initiated cancel (duringSettlement=false)
+    // is refused for an order locked by an in-flight swap: the swap owns that order
+    // until it settles or times out. Only the swap engine and the disconnect hook pass
+    // duringSettlement=true.
+    removeOrder(uuid: string, socket_id: string, duringSettlement: boolean = false): IResult {
         try {
             const orderForRemove = this.orders.find(o => o.uuid === uuid);
 
@@ -324,6 +329,10 @@ export class Orderbook {
             // this logic may be improved for better security
             if (socket_id !== orderForRemove.socket_id) {
                 throw new Error(`Not Authorized to remove order with uuid: ${uuid}`);
+            }
+
+            if (orderForRemove.lock && !duringSettlement) {
+                throw new Error(`Order with uuid ${uuid} is locked by a swap in progress`);
             }
 
             // remove the order

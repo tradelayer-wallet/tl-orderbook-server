@@ -28,11 +28,16 @@ export const envConfig: {
     SWAP_TIMEOUT_MS: number;
     ADMIN_API_KEY: string;
     CORS_ORIGINS: string[];
+    MAX_ORDERBOOKS: number;
 } = {
     SERVER_PORT: parseInt(process.env.SERVER_PORT),
     HTTP_PORT: parseInt(process.env.HTTP_PORT),
     // Max time a swap may stay open before it is aborted and the matched order unlocked.
     SWAP_TIMEOUT_MS: parsePositiveInt(process.env.SWAP_TIMEOUT_MS, 120000),
+    // Max number of distinct orderbooks (market pairs) the server holds. Every new pair
+    // is a new in-memory book plus log files, and any client can name a pair, so this
+    // bounds the registry. Creating a book beyond the cap is refused explicitly.
+    MAX_ORDERBOOKS: parsePositiveInt(process.env.MAX_ORDERBOOKS, 256),
     // When unset, the /logs admin endpoints are disabled entirely (fail closed).
     ADMIN_API_KEY: (process.env.ADMIN_API_KEY || '').trim(),
     // Comma-separated allowlist of browser origins. Unset = the wallet FE

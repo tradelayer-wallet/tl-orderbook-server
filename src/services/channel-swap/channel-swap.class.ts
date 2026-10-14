@@ -32,7 +32,12 @@ const MAX_TERMINATE_REASON_LENGTH = 256;
 const TERMINATE_REASON_FALLBACK = 'Trade terminated by counterparty';
 // Bitcoin-family transaction id: 32 bytes as 64 hex characters. Anything else is
 // refused before it can be recorded as a fill or written to the public history.
+// Accepted in either case, stored and relayed in lowercase, so one transaction has
+// exactly one textual form in the trade history.
 const TXID_PATTERN = /^[0-9a-f]{64}$/i;
+// Server-issued sessionIds are randomBytes(32) as hex: exactly 64 lowercase hex chars.
+const SESSION_ID_LENGTH = 64;
+const SESSION_ID_PATTERN = /^[0-9a-f]{64}$/;
 
 export interface ISwapParticipants {
     buyer: Socket;
@@ -73,7 +78,8 @@ const terminationReason = (data: unknown): string =>
 const parseSwapInbound = (payload: unknown): ISwapInbound | null => {
     if (!isObject(payload)) return null;
     const { sessionId, eventName, data } = payload;
-    if (typeof sessionId !== 'string') return null;
+    // Length first, so an oversized id is refused before any regex work.
+    if (typeof sessionId !== 'string' || sessionId.length !== SESSION_ID_LENGTH || !SESSION_ID_PATTERN.test(sessionId)) return null;
     if (typeof eventName !== 'string' || eventName.length > MAX_EVENT_NAME_LENGTH) return null;
     return { sessionId, eventName, data };
 };
@@ -89,7 +95,7 @@ export const routeSwapEvent = (from: Socket, payload: unknown): void => {
     }
     const inbound = parseSwapInbound(payload);
     if (!inbound) {
-        from.emit(OrderEmitEvents.ERROR, 'Invalid swap event: sessionId and eventName (string) are required');
+        from.emit(OrderEmitEvents.ERROR, 'Invalid swap event: sessionId (64 hex characters) and eventName (string) are required');
         return;
     }
     const session = sessions.get(inbound.sessionId);
@@ -130,14 +136,16 @@ export class ChannelSwap {
 
     // Only called by routeSwapEvent, after `from` was verified as a participant.
     handle(from: Socket, inbound: ISwapInbound): void {
-        const { eventName, data } = inbound;
+        const { eventName } = inbound;
         const isBuyerFill = eventName === 'BUYER:STEP6' && from === this.buyer;
         // Only the buyer completes the swap; the seller cannot fake a fill. The txid
         // is refused unless well-formed, and the session stays open so the buyer can resend.
-        if (isBuyerFill && !(typeof data === 'string' && TXID_PATTERN.test(data))) {
+        if (isBuyerFill && !(typeof inbound.data === 'string' && TXID_PATTERN.test(inbound.data))) {
             from.emit(OrderEmitEvents.ERROR, 'Invalid BUYER:STEP6: txid must be 64 hex characters');
             return;
         }
+        // The one canonical form of the txid: lowercase. Relayed and recorded alike.
+        const data = isBuyerFill ? (inbound.data as string).toLowerCase() : inbound.data;
 
         // Relay only to this session's counterparty, with the sender stamped by the server.
         const counterparty = from === this.buyer ? this.seller : this.buyer;

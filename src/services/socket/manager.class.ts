@@ -108,7 +108,10 @@ const onManyOrders = (socket: Socket) => async (rawOrders: TRawOrder[]) => {
             socket.emit(OrderEmitEvents.ERROR, factoryRes.error || 'Invalid order');
             continue;
         }
-        // Every entry gets its result reported; an entry that was not placed is never dropped silently.
+        // Each entry is applied on its own (the batch is not atomic): an entry that
+        // is refused is reported with its own error, and entries placed before it
+        // stay on the book. The client's book view is refreshed by PLACED_ORDERS for
+        // every placed entry. SAVED marks the end of the batch, not success of all.
         const res = await orderbookManager.addOrder(factoryRes.data, true);
         if (res.error) socket.emit(OrderEmitEvents.ERROR, res.error);
     }
@@ -131,7 +134,7 @@ const onNewOrder = (socket: Socket) => async (rawOrder: TRawOrder) => {
     }
     const order: TOrder = factoryRes.data;
     const res = await orderbookManager.addOrder(order);
-    console.log('order res '+JSON.stringify(res))
+    // No logging of the order or result here: they carry the keypair address and pubkey.
     if (res.error || !res.data) {
         socket.emit(OrderEmitEvents.ERROR, res.error || 'Undifined Error');
         return;
@@ -158,12 +161,14 @@ const onUpdateOrderbook = (socket: Socket) => async (filter: TFilter) => {
 };
 
 const onClosedOrder = (socket: Socket) => (orderUUID: string) => {
-    console.log('inside onClosedOrder '+orderUUID)
     if (!orderRateLimiter.consume(socket.id)) {
         socket.emit(OrderEmitEvents.ERROR, 'Rate limit exceeded');
         return;
     }
+    // Client-initiated cancel: the default (duringSettlement=false) refuses an order
+    // that a swap currently has locked.
     const res = orderbookManager.removeOrder(orderUUID, socket.id);
+    if (res.error) socket.emit(OrderEmitEvents.ERROR, res.error);
     const openedOrders = orderbookManager.getOrdersBySocketId(socket.id);
     const orderHistory = orderbookManager.getOrdersHistory();
     socket.emit(EmitEvents.PLACED_ORDERS, { openedOrders, orderHistory });
