@@ -132,9 +132,7 @@ export class Orderbook {
         // The socket may already be gone (e.g. the counterparty disconnected
         // mid-swap) — nothing to update in that case.
         if (!socketObj) return;
-        const openedOrders = orderbookManager.getOrdersBySocketId(socketid);
-        const orderHistory = orderbookManager.getOrdersHistory();
-        socketObj.emit(EmitEvents.PLACED_ORDERS, { openedOrders, orderHistory });
+        socketObj.emit(EmitEvents.PLACED_ORDERS, orderbookManager.placedOrdersOf(socketid));
     }
 
     private checkMatch(order: TOrder): IResult<{ match: TOrder }> {

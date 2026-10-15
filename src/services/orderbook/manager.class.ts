@@ -189,4 +189,9 @@ export class OrderbookManager {
     getOrdersHistory() {
         return this.recentOrders.slice();
     }
+
+    // What a client's view of the book holds after a change: its own resting orders and the order history.
+    placedOrdersOf(socketId: string) {
+        return { openedOrders: this.getOrdersBySocketId(socketId), orderHistory: this.getOrdersHistory() };
+    }
 }

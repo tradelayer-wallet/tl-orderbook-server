@@ -106,6 +106,13 @@ const guarded = (socket: Socket, name: string, handler: (...args: any[]) => unkn
         }
     };
 
+// Admits one event from the socket's limit of a traffic family, or tells the sender it was refused.
+const admit = (socket: Socket, limiter: { consume(key: string): boolean }): boolean => {
+    if (limiter.consume(socket.id)) return true;
+    socket.emit(OrderEmitEvents.ERROR, 'Rate limit exceeded');
+    return false;
+};
+
 const onManyOrders = (socket: Socket) => async (rawOrders: TRawOrder[]) => {
     if (!Array.isArray(rawOrders)) {
         socket.emit(OrderEmitEvents.ERROR, 'Invalid many-orders payload: expected an array of orders');
@@ -140,10 +147,7 @@ const onManyOrders = (socket: Socket) => async (rawOrders: TRawOrder[]) => {
 }
 
 const onNewOrder = (socket: Socket) => async (rawOrder: TRawOrder) => {
-    if (!orderRateLimiter.consume(socket.id)) {
-        socket.emit(OrderEmitEvents.ERROR, 'Rate limit exceeded');
-        return;
-    }
+    if (!admit(socket, orderRateLimiter)) return;
     if (!rawOrder || !rawOrder.isLimitOrder) {
         socket.emit(OrderEmitEvents.ERROR, 'Merket Orders Not allowed');
         return;
@@ -163,18 +167,12 @@ const onNewOrder = (socket: Socket) => async (rawOrder: TRawOrder) => {
 
     if (res.data.order){
           socket.emit(OrderEmitEvents.SAVED, res.data.order.uuid);
-          const openedOrders = orderbookManager.getOrdersBySocketId(socket.id);
-          const orderHistory = orderbookManager.getOrdersHistory();
-          socket.emit(EmitEvents.PLACED_ORDERS, { openedOrders, orderHistory });
-    //socket.emit(events_1.OrderEmitEvents.SAVED, res.data.order.uuid);
+          socket.emit(EmitEvents.PLACED_ORDERS, orderbookManager.placedOrdersOf(socket.id));
     }
 };
 
 const onUpdateOrderbook = (socket: Socket) => async (filter: TFilter) => {
-    if (!queryRateLimiter.consume(socket.id)) {
-        socket.emit(OrderEmitEvents.ERROR, 'Rate limit exceeded');
-        return;
-    }
+    if (!admit(socket, queryRateLimiter)) return;
     if (!filter || typeof filter !== 'object') {
         socket.emit(OrderEmitEvents.ERROR, 'Invalid orderbook filter: expected an object');
         return;
@@ -183,15 +181,10 @@ const onUpdateOrderbook = (socket: Socket) => async (filter: TFilter) => {
 };
 
 const onClosedOrder = (socket: Socket) => (orderUUID: string) => {
-    if (!orderRateLimiter.consume(socket.id)) {
-        socket.emit(OrderEmitEvents.ERROR, 'Rate limit exceeded');
-        return;
-    }
+    if (!admit(socket, orderRateLimiter)) return;
     // Client-initiated cancel: the default (duringSettlement=false) refuses an order
     // that a swap currently has locked.
     const res = orderbookManager.removeOrder(orderUUID, socket.id);
     if (res.error) socket.emit(OrderEmitEvents.ERROR, res.error);
-    const openedOrders = orderbookManager.getOrdersBySocketId(socket.id);
-    const orderHistory = orderbookManager.getOrdersHistory();
-    socket.emit(EmitEvents.PLACED_ORDERS, { openedOrders, orderHistory });
+    socket.emit(EmitEvents.PLACED_ORDERS, orderbookManager.placedOrdersOf(socket.id));
 };
