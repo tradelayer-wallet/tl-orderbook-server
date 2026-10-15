@@ -66,6 +66,13 @@ const rawSellSpot = (props) => ({
             assert.strictEqual(A.errors[A.errors.length - 1], message, `A: ${JSON.stringify(props)}`);
         }
         assert.strictEqual(ordersOf(A.id).length, 0, 'A: a refused order rested');
+        // The futures collateral is a property id, so property id 0 is a valid collateral.
+        A.socket.emit('new-order', {
+            type: 'FUTURES', action: 'BUY', isLimitOrder: true, marketName: 'TL/USDT',
+            keypair: { address: 'fut-a', pubkey: 'fut-pk' },
+            props: { contract_id: 4, amount: units(1), price: units(1), levarage: 1, collateral: 0 },
+        });
+        await waitFor(() => eventsOf(A, 'order:saved').length === 1, { message: 'A: futures order with collateral id 0' });
         console.log('V2 A PASS: float and string amounts and prices are refused at intake');
         });
 

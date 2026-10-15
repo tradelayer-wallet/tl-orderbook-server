@@ -51,7 +51,7 @@ const rawFuturesOrder = ({ props = {}, ...over } = {}) => ({
         await expectError(rawSpotOrder({ keypair: { address: 'a', pubkey: '' } }), 'Invalid keypair.pubkey');
         await expectError(rawFuturesOrder({ props: { contract_id: -1 } }), 'Invalid contract_id');
         await expectError(rawFuturesOrder({ props: { levarage: 0 } }), 'Order levarage must be a positive integer');
-        await expectError(rawFuturesOrder({ props: { collateral: 0 } }), 'Order collateral must be a positive integer number of units');
+        await expectError(rawFuturesOrder({ props: { collateral: -1 } }), 'Invalid collateral');
         console.log('R11 CHAR PASS: intake messages for the single new-order path');
 
         // ---- intake: many-orders path reports its own refusals per entry -----------

@@ -60,7 +60,9 @@ export const parseNewOrder = (raw: unknown, socket_id: string): IResult<TOrder> 
     }
     if (!isNonNegativeSafeInteger(props.contract_id)) return fail('Invalid contract_id');
     if (!isWireUnits(props.levarage) || props.levarage < 1) return fail('Order levarage must be a positive integer');
-    if (!isPositiveUnits(props.collateral)) return fail('Order collateral must be a positive integer number of units');
+    // The collateral is the property id the position is margined in (the wallet sends the market's
+    // collateral.propertyId), not an amount.
+    if (!isValidOrderIdProp(props.collateral)) return fail('Invalid collateral');
     return ok({
         ...base,
         type,
