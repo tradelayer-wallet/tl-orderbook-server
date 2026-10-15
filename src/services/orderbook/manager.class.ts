@@ -2,7 +2,7 @@ import { IHistoryTrade, TOrder } from "../../utils/types/orderbook.types";
 import { IResult } from "../../utils/types/mix.types";
 import { TFilter } from "../../utils/types/markets.types";
 import { filterLogNames, Orderbook, readTradeHistory } from "./orderbook.class";
-import { parseLogRecords, saveLog, updateOrderLog } from "../../utils/pure/mix.pure";
+import { parseLogRecords, updateOrderLog } from "../../utils/pure/mix.pure";
 import moment = require("moment");
 import { readdirSync, readFileSync } from "fs";
 import { getConnectedSocket } from "../socket";
