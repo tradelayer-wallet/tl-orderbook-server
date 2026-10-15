@@ -1,6 +1,7 @@
-import { TOrder } from "../../utils/types/orderbook.types";
+import { IHistoryTrade, TOrder } from "../../utils/types/orderbook.types";
 import { IResult } from "../../utils/types/mix.types";
-import { Orderbook } from "./orderbook.class";
+import { TFilter } from "../../utils/types/markets.types";
+import { filterLogNames, Orderbook, readTradeHistory } from "./orderbook.class";
 import { saveLog, updateOrderLog } from "../../utils/pure/mix.pure";
 import moment = require("moment");
 import { readdirSync, readFileSync } from "fs";
@@ -122,11 +123,31 @@ export class OrderbookManager {
             if (!res.error) {
                 updateOrderLog(orderbook.logNames, order.uuid, "CANCALED");
                 this.markOrderHistory(order.uuid, "CANCALED");
+                this.releaseEmptyOrderbooks();
             }
             return res;
         } catch (error) {
             return { error: error.message };
         }
+    }
+
+    // A book that holds no orders is released, so the MAX_ORDERBOOKS cap counts only books that
+    // hold orders. Its trades stay in the logs: marketView reads them for a market with no live book.
+    releaseEmptyOrderbooks(): void {
+        this.orderbooks = this.orderbooks.filter(b => b.orders.length > 0);
+    }
+
+    // What a client sees for the market a filter names: its unlocked resting orders and its trades,
+    // newest first. A market with no live book has no orders, and its trades come from its logs.
+    marketView(filter: TFilter): { orders: TOrder[], history: IHistoryTrade[] } {
+        const book = this.orderbooks.find(b => b.findByFilter(filter));
+        if (book) {
+            return {
+                orders: book.orders.filter(o => !o.lock),
+                history: book.historyTrades.filter(o => o.txid),
+            };
+        }
+        return { orders: [], history: readTradeHistory(filterLogNames(filter)).filter(o => o.txid) };
     }
 
     // Removes every resting order owned by a socket. Called from the socket

@@ -260,7 +260,19 @@ const getOrderbookManager = () => {
 
 const allOrders = () => getOrderbookManager().orderbooks.reduce((a, b) => a.concat(b.orders), []);
 const ordersOf = (socketId) => getOrderbookManager().getOrdersBySocketId(socketId);
-const allHistory = () => getOrderbookManager().orderbooks.reduce((a, b) => a.concat(b.historyTrades), []);
+// Every trade the server has logged, newest first (the order a live book keeps). The logs are the
+// record: a book that holds no orders is released, and its trades are read back from its logs.
+const allHistory = () => {
+    const dir = path.join(process.cwd(), 'logs');
+    const records = [];
+    fs.readdirSync(dir)
+        .filter((f) => f.startsWith('TRADE-'))
+        .forEach((f) => {
+            fs.readFileSync(path.join(dir, f), 'utf8').split('\n').slice(0, -1)
+                .forEach((line) => records.push(JSON.parse(line)));
+        });
+    return records.reverse();
+};
 
 // Number of swap sessions the server still holds (not yet settled or timed out).
 const activeSwapSessions = () => swapMod.activeSwapSessionCount();

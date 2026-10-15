@@ -59,14 +59,14 @@ export class Orderbook {
     get logNames(): string[] {
         if (this.type === EOrderType.SPOT && 'id_desired' in this.props) {
             const { id_for_sale, id_desired } = this.props as ISpotOrderProps;
-            return [`spot_${id_for_sale}_${id_desired}`, `spot_${id_desired}_${id_for_sale}`];
+            return spotLogNames(id_for_sale, id_desired);
         }
         return [this.orderbookName];
     }
 
     private addExistingTradesHistory() {
         try {
-            this._historyTrades = readMarketLog<IHistoryTrade>('TRADE', this.logNames).slice(0, 2000);
+            this._historyTrades = readTradeHistory(this.logNames);
             socketService.io.emit(EmitEvents.UPDATE_ORDERS_REQUEST);
         } catch (error) {
             console.log({ error });
@@ -264,6 +264,7 @@ export class Orderbook {
                     updateOrderLog(this.logNames, matchRes.data.match.uuid, 'FILLED');
                     orderbookManager.markOrderHistory(matchRes.data.match.uuid, 'FILLED');
                     this.removeOrder(matchRes.data.match.uuid, matchRes.data.match.socket_id, true);
+                    orderbookManager.releaseEmptyOrderbooks();
                 }
                 this.updatePlacedOrdersForSocketId(matchRes.data.match.socket_id);
 
@@ -358,6 +359,30 @@ export class Orderbook {
         }
     }
 }
+
+// The names a spot market's logs are written under: the orientation of the order that created its book,
+// and the other orientation, since a book created later may have it.
+export const spotLogNames = (id_for_sale: number | string, id_desired: number | string): string[] =>
+    [`spot_${id_for_sale}_${id_desired}`, `spot_${id_desired}_${id_for_sale}`];
+
+// The log names of the market a client filter names. An invalid filter names no market.
+export const filterLogNames = (filter: TFilter): string[] => {
+    if (!filter || typeof filter !== 'object') return [];
+    if (filter.type === EOrderType.SPOT) {
+        return isValidOrderIdProp(filter.first_token) && isValidOrderIdProp(filter.second_token)
+            ? spotLogNames(filter.first_token, filter.second_token)
+            : [];
+    }
+    return filter.type === EOrderType.FUTURES && isNonNegativeSafeInteger(filter.contract_id)
+        ? [`futures-${filter.contract_id}`]
+        : [];
+};
+
+// Trades of a market from its logs, newest first, at most as many as a live book keeps.
+export const readTradeHistory = (names: string[]): IHistoryTrade[] =>
+    readMarketLog<IHistoryTrade>('TRADE', names)
+        .sort((a, b) => (b.time || 0) - (a.time || 0))
+        .slice(0, 2000);
 
 // The values below end up in `orderbookName`, which is used to build log file
 // names. They must be non-negative safe integers (or whitelisted string ids)

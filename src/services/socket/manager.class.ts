@@ -179,10 +179,7 @@ const onUpdateOrderbook = (socket: Socket) => async (filter: TFilter) => {
         socket.emit(OrderEmitEvents.ERROR, 'Invalid orderbook filter: expected an object');
         return;
     }
-    const orderbook = orderbookManager.orderbooks.find(e => e.findByFilter(filter))
-    const orders = orderbook ? orderbook.orders.filter(o => !o.lock) : [];
-    const history = orderbook ? orderbook.historyTrades.filter(o => o.txid) : [];
-    socket.emit(EmitEvents.ORDERBOOK_DATA, { orders, history });
+    socket.emit(EmitEvents.ORDERBOOK_DATA, orderbookManager.marketView(filter));
 };
 
 const onClosedOrder = (socket: Socket) => (orderUUID: string) => {
