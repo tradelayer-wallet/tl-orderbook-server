@@ -1,4 +1,4 @@
-import { appendFile, readdirSync, readFileSync, writeFileSync } from "fs";
+import { appendFileSync, readdirSync, readFileSync, writeFileSync } from "fs";
 import { resolve, sep } from "path";
 import { IHistoryTrade, TOrder } from "../types/orderbook.types";
 import * as moment from 'moment';
@@ -92,14 +92,14 @@ interface IClosedOrders {
 // "futures-1" is not a prefix of "futures-10", and the market name itself may contain "-".
 const LOG_FILE_PATTERN = /^(ORDER|TRADE)-(.+)-\d{2}-\d{2}-\d{4}\.log$/;
 
+// Synchronous, so the record is on disk when this returns. updateOrderLog reads and rewrites the
+// file synchronously; an append still in flight could land between its read and its write and
+// be lost.
 export const saveLog = (name: string, type: TLogType, data: IHistoryTrade | TOrder | IClosedOrders) => {
     try {
         const date = moment().format('DD-MM-YYYY');
         const filePath = resolveInsideLogsDir(`${type}-${sanitizeName(name)}-${date}.log`);
-        const _data = `${JSON.stringify(data)}\n`;
-        appendFile(filePath, _data, (err) => {
-            if (err) console.log(err.message);
-        });
+        appendFileSync(filePath, `${JSON.stringify(data)}\n`);
     } catch (error: any) {
         console.log(error.message);
     }
