@@ -172,7 +172,7 @@ export class Orderbook {
                 // one exists. Otherwise one such order at the best price would block every taker
                 // at that price, at no cost to its owner. When none is settleable, the taker is
                 // refused (below), so no order ever rests crossing the book.
-                const settleable = filteredOrders.filter(o => tradeSettles(order, o));
+                const settleable = filteredOrders.filter(o => settleMatch(order, o) !== null);
                 if (!settleable.length) {
                     return { error: 'Trade value is not a whole number of satoshis: the match is refused' };
                 }
@@ -406,17 +406,19 @@ const validateOrderbookNameProps = (order: TOrder): string | null => {
     return `Invalid order type`;
 };
 
-// True when a trade between these two orders settles exactly: the matched quantity is a whole
-// number of units and its value is a whole number of satoshis at the maker's price. Futures
-// carry no such value. Same arithmetic as buildTrade, which still refuses any pair this rejects.
-const tradeSettles = (taker: TOrder, maker: TOrder): boolean => {
-    if (taker.type !== EOrderType.SPOT || maker.type !== EOrderType.SPOT) return true;
+// The exact settlement of a match between a taker and the maker it meets: both quantities in units,
+// the matched quantity, and for spot the LTC value in satoshis at the maker's price (futures carry
+// no value). Null when a quantity or the price is not a positive multiple of 1e-8, or the value is
+// not a whole number of satoshis. Such a match is refused, never rounded.
+const settleMatch = (taker: TOrder, maker: TOrder) => {
     const takerUnits = toUnits(taker.props.amount);
     const makerUnits = toUnits(maker.props.amount);
     const priceUnits = toUnits(maker.props.price);
-    if (takerUnits === null || makerUnits === null || priceUnits === null) return false;
-    if (takerUnits <= 0 || makerUnits <= 0 || priceUnits <= 0) return false;
-    return mulDivUnits(Math.min(takerUnits, makerUnits), priceUnits) !== null;
+    if (takerUnits === null || makerUnits === null || priceUnits === null) return null;
+    const amountUnits = Math.min(takerUnits, makerUnits);
+    const valueSats = taker.type === EOrderType.FUTURES ? 0 : mulDivUnits(amountUnits, priceUnits);
+    if (valueSats === null) return null;
+    return { takerUnits, makerUnits, amountUnits, valueSats };
 };
 
 const buildTrade = (new_order: TOrder, old_order: TOrder): IResult<{ unfilled: TOrder, tradeInfo: ITradeInfo }> => {
@@ -427,33 +429,22 @@ const buildTrade = (new_order: TOrder, old_order: TOrder): IResult<{ unfilled: T
 
         if (!buyOrder || !sellOrder) throw new Error("Building Trade Failed. Code 1");
 
-        // All quantity math is exact, in units of 1e-8. No value is rounded: a remainder
-        // or a trade value that is not representable is refused, never adjusted.
-        const newUnits = toUnits(new_order.props.amount);
-        const oldUnits = toUnits(old_order.props.amount);
-        const priceUnits = toUnits(old_order.props.price);
-        if (newUnits === null || oldUnits === null || priceUnits === null || newUnits <= 0 || oldUnits <= 0 || priceUnits <= 0) {
-            throw new Error("Order amount and price must be positive multiples of 1e-8");
+        const settlement = settleMatch(new_order, old_order);
+        if (!settlement) {
+            throw new Error("Trade value is not a whole number of satoshis: the match is refused");
         }
-        const amountUnits = Math.min(newUnits, oldUnits);
-        const remainderUnits = Math.abs(newUnits - oldUnits);
+        const { takerUnits, makerUnits, amountUnits, valueSats } = settlement;
+        const remainderUnits = Math.abs(takerUnits - makerUnits);
 
-        const unfilled = (newUnits > oldUnits
+        const unfilled = (takerUnits > makerUnits
             ? {...new_order, props: {...new_order.props, amount: remainderUnits / UNIT_SCALE}}
-            : newUnits < oldUnits
+            : takerUnits < makerUnits
                 ? {...old_order, props: {...old_order.props, amount: remainderUnits / UNIT_SCALE}}
                 : null) as TOrder;
 
         const price = old_order.props.price;
         const amount = amountUnits / UNIT_SCALE;
-
-        // LTC value of the trade in satoshis: amount units * price units / 1e8, exact.
-        // A trade whose value is not a whole number of satoshis is refused, not rounded.
         const isFutures = buyOrder.type === EOrderType.FUTURES;
-        const valueSats = isFutures ? 0 : mulDivUnits(amountUnits, priceUnits);
-        if (!isFutures && (valueSats === null || valueSats <= 0)) {
-            throw new Error("Trade value is not a whole number of satoshis: the match is refused");
-        }
 
         const tradeInfo: ITradeInfo = {
             type: new_order.type,
@@ -485,7 +476,7 @@ const buildTrade = (new_order: TOrder, old_order: TOrder): IResult<{ unfilled: T
                     propIdDesired: buyOrder.props.id_desired,
                     propIdForSale:  buyOrder.props.id_for_sale,
                     amountDesired: amount,
-                    amountForSale: (valueSats as number) / UNIT_SCALE,
+                    amountForSale: valueSats / UNIT_SCALE,
                 }
         };
         return { data: { unfilled, tradeInfo }}

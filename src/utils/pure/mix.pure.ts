@@ -8,10 +8,10 @@ import * as moment from 'moment';
 // Rounding a remainder to 6 decimals (the former safeNumber) created or destroyed quantity.
 export const UNIT_SCALE = 100000000;
 
-// The units of a number that is exactly a multiple of 1e-8, or null (more than 8 decimal
-// places, not finite, negative, or beyond the safe integer range).
+// The units of a number that is exactly a positive multiple of 1e-8, or null (zero or less, more
+// than 8 decimal places, not finite, or beyond the safe integer range).
 export const toUnits = (value: unknown): number | null => {
-    if (typeof value !== 'number' || !isFinite(value) || value < 0) return null;
+    if (typeof value !== 'number' || !isFinite(value) || value <= 0) return null;
     const units = Math.round(value * UNIT_SCALE);
     if (!Number.isSafeInteger(units)) return null;
     return units / UNIT_SCALE === value ? units : null;
