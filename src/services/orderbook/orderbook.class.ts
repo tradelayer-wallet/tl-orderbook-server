@@ -25,8 +25,16 @@ export class Orderbook {
     constructor(firstOrder: TOrder) {
         this._type = firstOrder.type;
         this.addProps(firstOrder);
-        this.addOrder(firstOrder);
+        this.rest(firstOrder);
         this.addExistingTradesHistory();
+    }
+
+    // Puts an order on the book: logged, recorded in the order history, and resting. The caller
+    // has checked the resting limits and tells the owner about the change.
+    private rest(order: TOrder): void {
+        saveLog(this.orderbookName, "ORDER", order);
+        orderbookManager.recordOrderHistory(order);
+        this.orders = [...this.orders, order];
     }
 
     private get type(): EOrderType {
@@ -206,9 +214,7 @@ export class Orderbook {
             if (!matchRes.data.match) {
                 const restingError = orderbookManager.restingCapError(order);
                 if (restingError) throw new Error(restingError);
-                saveLog(this.orderbookName, "ORDER", order);
-                orderbookManager.recordOrderHistory(order);
-                this.orders = [...this.orders, order];
+                this.rest(order);
                 this.updatePlacedOrdersForSocketId(order.socket_id);
                 return { data: { order } };
             } else {
