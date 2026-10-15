@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "crypto";
 import { FastifyInstance, FastifyRequest } from "fastify";
 import { readFileSync, readdirSync } from "fs";
+import { parseLogRecords } from "../utils/pure/mix.pure";
 import moment = require("moment");
 import { envConfig } from "../config/env.config";
 import { socketService } from "../services/socket";
@@ -57,11 +58,7 @@ export const logsRoutes = (fastify: FastifyInstance, opts: any, done: any) => {
                 .filter(f => f.includes(today) || f.includes(yesterday));
             const resArray = [];
             files.forEach(f => {
-                const filePath = _path + f;
-                readFileSync(filePath, 'utf8')
-                    .split('\n')
-                    .slice(0, -1)
-                    .forEach(q => resArray.push(JSON.parse(q)));
+                parseLogRecords(readFileSync(_path + f, 'utf8')).forEach(record => resArray.push(record));
             });
             const result: IResult = { data: resArray };
             reply.send(result);

@@ -114,33 +114,42 @@ const marketLogFiles = (type: TLogType, names: string[]): string[] => {
     });
 };
 
+// One log line as a record, or null when it does not parse. A write torn by a crash leaves such a
+// line; it must not hide the records around it, so every reader goes through this.
+const parseLogLine = (line: string): any | null => {
+    try {
+        return JSON.parse(line);
+    } catch (error) {
+        return null;
+    }
+};
+
+export const parseLogRecords = (text: string): any[] =>
+    text.split('\n').map(parseLogLine).filter(record => record !== null);
+
 // Every record of one type for the given market names, in file order.
 export const readMarketLog = <T>(type: TLogType, names: string[]): T[] => {
     const records: T[] = [];
     marketLogFiles(type, names).forEach(file => {
-        readFileSync(resolveInsideLogsDir(file), 'utf8')
-            .split('\n')
-            .slice(0, -1)
-            .forEach(line => records.push(JSON.parse(line) as T));
+        parseLogRecords(readFileSync(resolveInsideLogsDir(file), 'utf8')).forEach(record => records.push(record));
     });
-    return records;
+    return records as T[];
 };
 
+// Sets the state of the ORDER record with this uuid in the market's log. Lines are rewritten as they
+// were, except the one record, so a torn line is left in place.
 export const updateOrderLog = (names: string[], uuid: string, type: "CANCALED" | "FILLED") => {
     try {
         const fileNamesList = marketLogFiles("ORDER", names);
         for (let i = 0; i < fileNamesList.length; i++) {
-            const file = fileNamesList[i];
-            const filePath = resolveInsideLogsDir(file);
-            const fileData = readFileSync(filePath, { encoding: "utf8" });
-            const arrayData = fileData.split(`\n`).slice(0, -1).map(q => JSON.parse(q) as TOrder);
-            const existing = arrayData.find(q => q.uuid === uuid);
-            if (existing) {
-                existing['state'] = type;
-                writeFileSync(filePath, `${arrayData.map(q => JSON.stringify(q)).join('\n')}\n`)
+            const filePath = resolveInsideLogsDir(fileNamesList[i]);
+            const lines = readFileSync(filePath, { encoding: "utf8" }).split('\n');
+            const index = lines.findIndex(line => parseLogLine(line)?.uuid === uuid);
+            if (index !== -1) {
+                lines[index] = JSON.stringify({ ...parseLogLine(lines[index]), state: type });
+                writeFileSync(filePath, lines.join('\n'));
                 break;
             }
-
         }
     } catch (error) {
         console.log({ error });

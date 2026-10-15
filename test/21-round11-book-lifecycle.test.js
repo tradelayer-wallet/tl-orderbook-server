@@ -21,6 +21,7 @@ const {
 
 const mixPure = require(path.join(BUILD, 'utils/pure/mix.pure'));
 const orderbookManager = () => require(path.join(BUILD, 'services/orderbook')).orderbookManager;
+const bookNamed = (name) => orderbookManager().orderbooks.find((b) => b.orderbookName === name);
 
 const TXID = 'ef'.repeat(32);
 
@@ -95,13 +96,16 @@ const r11_3 = async () => {
 };
 
 // A book restored from its logs keeps history newest first, as it does while it is live.
-const r11_4 = async () => {
+const logDate = () => {
     const day = new Date();
     const pad = (n) => String(n).padStart(2, '0');
-    const date = `${pad(day.getDate())}-${pad(day.getMonth() + 1)}-${day.getFullYear()}`;
-    const trade = (marker, time) => JSON.stringify({ txid: marker.padEnd(64, '0'), time, marker, type: 'SPOT' });
-    fs.writeFileSync(path.join(workDir, 'logs', `TRADE-spot_7_1-${date}.log`),
-        `${trade('older', 100)}\n${trade('newer', 200)}\n`);
+    return `${pad(day.getDate())}-${pad(day.getMonth() + 1)}-${day.getFullYear()}`;
+};
+const tradeLine = (marker, time) => JSON.stringify({ txid: marker.padEnd(64, '0'), time, marker, type: 'SPOT' });
+
+const r11_4 = async () => {
+    fs.writeFileSync(path.join(workDir, 'logs', `TRADE-spot_7_1-${logDate()}.log`),
+        `${tradeLine('older', 100)}\n${tradeLine('newer', 200)}\n`);
 
     const { server, url } = await startServer();
     let M = null;
@@ -118,11 +122,40 @@ const r11_4 = async () => {
     }
 };
 
+// R11-5: a torn line (a write cut short by a crash) hides nothing around it. The audit update and
+// the history restore both read past it.
+const r11_5 = async () => {
+    const orderFile = path.join(workDir, 'logs', `ORDER-spot_17_18-${logDate()}.log`);
+    fs.writeFileSync(path.join(workDir, 'logs', `TRADE-spot_15_16-${logDate()}.log`),
+        `${tradeLine('before', 100)}\n{"txid":"bb\n${tradeLine('after', 200)}\n`);
+    fs.writeFileSync(orderFile, `{"uuid":"r11-5-torn\n${JSON.stringify({ uuid: 'r11-5', socket_id: 's', props: {} })}\n`);
+
+    mixPure.updateOrderLog(['spot_17_18'], 'r11-5', 'CANCALED');
+    const lines = fs.readFileSync(orderFile, 'utf8').split('\n').filter(Boolean);
+    assert.strictEqual(lines[0], '{"uuid":"r11-5-torn', 'R11-5 FAIL: the torn line was rewritten');
+    assert.strictEqual(JSON.parse(lines[1]).state, 'CANCALED', 'R11-5 FAIL: audit update stopped at a torn line');
+
+    const { server, url } = await startServer();
+    let M = null;
+    try {
+        M = await connectClient(url, 'r11-5');
+        M.socket.emit('new-order', rawSpotOrder({ action: 'BUY', props: { id_for_sale: 15, id_desired: 16, amount: 1, price: 1 } }));
+        await waitFor(() => bookNamed('spot_15_16'), { message: 'r11-5: book created' });
+        assert.deepStrictEqual(bookNamed('spot_15_16').historyTrades.map((t) => t.marker), ['after', 'before'],
+            'R11-5 FAIL: a torn line hid the trades around it');
+        console.log('R11-5 PASS: a torn log line hides neither the audit update nor the history around it');
+    } finally {
+        if (M) M.socket.close();
+        stopServer(server);
+    }
+};
+
 (async () => {
     try {
         await r11_2();
         await r11_3();
         await r11_4();
+        await r11_5();
         process.exit(0);
     } catch (e) {
         console.error('R11 FAIL:', e && e.stack || e);
