@@ -26,6 +26,7 @@ export const envConfig: {
     SERVER_PORT: number;
     HTTP_PORT: number;
     SWAP_TIMEOUT_MS: number;
+    SWAP_SIGNED_WINDOW_MS: number;
     ADMIN_API_KEY: string;
     CORS_ORIGINS: string[];
     MAX_ORDERBOOKS: number;
@@ -36,6 +37,10 @@ export const envConfig: {
     HTTP_PORT: parseInt(process.env.HTTP_PORT),
     // Max time a swap may stay open before it is aborted and the matched order unlocked.
     SWAP_TIMEOUT_MS: parsePositiveInt(process.env.SWAP_TIMEOUT_MS, 120000),
+    // Max time between SELLER:STEP5 and the buyer's BUYER:STEP6 report. Once the seller has signed,
+    // the buyer may broadcast at any time, so the window is capped and the session then ends as
+    // expired-unverified. Capped at one hour.
+    SWAP_SIGNED_WINDOW_MS: Math.min(parsePositiveInt(process.env.SWAP_SIGNED_WINDOW_MS, 600000), 3600000),
     // Max number of distinct orderbooks (market pairs) the server holds. Every new pair
     // is a new in-memory book plus log files, and any client can name a pair, so this
     // bounds the registry. Creating a book beyond the cap is refused explicitly.

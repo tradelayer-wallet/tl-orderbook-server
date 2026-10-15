@@ -24,7 +24,7 @@ process.env.SWAP_TIMEOUT_MS = '30000';
 
 const {
     assert, sleep, waitFor, startServer, stopServer, connectClient,
-    eventsOf, rawSpotOrder, emitSwap, sessionOf, ordersOf, allHistory, activeSwapSessions,
+    eventsOf, rawSpotOrder, emitSwap, sessionOf, ordersOf, allHistory, activeSwapSessions, negotiate,
 } = require('./common');
 
 const { txidOf } = require('./common');
@@ -57,16 +57,17 @@ const { txidOf } = require('./common');
             { message: 'trade2 channel opened' });
 
         // ---- the proven symptom: trade1's relay must survive trade2's start
-        emitSwap(A, sessionOf(A, 0), 'SELLER:STEP1', 'probe-from-a');
-        await waitFor(() => eventsOf(B, 'swap').some((e) => e.args[0] && e.args[0].data === 'probe-from-a'),
-            { timeout: 2000, message: 'B still receives A\'s relayed swap events after trade2 opened' });
-        console.log('T4a PASS: trade1 relay (A->B) alive after trade2 opened (pre-fix: wiped)');
+        // Trade1 is negotiated in full (A buys from B) after trade2 opened: every relay must arrive.
+        const sid1 = sessionOf(A, 0);
+        await negotiate(sid1, A, B);
+        console.log('T4a PASS: trade1 relays (both directions) alive after trade2 opened (pre-fix: wiped)');
 
         // ---- trade1 completes with its own txid ---------------------------
-        emitSwap(A, sessionOf(A, 0), 'BUYER:STEP6', txidOf('txid-trade1'));
+        emitSwap(A, sid1, 'BUYER:STEP6', txidOf('txid-trade1'));
         await waitFor(() => allHistory().some((h) => h.txid === txidOf('txid-trade1')), { timeout: 3000, message: 'trade1 settled' });
 
         // ---- trade2 still settles normally, with its own txid -------------
+        await negotiate(sessionOf(C, 0), C, A);
         emitSwap(C, sessionOf(C, 0), 'BUYER:STEP6', txidOf('txid-trade2'));
         await waitFor(() => allHistory().some((h) => h.txid === txidOf('txid-trade2')), { timeout: 3000, message: 'trade2 settled (no spurious timeout)' });
 

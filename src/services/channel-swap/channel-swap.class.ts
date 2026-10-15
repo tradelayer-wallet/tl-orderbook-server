@@ -1,43 +1,38 @@
 import { randomBytes } from "crypto";
 import { Server, Socket } from "socket.io";
 import { envConfig } from "../../config/env.config";
-import { IResult, IResultChannelSwap } from "../../utils/types/mix.types";
-import { ITradeInfo, TOrder } from "../../utils/types/orderbook.types";
+import { ITradeInfo } from "../../utils/types/orderbook.types";
 import { EmitEvents, OrderEmitEvents } from "../socket/events";
 import { swapRelayLimiter } from "../socket/limiters";
+import {
+    parseSwapEnvelope,
+    parseTerminateReason,
+    SERVER_STATE_EVENT,
+    SIGNED_STEP_INDEX,
+    ISwapEnvelope,
+    SWAP_STEPS,
+    TERMINATE_EVENT,
+} from "../../protocol/messages";
 
-// Swap wire protocol (server <-> wallet client):
-//   'new-channel'  server -> each participant : { tradeInfo, unfilled, isBuyer, sessionId }
+// Swap wire protocol, server <-> wallet (protocol-v2.md B.3.5 and B.4):
+//   'new-channel'  server -> each participant : { sessionId, isBuyer, tradeInfo }
 //   'swap'         participant -> server      : { sessionId, eventName, data }
 //   'swap'         server -> counterparty     : { sessionId, eventName, socketId, data }
-// A swap is identified only by its server-generated sessionId. Socket ids and any
-// client-supplied field never select a session. The relayed `socketId` is stamped
-// by the server from the emitting socket, so a client cannot claim another identity.
+//   'swap'         server -> both participants: { sessionId, eventName: 'SERVER:STATE', socketId: null, data }
+// A swap is identified only by its server-generated sessionId. Socket ids and any client-supplied
+// field never select a session. The relayed `socketId` is stamped by the server from the emitting
+// socket, so a client cannot claim another identity.
 
-export interface ISwapInbound {
-    sessionId: string;
-    eventName: string;
-    data?: unknown;
-}
+export type TSwapOutcome =
+    | { state: 'settled'; txid: string }
+    // `terminatorSocketId` is set when a participant sent TERMINATE_TRADE. A timeout has none.
+    | { state: 'aborted'; reason: string; terminatorSocketId?: string }
+    // The buyer held a signed transaction and the window to report it closed. Nothing is recorded.
+    | { state: 'expired-unverified' };
 
-export interface ISwapEvent extends ISwapInbound {
-    // The emitting socket, stamped by the server. Never taken from the client.
-    socketId: string;
-}
-
-const MAX_EVENT_NAME_LENGTH = 64;
 // The reason a trade was terminated is relayed into the counterparty's order:error,
-// so it is bounded.
-const MAX_TERMINATE_REASON_LENGTH = 256;
-const TERMINATE_REASON_FALLBACK = 'Trade terminated by counterparty';
-// Bitcoin-family transaction id: 32 bytes as 64 hex characters. Anything else is
-// refused before it can be recorded as a fill or written to the public history.
-// Accepted in either case, stored and relayed in lowercase, so one transaction has
-// exactly one textual form in the trade history.
-const TXID_PATTERN = /^[0-9a-f]{64}$/i;
-// Server-issued sessionIds are randomBytes(32) as hex: exactly 64 lowercase hex chars.
-const SESSION_ID_LENGTH = 64;
-const SESSION_ID_PATTERN = /^[0-9a-f]{64}$/;
+// so it is bounded by the schema (256 characters).
+const TERMINATE_FALLBACK = 'Trade terminated by counterparty';
 
 export interface ISwapParticipants {
     buyer: Socket;
@@ -45,10 +40,8 @@ export interface ISwapParticipants {
 }
 
 // The single choke point where a swap resolves its two sockets. A session is only
-// ever built around two distinct sockets that are connected right now. A missing or
-// disconnected counterparty produces a clean error here, before anything is emitted
-// or registered.
-export const resolveSwapParticipants = (io: Server, tradeInfo: ITradeInfo): IResult<ISwapParticipants> => {
+// ever built around two distinct sockets that are connected right now.
+export const resolveSwapParticipants = (io: Server, tradeInfo: ITradeInfo): { data?: ISwapParticipants; error?: string } => {
     const buyer = io.sockets.sockets.get(tradeInfo.buyer.socketId);
     const seller = io.sockets.sockets.get(tradeInfo.seller.socketId);
     if (!buyer || !buyer.connected || !seller || !seller.connected) {
@@ -66,66 +59,54 @@ const sessions = new Map<string, ChannelSwap>();
 
 export const activeSwapSessionCount = (): number => sessions.size;
 
-const isObject = (value: unknown): value is Record<string, unknown> =>
-    typeof value === 'object' && value !== null;
-
-const terminationReason = (data: unknown): string =>
-    typeof data === 'string' && data.length > 0
-        ? data.slice(0, MAX_TERMINATE_REASON_LENGTH)
-        : TERMINATE_REASON_FALLBACK;
-
-// Only the fields the protocol uses survive. Anything else the client sent is dropped.
-const parseSwapInbound = (payload: unknown): ISwapInbound | null => {
-    if (!isObject(payload)) return null;
-    const { sessionId, eventName, data } = payload;
-    // Length first, so an oversized id is refused before any regex work.
-    if (typeof sessionId !== 'string' || sessionId.length !== SESSION_ID_LENGTH || !SESSION_ID_PATTERN.test(sessionId)) return null;
-    if (typeof eventName !== 'string' || eventName.length > MAX_EVENT_NAME_LENGTH) return null;
-    return { sessionId, eventName, data };
-};
-
-// Single entry point for every inbound swap event. The sessionId selects the
-// session, and the emitting socket must be one of that session's two participants.
-// Unknown and foreign sessions get the same error, so responses do not reveal which
-// session ids exist. Rate limiting is per emitting socket, before any lookup.
+// Single entry point for every inbound swap event. The payload is checked by one schema
+// (parseSwapEnvelope). The sessionId selects the session, and the emitting socket must be one of
+// that session's two participants. Unknown and foreign sessions get the same error, so responses do
+// not reveal which session ids exist. Rate limiting is per emitting socket, before any lookup.
 export const routeSwapEvent = (from: Socket, payload: unknown): void => {
     if (!swapRelayLimiter.consume(from.id)) {
         from.emit(OrderEmitEvents.ERROR, 'Rate limit exceeded');
         return;
     }
-    const inbound = parseSwapInbound(payload);
-    if (!inbound) {
-        from.emit(OrderEmitEvents.ERROR, 'Invalid swap event: sessionId (64 hex characters) and eventName (string) are required');
+    const envelope = parseSwapEnvelope(payload);
+    if (envelope.error || !envelope.data) {
+        from.emit(OrderEmitEvents.ERROR, envelope.error);
         return;
     }
-    const session = sessions.get(inbound.sessionId);
+    const session = sessions.get(envelope.data.sessionId);
     if (!session || !session.hasParticipant(from)) {
         from.emit(OrderEmitEvents.ERROR, 'Invalid swap event: unknown or foreign sessionId');
         return;
     }
-    session.handle(from, inbound);
+    session.handle(from, envelope.data);
 };
 
 export class ChannelSwap {
     // 256 bits from a CSPRNG: not guessable by a counterparty or an outsider.
     readonly sessionId: string = randomBytes(32).toString('hex');
-    readonly ready: Promise<IResultChannelSwap>;
-    private resolveReady: (value: IResultChannelSwap) => void;
-    private timeoutHandle: ReturnType<typeof setTimeout> | null = null;
-    private settled = false;
+    readonly outcome: Promise<TSwapOutcome>;
+    private resolveOutcome: (outcome: TSwapOutcome) => void = () => {};
+    // Index into SWAP_STEPS of the next event the server accepts. Past the last step the swap is settled.
+    private nextStep = 0;
+    private timer: ReturnType<typeof setTimeout> | null = null;
+    private ended = false;
 
     constructor(
         private readonly buyer: Socket,
         private readonly seller: Socket,
-        private readonly tradeInfo: ITradeInfo,
-        private readonly unfilled: TOrder,
+        tradeInfo: ITradeInfo,
     ) {
-        this.ready = new Promise<IResultChannelSwap>((res) => {
-            this.resolveReady = res;
+        this.outcome = new Promise<TSwapOutcome>((res) => {
+            this.resolveOutcome = res;
         });
         sessions.set(this.sessionId, this);
-        this.startTimeout();
-        const trade = { tradeInfo, unfilled, sessionId: this.sessionId };
+        // Negotiation must finish within SWAP_TIMEOUT_MS. Before SELLER:STEP5 no signed
+        // transaction exists, so an expiry here is a plain abort and the maker is unlocked.
+        this.arm(envConfig.SWAP_TIMEOUT_MS, () => this.end({
+            state: 'aborted',
+            reason: `Swap timed out after ${envConfig.SWAP_TIMEOUT_MS}ms`,
+        }));
+        const trade = { sessionId: this.sessionId, tradeInfo };
         this.buyer.emit(EmitEvents.NEW_CHANNEL, { ...trade, isBuyer: true });
         this.seller.emit(EmitEvents.NEW_CHANNEL, { ...trade, isBuyer: false });
     }
@@ -135,51 +116,78 @@ export class ChannelSwap {
     }
 
     // Only called by routeSwapEvent, after `from` was verified as a participant.
-    handle(from: Socket, inbound: ISwapInbound): void {
-        const { eventName } = inbound;
-        const isBuyerFill = eventName === 'BUYER:STEP6' && from === this.buyer;
-        // Only the buyer completes the swap; the seller cannot fake a fill. The txid
-        // is refused unless well-formed, and the session stays open so the buyer can resend.
-        if (isBuyerFill && !(typeof inbound.data === 'string' && TXID_PATTERN.test(inbound.data))) {
-            from.emit(OrderEmitEvents.ERROR, 'Invalid BUYER:STEP6: txid must be 64 hex characters');
+    handle(from: Socket, envelope: ISwapEnvelope): void {
+        if (envelope.eventName === TERMINATE_EVENT) {
+            this.terminate(from, envelope.data);
             return;
         }
-        // The one canonical form of the txid: lowercase. Relayed and recorded alike.
-        const data = isBuyerFill ? (inbound.data as string).toLowerCase() : inbound.data;
-
-        // Relay only to this session's counterparty, with the sender stamped by the server.
+        const sender = from === this.buyer ? 'BUYER' : 'SELLER';
+        const step = SWAP_STEPS[this.nextStep];
+        if (!step || step.eventName !== envelope.eventName || step.sender !== sender) {
+            from.emit(OrderEmitEvents.ERROR, `Invalid swap event: ${envelope.eventName} is not the next step`);
+            return;
+        }
+        const parsed = step.parse(envelope.data);
+        if (parsed.error) {
+            from.emit(OrderEmitEvents.ERROR, `Invalid swap event: ${envelope.eventName} data does not match its schema`);
+            return;
+        }
+        this.nextStep++;
         const counterparty = from === this.buyer ? this.seller : this.buyer;
-        const relayed: ISwapEvent = { sessionId: this.sessionId, eventName, socketId: from.id, data };
-        counterparty.emit(EmitEvents.SWAP, relayed);
+        counterparty.emit(EmitEvents.SWAP, { sessionId: this.sessionId, eventName: envelope.eventName, socketId: from.id, data: parsed.data });
 
-        if (isBuyerFill) {
-            this.settle({ data: { txid: data } });
+        if (this.nextStep - 1 === SIGNED_STEP_INDEX) {
+            this.arm(envConfig.SWAP_SIGNED_WINDOW_MS, () => this.end({ state: 'expired-unverified' }));
         }
-        if (eventName === 'TERMINATE_TRADE') {
-            // The terminator is the participant that emitted the event, derived from
-            // the socket and never from the payload.
-            this.settle({ error: terminationReason(data), socketId: from.id });
+        if (this.nextStep === SWAP_STEPS.length) {
+            this.end({ state: 'settled', txid: parsed.data as string });
         }
     }
 
-    // The swap must complete within SWAP_TIMEOUT_MS, otherwise a silent
-    // counterparty could keep the matched (locked) orders locked forever.
-    private startTimeout(): void {
-        const timeoutMs = envConfig.SWAP_TIMEOUT_MS;
-        this.timeoutHandle = setTimeout(() => {
-            this.settle({ error: `Swap timed out after ${timeoutMs}ms`, timedOut: true });
-        }, timeoutMs);
+    // TERMINATE_TRADE is honoured only before SELLER:STEP5. After it the buyer holds a
+    // transaction it can broadcast, so the session can end only as settled or expired-unverified.
+    private terminate(from: Socket, data: unknown): void {
+        if (this.nextStep > SIGNED_STEP_INDEX) {
+            from.emit(OrderEmitEvents.ERROR, 'Invalid swap event: TERMINATE_TRADE is refused after SELLER:STEP5');
+            return;
+        }
+        const parsed = parseTerminateReason(data);
+        if (parsed.error) {
+            from.emit(OrderEmitEvents.ERROR, 'Invalid swap event: TERMINATE_TRADE data does not match its schema');
+            return;
+        }
+        const reason = parsed.data ?? TERMINATE_FALLBACK;
+        const counterparty = from === this.buyer ? this.seller : this.buyer;
+        counterparty.emit(EmitEvents.SWAP, { sessionId: this.sessionId, eventName: TERMINATE_EVENT, socketId: from.id, data: reason });
+        this.end({ state: 'aborted', reason, terminatorSocketId: from.id });
     }
 
-    private settle(result: IResultChannelSwap): void {
-        if (this.settled) return;
-        this.settled = true;
-        if (this.timeoutHandle) {
-            clearTimeout(this.timeoutHandle);
-            this.timeoutHandle = null;
+    private arm(ms: number, onFire: () => void): void {
+        this.disarm();
+        this.timer = setTimeout(() => {
+            this.timer = null;
+            onFire();
+        }, ms);
+    }
+
+    private disarm(): void {
+        if (this.timer) {
+            clearTimeout(this.timer);
+            this.timer = null;
         }
-        // A settled session's id stops routing, so late or replayed events are rejected.
+    }
+
+    // The one exit from a session: it leaves the registry, both participants are told the terminal
+    // state, and the outcome is resolved once.
+    private end(outcome: TSwapOutcome): void {
+        if (this.ended) return;
+        this.ended = true;
+        this.disarm();
         sessions.delete(this.sessionId);
-        this.resolveReady(result);
+        const state = { state: outcome.state, txid: outcome.state === 'settled' ? outcome.txid : null };
+        const notice = { sessionId: this.sessionId, eventName: SERVER_STATE_EVENT, socketId: null, data: state };
+        this.buyer.emit(EmitEvents.SWAP, notice);
+        this.seller.emit(EmitEvents.SWAP, notice);
+        this.resolveOutcome(outcome);
     }
 }

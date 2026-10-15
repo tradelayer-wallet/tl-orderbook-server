@@ -15,7 +15,7 @@
  */
 const {
     assert, waitFor, waitForEvent, startServer, stopServer, connectClient,
-    rawSpotOrder, ordersOf, sessionOf, activeSwapSessions,
+    rawSpotOrder, ordersOf, sessionOf, activeSwapSessions, negotiate,
 } = require('./common');
 
 const TXID = 'cd'.repeat(32);
@@ -37,6 +37,7 @@ const TXID = 'cd'.repeat(32);
         await waitFor(() => activeSwapSessions() === before + 1, { message: 'r13: swap with maker started' });
         await waitForEvent(T, 'new-channel', () => true, { message: 'r13: taker new-channel' });
         const sid = sessionOf(T);
+        await negotiate(sid, T, M);
         T.socket.emit('swap', { sessionId: sid, eventName: 'BUYER:STEP6', data: TXID });
 
         await waitFor(() => T.errors.length > errorsBefore, { message: 'r13: taker received an error' });

@@ -22,7 +22,7 @@ const path = require('path');
 const {
     assert, waitFor, sleep, startServer, stopServer, connectClient,
     eventsOf, waitForEvent, rawSpotOrder, ordersOf, allHistory,
-    activeSwapSessions, sessionOf, emitSwap, workDir, openSocket,
+    activeSwapSessions, sessionOf, emitSwap, workDir, openSocket, negotiate, MS_DATA,
 } = require('./common');
 
 const TXID = 'ab'.repeat(32); // a well-formed 64-hex txid
@@ -65,20 +65,22 @@ const openSwap = async (url, tag) => {
         // ---- a) relay stamps the sender -----------------------------------
         if (run('a')) {
             const { M, T, sid } = await openSwap(url, 'a');
-            T.socket.emit('swap', { sessionId: sid, eventName: 'PING', socketId: 'forged-socket-id', data: 'hi', extra: 'smuggled' });
-            const ev = (await waitForEvent(M, 'swap', (e) => e.eventName === 'PING', { message: 'a: PING relayed' })).args[0];
-            assert.strictEqual(ev.socketId, T.id,
-                `R3a FAIL: counterparty saw client-chosen socketId ${ev.socketId}, expected sender ${T.id}`);
+            M.socket.emit('swap', { sessionId: sid, eventName: 'SELLER:STEP1', socketId: 'forged-socket-id', data: MS_DATA, extra: 'smuggled' });
+            const ev = (await waitForEvent(T, 'swap', (e) => e.eventName === 'SELLER:STEP1', { message: 'a: SELLER:STEP1 relayed' })).args[0];
+            assert.strictEqual(ev.socketId, M.id,
+                `R3a FAIL: counterparty saw client-chosen socketId ${ev.socketId}, expected sender ${M.id}`);
             assert.deepStrictEqual(Object.keys(ev).sort(), ['data', 'eventName', 'sessionId', 'socketId'],
                 `R3a FAIL: relay carried client-added fields: ${Object.keys(ev).join(',')}`);
             console.log('R3a PASS: relay stamps socketId server-side and drops client-added fields');
-            M.socket.close(); T.socket.emit('swap', { sessionId: sid, eventName: 'TERMINATE_TRADE', socketId: T.id, data: 'cleanup' });
+            T.socket.emit('swap', { sessionId: sid, eventName: 'TERMINATE_TRADE', socketId: T.id, data: 'cleanup' });
+            M.socket.close();
             T.socket.close();
         }
 
         // ---- b) BUYER:STEP6 txid must be well-formed --------------------------
         if (run('b')) {
             const { M, T, sid } = await openSwap(url, 'b');
+            await negotiate(sid, T, M);
             const openNow = activeSwapSessions();
             T.socket.emit('swap', { sessionId: sid, eventName: 'BUYER:STEP6', socketId: T.id, data: 'x'.repeat(4000) });
             await sleep(200);
@@ -106,13 +108,19 @@ const openSwap = async (url, tag) => {
 
         // ---- c) TERMINATE_TRADE reason is bounded -----------------------------
         if (run('c')) {
-            const { M, T } = await openSwap(url, 'c');
-            M.socket.emit('swap', { sessionId: sessionOf(M), eventName: 'TERMINATE_TRADE', socketId: M.id, data: 'r'.repeat(5000) });
+            const { M, T, sid } = await openSwap(url, 'c');
+            M.socket.emit('swap', { sessionId: sid, eventName: 'TERMINATE_TRADE', socketId: M.id, data: 'r'.repeat(5000) });
+            await waitFor(() => M.errors.length > 0, { message: 'c: over-long reason refused' });
+            assert.match(M.errors[M.errors.length - 1], /data does not match its schema/, 'R3c FAIL: over-long reason not refused by schema');
+            await sleep(100);
+            assert.strictEqual(T.errors.length, 0, 'R3c FAIL: a refused termination reached the counterparty');
+            assert.strictEqual(activeSwapSessions(), 1, 'R3c FAIL: a refused termination ended the session');
+            M.socket.emit('swap', { sessionId: sid, eventName: 'TERMINATE_TRADE', socketId: M.id, data: 'r'.repeat(256) });
             await waitFor(() => T.errors.length > 0, { message: 'c: taker sees the termination' });
             const msg = T.errors[T.errors.length - 1];
             assert.ok(msg.length <= 256,
                 `R3c FAIL: counterparty order:error carried a ${msg.length}-char reason`);
-            console.log(`R3c PASS: termination reason reaching the counterparty is bounded (${msg.length} chars)`);
+            console.log(`R3c PASS: over-long termination reason refused; a 256-char reason is delivered (${msg.length} chars)`);
             M.socket.close(); T.socket.close();
         }
 

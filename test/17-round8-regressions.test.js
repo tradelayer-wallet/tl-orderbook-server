@@ -15,10 +15,9 @@
 const path = require('path');
 const {
     assert, waitFor, sleep, startServer, stopServer, connectClient, rawSpotOrder,
-    allOrders, activeSwapSessions, sessionOf, waitForEvent, txidOf, BUILD,
+    allOrders, activeSwapSessions, sessionOf, waitForEvent, txidOf, BUILD, negotiate, units,
 } = require('./common');
 
-const toU = (x) => Math.round(x * 100000000);
 // Each section trades on its own pair, so no section can match another section's resting orders.
 const sellIds = (n) => ({ id_for_sale: 100 + n, id_desired: 200 + n });
 const buyIds = (n) => ({ id_for_sale: 200 + n, id_desired: 100 + n });
@@ -53,10 +52,11 @@ const orderOf = (uuid) => allOrders().find((o) => o.uuid === uuid);
         const mUuid = m1.inbox.find((e) => e.event === 'order:saved').args[0];
         t1.socket.emit('new-order', rawSpotOrder({ action: 'BUY', amount: 1, price: 1, ...buyIds(1) }));
         await waitForEvent(t1, 'new-channel', () => true, { message: 'B: swap' });
+        await negotiate(sessionOf(t1), t1, m1);
         t1.socket.emit('swap', { sessionId: sessionOf(t1), eventName: 'BUYER:STEP6', data: txidOf('r8-b') });
         await waitFor(() => activeSwapSessions() === 0, { message: 'B: settled' });
         await sleep(30);
-        assert.equal(toU(orderOf(mUuid).props.amount), 60, `B FAIL: remainder is ${orderOf(mUuid).props.amount}, expected 6e-7`);
+        assert.equal(orderOf(mUuid).props.amount, 60, `B FAIL: remainder is ${orderOf(mUuid).props.amount} units, expected 60 (6e-7)`);
         console.log('R8 B1 PASS: remainder 6e-7 kept exactly');
 
         // B2: 1.0000004 - 1 = 4e-7 must stay 4e-7 and never become a zero-amount order.
@@ -67,10 +67,11 @@ const orderOf = (uuid) => allOrders().find((o) => o.uuid === uuid);
         const m2Uuid = m2.inbox.find((e) => e.event === 'order:saved').args[0];
         t2.socket.emit('new-order', rawSpotOrder({ action: 'BUY', amount: 1, price: 1, ...buyIds(2) }));
         await waitForEvent(t2, 'new-channel', () => true, { message: 'B2: swap' });
+        await negotiate(sessionOf(t2), t2, m2);
         t2.socket.emit('swap', { sessionId: sessionOf(t2), eventName: 'BUYER:STEP6', data: txidOf('r8-b2') });
         await waitFor(() => activeSwapSessions() === 0, { message: 'B2: settled' });
         await sleep(30);
-        assert.equal(toU(orderOf(m2Uuid).props.amount), 40, 'B2 FAIL: remainder rounded away');
+        assert.equal(orderOf(m2Uuid).props.amount, 40, 'B2 FAIL: remainder rounded away');
         console.log('R8 B2 PASS: remainder 4e-7 kept, no zero-amount order');
 
         // C: a trade refused for its value (13779 units x 1.5 is not whole satoshis) must leave the
@@ -93,37 +94,37 @@ const orderOf = (uuid) => allOrders().find((o) => o.uuid === uuid);
         // E: a quantity with 9 decimal places is refused at intake, nothing rests.
         const e1 = await connectClient(url, 'r8-e'); clients.push(e1);
         const before = allOrders().length;
-        e1.socket.emit('new-order', rawSpotOrder({ action: 'SELL', amount: 1.000000001, price: 1, ...sellIds(5) }));
+        e1.socket.emit('new-order', rawSpotOrder({ action: 'SELL', props: { ...sellIds(5), amount: 1.000000001 * 1e8, price: units(1) } }));
         await waitFor(() => e1.errors.length > 0, { message: 'E: refused' });
-        assert.match(e1.errors[0], /multiple of 1e-8/);
+        assert.match(e1.errors[0], /positive integer number of units/);
         assert.equal(allOrders().length, before, 'E FAIL: a 9-decimal order rested');
         console.log('R8 E PASS: 9-decimal quantity refused at intake');
 
         // D: the history sent to clients is capped, and it is served from memory.
         const mgr = require(path.join(BUILD, 'services/orderbook')).orderbookManager;
-        const { orderFactory } = require(path.join(BUILD, 'services/orderbook/order.factory'));
+        const { parseNewOrder } = require(path.join(BUILD, 'protocol/messages'));
         const dClients = [];
         for (let k = 0; k < 3; k++) dClients.push(await connectClient(url, `r8-d${k}`));
         clients.push(...dClients);
         for (let i = 0; i < 600; i++) {
             const owner = dClients[i % 3];
-            const f = orderFactory(rawSpotOrder({ action: 'SELL', amount: 1, price: 5 + i / 1000, ...sellIds(4) }), owner.id);
+            const f = parseNewOrder(rawSpotOrder({ action: 'SELL', props: { ...sellIds(4), amount: units(1), price: Math.round((5 + i / 1000) * 1e8) } }), owner.id);
             await mgr.addOrder(f.data);
         }
         const history = mgr.getOrdersHistory();
         const newestPrice = 5 + 599 / 1000;
         assert.equal(history.length, 500, `D FAIL: expected 500 records, got ${history.length}`);
-        assert.ok(history.some((o) => o.props.price === newestPrice),
+        assert.ok(history.some((o) => o.props.price === units(newestPrice)),
             'D FAIL: the history does not hold the newest order (it must be the most recent 500)');
         console.log('R8 D PASS: order history is the most recent 500, kept in memory');
 
         // F: resting orders are bounded per account. The 501st order of one account is refused.
         const f1 = await connectClient(url, 'r8-f'); clients.push(f1);
         for (let i = 0; i < 500; i++) {
-            const placed = await mgr.addOrder(orderFactory(rawSpotOrder({ action: 'SELL', amount: 1, price: 50 + i / 1000, ...sellIds(6) }), f1.id).data);
+            const placed = await mgr.addOrder(parseNewOrder(rawSpotOrder({ action: 'SELL', props: { ...sellIds(6), amount: units(1), price: Math.round((50 + i / 1000) * 1e8) } }), f1.id).data);
             if (placed.error) throw new Error(`F FAIL: order ${i} refused: ${placed.error}`);
         }
-        const over = await mgr.addOrder(orderFactory(rawSpotOrder({ action: 'SELL', amount: 1, price: 60, ...sellIds(6) }), f1.id).data);
+        const over = await mgr.addOrder(parseNewOrder(rawSpotOrder({ action: 'SELL', props: { ...sellIds(6), amount: units(1), price: Math.round((60) * 1e8) } }), f1.id).data);
         assert.match(String(over.error), /at most 500 per account/, 'F FAIL: the 501st order of one account was accepted');
         console.log('R8 F PASS: resting orders are bounded per account');
 

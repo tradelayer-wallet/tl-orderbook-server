@@ -27,14 +27,14 @@ const {
         };
 
         await expectError(rawSpotOrder({ props: { id_for_sale: 2, id_desired: 1, amount: -5, price: 1 } }),
-            'Order amount must be a finite number > 0');
+            'Order amount must be a positive integer number of units');
         await expectError(rawSpotOrder({ props: { id_for_sale: 2, id_desired: 1, amount: 1, price: 0 } }),
-            'Order price must be a finite number > 0');
+            'Order price must be a positive integer number of sats per token');
         await expectError(rawSpotOrder({ props: { id_for_sale: '../../etc/passwd', id_desired: 1, amount: 1, price: 1 } }),
             'Invalid id_for_sale');
         await expectError(rawSpotOrder({ props: { id_for_sale: 2, id_desired: 's-1-5; rm -rf /', amount: 1, price: 1 } }),
             'Invalid id_desired');
-        await expectError(rawSpotOrder({ isLimitOrder: false }), 'Merket Orders Not allowed');
+        await expectError(rawSpotOrder({ isLimitOrder: false }), 'Only limit orders are allowed');
         await expectError(rawSpotOrder({ keypair: null }), 'Invalid keypair');
         console.log('VALIDATION PASS: malformed / traversal orders rejected with order:error');
 

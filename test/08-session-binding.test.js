@@ -46,7 +46,7 @@ const openSwap = async (maker, taker, tokA, tokB, tag) => {
 const relayedWith = (client, data) =>
     eventsOf(client, 'swap').some((e) => e.args[0] && e.args[0].data === data);
 
-const { txidOf } = require('./common');
+const { txidOf, negotiate, sendStep, NEGOTIATION_STEPS } = require('./common');
 
 (async () => {
     const { server, url } = await startServer();
@@ -94,16 +94,16 @@ const { txidOf } = require('./common');
         console.log('N1d PASS: outsider with a leaked session id can neither settle, terminate nor relay');
 
         // ---- b) relay is confined to the named session's counterparty -------
-        emitSwap(X, S1, 'SELLER:STEP1', 'x-to-m1-s1');
-        await waitFor(() => relayedWith(M1, 'x-to-m1-s1'), { timeout: 2000, message: 'M1 receives S1 relay' });
+        await sendStep(S1, X, M1, 0);
+        await sendStep(S1, X, M1, 1);
         await sleep(300);
-        assert.ok(!relayedWith(M2, 'x-to-m1-s1'), 'N1 FAIL: S1 event leaked to M2 (other session)');
-        assert.ok(!relayedWith(X, 'x-to-m1-s1'), 'N1 FAIL: a participant received its own event back');
-        emitSwap(M1, S1, 'SELLER:STEP2', 'm1-reply-s1');
-        await waitFor(() => relayedWith(X, 'm1-reply-s1'), { timeout: 2000, message: 'X receives M1 reply' });
+        assert.ok(!eventsOf(M2, 'swap').some((e) => e.args[0] && e.args[0].sessionId === S1), 'N1 FAIL: S1 event leaked to M2 (other session)');
+        assert.ok(!eventsOf(M1, 'swap').some((e) => e.args[0] && e.args[0].sessionId === S1 && e.args[0].socketId === M1.id),
+            'N1 FAIL: a participant received its own event back');
         console.log('N1b PASS: relay reaches only the paired counterparty of the named session');
 
         // ---- a) one settle event settles only its own session ---------------
+        for (let i = 2; i < NEGOTIATION_STEPS.length; i++) await sendStep(S1, X, M1, i);
         emitSwap(X, S1, 'BUYER:STEP6', txidOf('txid-s1'));
         await waitFor(() => allHistory().some((h) => h.txid === txidOf('txid-s1')), { timeout: 3000, message: 'S1 settled' });
         await sleep(300);
@@ -121,6 +121,7 @@ const { txidOf } = require('./common');
         console.log('N1f PASS: events on a settled session id are rejected');
 
         // S2 still settles normally with its own txid.
+        await negotiate(S2, X, M2);
         emitSwap(X, S2, 'BUYER:STEP6', txidOf('txid-s2'));
         await waitFor(() => allHistory().some((h) => h.txid === txidOf('txid-s2')), { timeout: 3000, message: 'S2 settled' });
         assert.strictEqual(activeSwapSessions(), 0, 'N1 FAIL: session registry not drained after both settled');

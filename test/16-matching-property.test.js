@@ -23,7 +23,7 @@ const fs = require('fs');
 const path = require('path');
 const {
     assert, sleep, waitFor, startServer, stopServer, connectClient,
-    rawSpotOrder, allOrders, allHistory, activeSwapSessions, txidOf, workDir,
+    rawSpotOrder, allOrders, allHistory, activeSwapSessions, txidOf, workDir, negotiate,
 } = require('./common');
 
 const UNIT = 100000000n;
@@ -111,7 +111,7 @@ class Model {
     }
 }
 
-const serverBookKeys = () => allOrders().map((o) => `${o.socket_id}|${o.action}|${toU(o.props.price)}|${toU(o.props.amount)}`).sort();
+const serverBookKeys = () => allOrders().map((o) => `${o.socket_id}|${o.action}|${BigInt(o.props.price)}|${BigInt(o.props.amount)}`).sort();
 
 // Answers every swap that is waiting for its buyer, then waits until the book is quiet.
 const settle = async (clients, answered) => {
@@ -119,9 +119,11 @@ const settle = async (clients, answered) => {
     for (let i = 0; i < 600 && quietRounds < 4; i++) {
         for (const c of clients) {
             for (const ev of c.inbox.filter((e) => e.event === 'new-channel')) {
-                const sid = ev.args[0].sessionId;
-                if (!ev.args[0].isBuyer || answered.has(sid)) continue;
+                const { sessionId: sid, tradeInfo, isBuyer } = ev.args[0];
+                if (!isBuyer || answered.has(sid)) continue;
                 answered.add(sid);
+                const seller = clients.find((x) => x.id === tradeInfo.seller.socketId);
+                await negotiate(sid, c, seller);
                 c.socket.emit('swap', { sessionId: sid, eventName: 'BUYER:STEP6', data: txidOf(`s8-${sid}`) });
             }
         }
@@ -163,9 +165,11 @@ const runSeed = async (seed) => {
             const inboxBefore = client.inbox.length;
             const errorsBefore = client.errors.length;
             if (nineDecimal) {
-                client.socket.emit('new-order', rawSpotOrder({ action, amount, price, keypair: { address, pubkey: `pk-${address}` }, ...idPair }));
+                // Not expressible in units: the raw wire value is sent, and the server refuses it at intake.
+                const props = { ...idPair, amount: amount * 1e8, price: Math.round(price * 1e8) };
+                client.socket.emit('new-order', rawSpotOrder({ action, price, keypair: { address, pubkey: `pk-${address}` }, props }));
                 await waitFor(() => client.errors.length > errorsBefore, { message: `refusal of 9-decimal amount, op ${op}` });
-                assert.match(client.errors[client.errors.length - 1], /multiple of 1e-8/, log.join('\n'));
+                assert.match(client.errors[client.errors.length - 1], /positive integer number of units/, log.join('\n'));
                 continue;
             }
 
@@ -188,13 +192,13 @@ const runSeed = async (seed) => {
 
             // 2. The trade history equals the model's, in order (the history is newest first).
             const serverTrades = allHistory().slice().reverse().map((h) =>
-                `${h.buyer.socketId}|${h.seller.socketId}|${toU(h.props.amountDesired)}|${toU(h.props.amountForSale)}`);
+                `${h.buyer.socketId}|${h.seller.socketId}|${BigInt(h.props.amountDesired)}|${BigInt(h.props.amountForSale)}`);
             const modelTrades = model.trades.map((t) => `${t.buyer}|${t.seller}|${t.qU}|${t.valueSats}`);
             assert.deepStrictEqual(serverTrades, modelTrades, `trades differ after op ${op}\n${log.join('\n')}`);
 
             // 3. The book is never crossed: no resting bid at or above a resting ask.
-            const bids = allOrders().filter((o) => o.action === 'BUY').map((o) => toU(o.props.price));
-            const asks = allOrders().filter((o) => o.action === 'SELL').map((o) => toU(o.props.price));
+            const bids = allOrders().filter((o) => o.action === 'BUY').map((o) => BigInt(o.props.price));
+            const asks = allOrders().filter((o) => o.action === 'SELL').map((o) => BigInt(o.props.price));
             if (bids.length && asks.length) {
                 const bestBid = bids.reduce((a, b) => (a > b ? a : b));
                 const bestAsk = asks.reduce((a, b) => (a < b ? a : b));

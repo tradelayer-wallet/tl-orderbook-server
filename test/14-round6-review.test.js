@@ -18,9 +18,9 @@
  *     counterparty's order stays unlocked, and only the entries placed are resting.
  */
 const {
-    assert, waitFor, startServer, stopServer, connectClient,
+    assert, sleep, waitFor, startServer, stopServer, connectClient,
     eventsOf, rawSpotOrder, ordersOf, allHistory, activeSwapSessions,
-    sessionOf, waitForEvent, txidOf,
+    sessionOf, waitForEvent, txidOf, negotiate,
 } = require('./common');
 
 // R6_ONLY=a,c runs only those scenarios (used to show each one fails on old code).
@@ -57,6 +57,7 @@ const openSwap = async (url, tag, price = 1) => {
             assert.strictEqual(ordersOf(M.id).length, 1,
                 'R6a FAIL: swap-locked order was removed by a client cancel');
 
+            await negotiate(sid, T, M);
             T.socket.emit('swap', { sessionId: sid, eventName: 'BUYER:STEP6', data: txid });
             await waitFor(() => allHistory().some((h) => h.txid === txid), { message: 'r6a: trade settled' });
             assert.strictEqual(ordersOf(M.id).length, 0, 'R6a: settled maker order should be gone');
@@ -68,15 +69,17 @@ const openSwap = async (url, tag, price = 1) => {
         if (run('b')) {
             const { M, T, sid } = await openSwap(url, 'r6b', 2);
             const txid = txidOf('r6b');
-            const upper = txid.toUpperCase();
-            T.socket.emit('swap', { sessionId: sid, eventName: 'BUYER:STEP6', data: upper });
-            await waitFor(() => allHistory().some((h) => h.txid === txid), { message: 'r6b: trade recorded in lowercase' });
-            // The relay frame reaches the client asynchronously; wait for it.
-            await waitFor(() => eventsOf(M, 'swap').some((e) => e.args[0].eventName === 'BUYER:STEP6'), { message: 'r6b: relay received' });
-            const relayed = eventsOf(M, 'swap').map((e) => e.args[0]).find((a) => a.eventName === 'BUYER:STEP6');
-            assert.strictEqual(relayed.data, txid, `R6b FAIL: relayed txid is not canonical (${relayed.data})`);
-            assert.ok(!allHistory().some((h) => h.txid === upper), 'R6b FAIL: upper-case txid stored in history');
-            console.log('R6b PASS: upper-case txid is canonicalised to lowercase in history and relay');
+            await negotiate(sid, T, M);
+            T.socket.emit('swap', { sessionId: sid, eventName: 'BUYER:STEP6', data: txid.toUpperCase() });
+            await waitFor(() => T.errors.length > 0, { message: 'r6b: upper-case txid answered' });
+            assert.match(String(T.errors[T.errors.length - 1]), /BUYER:STEP6 data does not match its schema/,
+                'R6b FAIL: an upper-case txid was not refused by the schema');
+            await sleep(100);
+            assert.ok(!allHistory().some((h) => h.txid === txid || h.txid === txid.toUpperCase()), 'R6b FAIL: upper-case txid stored in history');
+            assert.ok(!eventsOf(M, 'swap').some((e) => e.args[0].eventName === 'BUYER:STEP6'), 'R6b FAIL: upper-case txid relayed');
+            T.socket.emit('swap', { sessionId: sid, eventName: 'BUYER:STEP6', data: txid });
+            await waitFor(() => allHistory().some((h) => h.txid === txid), { message: 'r6b: lowercase txid recorded' });
+            console.log('R6b PASS: an upper-case txid is refused by the schema; the lowercase form is recorded and relayed');
             M.socket.close(); T.socket.close();
         }
 
@@ -86,10 +89,10 @@ const openSwap = async (url, tag, price = 1) => {
             X.socket.emit('swap', { sessionId: 'x'.repeat(100000), eventName: 'BUYER:STEP6', data: 'ab'.repeat(32) });
             await waitFor(() => X.errors.length > 0, { message: 'r6c: swap error received' });
             const msg = String(X.errors[X.errors.length - 1]);
-            assert.ok(/sessionId \(64 hex/.test(msg), `R6c FAIL: oversized sessionId not refused by shape (got "${msg}")`);
+            assert.ok(/sessionId \(64 lowercase hex/.test(msg), `R6c FAIL: oversized sessionId not refused by shape (got "${msg}")`);
             X.socket.emit('swap', { sessionId: 'AB'.repeat(32), eventName: 'BUYER:STEP6', data: 'ab'.repeat(32) });
             await waitFor(() => X.errors.length > 1, { message: 'r6c: second swap error received' });
-            assert.ok(/sessionId \(64 hex/.test(String(X.errors[X.errors.length - 1])),
+            assert.ok(/sessionId \(64 lowercase hex/.test(String(X.errors[X.errors.length - 1])),
                 'R6c FAIL: upper-case sessionId not refused by shape');
             console.log('R6c PASS: malformed sessionId refused by shape before any lookup');
             X.socket.close();

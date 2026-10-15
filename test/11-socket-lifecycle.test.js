@@ -39,7 +39,7 @@ const {
 
 const bucketCounts = () => LIMITERS.map((l) => `${l.ratePerSec}/${l.burst}:${l.buckets.size}`);
 
-const { txidOf } = require('./common');
+const { txidOf, negotiate, sendStep, awaitRelay } = require('./common');
 
 (async () => {
     const { server, url } = await startServer();
@@ -51,14 +51,17 @@ const { txidOf } = require('./common');
         await waitFor(() => ordersOf(P.id).length === 1, { message: 'limiter maker rested' });
         Q.socket.emit('new-order', rawSpotOrder({ action: 'BUY', amount: 1, price: 1, id_for_sale: 41, id_desired: 40, keypair: { address: 'lim-q', pubkey: 'lim-q' } }));
         await waitFor(() => eventsOf(Q, 'new-channel').length === 1, { message: 'limiter swap opened' });
-        emitSwap(Q, sessionOf(Q), 'SELLER:STEP1', 'lim-probe');   // consumes a swap-relay token
+        const limSid = sessionOf(Q);
+        await sendStep(limSid, Q, P, 0);                           // SELLER:STEP1 reaches the buyer
+        emitSwap(Q, limSid, 'BUYER:STEP2', null);                  // consumes a swap-relay token
+        await awaitRelay(P, limSid, 'BUYER:STEP2');
         Q.socket.emit('update-orderbook', { type: 'SPOT', first_token: 40, second_token: 41 }); // query token
         await sleep(200);
-        emitSwap(Q, sessionOf(Q), 'BUYER:STEP6', txidOf('lim-txid'));             // closes the session cleanly
-        await waitFor(() => allHistory().some((h) => h.txid === txidOf('lim-txid')), { message: 'precondition swap settled' });
         const populated = LIMITERS.filter((l) => l.buckets.size > 0).length;
         assert.ok(populated > 0, 'test precondition: limiters should hold buckets while connected');
 
+        emitSwap(Q, limSid, 'TERMINATE_TRADE', 'limiter cleanup');   // closes the session cleanly
+        await waitFor(() => activeSwapSessions() === 0, { message: 'limiter session closed' });
         P.socket.close();
         Q.socket.close();
         await waitFor(() => LIMITERS.every((l) => l.buckets.size === 0), {
@@ -80,12 +83,15 @@ const { txidOf } = require('./common');
         await waitFor(() => ordersOf(G2.id).length === 1, { message: 'G2 rested' });
         GT.socket.emit('new-order', rawSpotOrder({ action: 'SELL', amount: 1.25, price: 1, id_for_sale: 10, id_desired: 9, keypair: { address: 'g-gt', pubkey: 'g-gt' } }));
         await waitFor(() => eventsOf(G1, 'new-channel').length === 1, { message: 'swap 1 opened' });
+        await negotiate(sessionOf(G1), G1, GT);
         emitSwap(G1, sessionOf(G1), 'BUYER:STEP6', txidOf('ghost-txid-1'));       // settles swap 1; GT's remainder re-enters
         await waitFor(() => eventsOf(G2, 'new-channel').length === 1, { timeout: 3000, message: 'swap 2 (remainder) opened' });
 
-        GT.socket.close();                                               // taker vanishes during swap 2
+        const sid2 = sessionOf(G2);
+        await negotiate(sid2, G2, GT);                                   // GT signs swap 2
+        GT.socket.close();                                               // taker vanishes before swap 2 is reported
         await sleep(200);
-        emitSwap(G2, sessionOf(G2), 'BUYER:STEP6', txidOf('ghost-txid-2'));      // swap 2 settles after GT is gone
+        emitSwap(G2, sid2, 'BUYER:STEP6', txidOf('ghost-txid-2'));       // swap 2 settles after GT is gone
         await waitFor(() => allHistory().some((h) => h.txid === txidOf('ghost-txid-2')), { timeout: 3000, message: 'swap 2 settled' });
         await sleep(300);
 

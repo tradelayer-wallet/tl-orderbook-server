@@ -14,13 +14,13 @@
  */
 const {
     assert, sleep, waitFor, startServer, stopServer, connectClient,
-    eventsOf, rawSpotOrder, sessionOf,
+    eventsOf, rawSpotOrder, sessionOf, units,
 } = require('./common');
 
 const batchOf = (n, startPrice = 1) => Array.from({ length: n }, (_, i) =>
     rawSpotOrder({
         action: 'BUY',
-        props: { id_for_sale: 2, id_desired: 1, amount: 1, price: startPrice + i * 0.0001 },
+        props: { id_for_sale: 2, id_desired: 1, amount: units(1), price: units(startPrice + i * 0.0001) },
         keypair: { address: `addr-batch-${process.pid}-${i}`, pubkey: `pk-batch-${i}` },
     }));
 
@@ -72,12 +72,12 @@ const batchOf = (n, startPrice = 1) => Array.from({ length: n }, (_, i) =>
         for (let i = 0; i < 80; i++) {
             F2.socket.emit('swap', { sessionId: sessionOf(F2), eventName: 'SELLER:STEP1', socketId: F2.id, data: 'flood' });
         }
-        await waitFor(() => F2.errors.length > 0, { message: 'swap relay rate limited' });
-        assert.ok(/Rate limit exceeded/.test(F2.errors[0]), `expected rate-limit error, got: ${F2.errors[0]}`);
+        await waitFor(() => F2.errors.some((e) => /Rate limit exceeded/.test(e)), { message: 'swap relay rate limited' });
         await sleep(300);
+        // Every flooded event is out of step (SELLER:STEP1 comes from the seller), so none is relayed.
         const relayed = eventsOf(F1, 'swap').length;
-        assert.ok(relayed <= 60, `relay amplification not bounded (relayed ${relayed} of 80)`);
-        console.log(`RATEe PASS: swap-channel relay events rate limited (${relayed}/80 relayed to counterparty)`);
+        assert.strictEqual(relayed, 0, `out-of-step events were relayed (relayed ${relayed} of 80)`);
+        console.log(`RATEe PASS: swap-channel flood rate limited, nothing relayed (${relayed}/80 relayed to counterparty)`);
 
         R.socket.close();
         R2.socket.close();

@@ -19,7 +19,7 @@ const {
     eventsOf, rawSpotOrder, emitSwap, sessionOf, ordersOf, allHistory,
 } = require('./common');
 
-const { txidOf } = require('./common');
+const { txidOf, negotiate, units } = require('./common');
 
 (async () => {
     const { server, url } = await startServer();
@@ -53,7 +53,7 @@ const { txidOf } = require('./common');
         // ---- b) owner terminate removes the order --------------------------
         M.socket.emit('new-order', rawSpotOrder({ action: 'SELL', amount: 2, price: 5, id_for_sale: 4, id_desired: 3, keypair: { address: 'addr-m2', pubkey: 'pk-m2' } }));
         await waitFor(() => ordersOf(M.id).length === 2, { message: 'second maker order on book' });
-        const maker2 = ordersOf(M.id).find((o) => o.props.price === 5);
+        const maker2 = ordersOf(M.id).find((o) => o.props.price === units(5));
 
         T.socket.emit('new-order', rawSpotOrder({ action: 'BUY', amount: 2, price: 5, id_for_sale: 3, id_desired: 4, keypair: { address: 'addr-t2', pubkey: 'pk-t2' } }));
         await waitFor(() => eventsOf(M, 'new-channel').length === 2, { message: 'second swap channel opened' });
@@ -69,7 +69,7 @@ const { txidOf } = require('./common');
 
         // ---- c) seller cannot fake a fill ---------------------------------
         M.socket.emit('new-order', rawSpotOrder({ action: 'SELL', amount: 3, price: 7, id_for_sale: 6, id_desired: 5, keypair: { address: 'addr-m3', pubkey: 'pk-m3' } }));
-        await waitFor(() => ordersOf(M.id).some((o) => o.props.price === 7), { message: 'third maker order on book' });
+        await waitFor(() => ordersOf(M.id).some((o) => o.props.price === units(7)), { message: 'third maker order on book' });
 
         T.socket.emit('new-order', rawSpotOrder({ action: 'BUY', amount: 3, price: 7, id_for_sale: 5, id_desired: 6, keypair: { address: 'addr-t3', pubkey: 'pk-t3' } }));
         await waitFor(() => eventsOf(M, 'new-channel').length === 3, { message: 'third swap channel opened' });
@@ -79,10 +79,11 @@ const { txidOf } = require('./common');
         await sleep(600);
         assert.ok(!allHistory().some((h) => h.txid === txidOf('fake-txid')),
             'S2 FAIL: seller-faked BUYER:STEP6 was recorded as a fill');
-        assert.ok(ordersOf(M.id).some((o) => o.props.price === 7 && o.lock),
+        assert.ok(ordersOf(M.id).some((o) => o.props.price === units(7) && o.lock),
             'S2 FAIL: maker order should stay locked while the swap is unresolved');
 
-        // The real buyer completes the swap.
+        // The real buyer completes the swap, through the negotiation.
+        await negotiate(sessionOf(T), T, M);
         emitSwap(T, sessionOf(T), 'BUYER:STEP6', txidOf('real-txid'));
         await waitFor(() => allHistory().some((h) => h.txid === txidOf('real-txid')), { message: 'real fill recorded' });
         assert.ok(!allHistory().some((h) => h.txid === txidOf('fake-txid')),

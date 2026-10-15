@@ -17,7 +17,7 @@ const fs = require('fs');
 const path = require('path');
 const {
     assert, waitFor, sleep, startServer, stopServer, connectClient, rawSpotOrder,
-    allOrders, activeSwapSessions, sessionOf, txidOf, BUILD, workDir,
+    allOrders, activeSwapSessions, sessionOf, txidOf, BUILD, workDir, negotiate,
 } = require('./common');
 
 // Each section trades on its own pair, so no section can match another section's resting orders.
@@ -25,7 +25,7 @@ const sellIds = (n) => ({ id_for_sale: 100 + n, id_desired: 200 + n });
 const buyIds = (n) => ({ id_for_sale: 200 + n, id_desired: 100 + n });
 const orderOf = (uuid) => allOrders().find((o) => o.uuid === uuid);
 const mgr = () => require(path.join(BUILD, 'services/orderbook')).orderbookManager;
-const { orderFactory } = require(path.join(BUILD, 'services/orderbook/order.factory'));
+const { parseNewOrder } = require(path.join(BUILD, 'protocol/messages'));
 
 (async () => {
     const { server, url } = await startServer();
@@ -43,6 +43,7 @@ const { orderFactory } = require(path.join(BUILD, 'services/orderbook/order.fact
         buyer.socket.emit('new-order', rawSpotOrder({ action: 'BUY', amount: 1, price: 0.29, ...buyIds(1) }));
         await waitFor(() => buyer.inbox.some((e) => e.event === 'new-channel'), { message: 'G1: buyer traded with the settleable seller' });
         assert.equal(buyer.errors.length, 0, `G1 FAIL: buyer refused: ${buyer.errors}`);
+        await negotiate(sessionOf(buyer), buyer, honest);
         buyer.socket.emit('swap', { sessionId: sessionOf(buyer), eventName: 'BUYER:STEP6', data: txidOf('r10-g1') });
         await waitFor(() => activeSwapSessions() === 0, { message: 'G1: settled' });
         console.log('R10 G1 PASS: a dust order does not block a settleable seller at its price');
@@ -63,7 +64,7 @@ const { orderFactory } = require(path.join(BUILD, 'services/orderbook/order.fact
         const owner = await connectClient(url, 'r10-h-owner'); clients.push(owner);
         const counter = await connectClient(url, 'r10-h-counter'); clients.push(counter);
         for (let i = 0; i < 500; i++) {
-            const placed = await mgr().addOrder(orderFactory(rawSpotOrder({ action: 'SELL', amount: 1, price: 50 + i / 1000, ...sellIds(8) }), owner.id).data);
+            const placed = await mgr().addOrder(parseNewOrder(rawSpotOrder({ action: 'SELL', amount: 1, price: 50 + i / 1000, ...sellIds(8) }), owner.id).data);
             if (placed.error) throw new Error(`H FAIL: resting order ${i} refused: ${placed.error}`);
         }
         counter.socket.emit('new-order', rawSpotOrder({ action: 'SELL', amount: 1, price: 1, ...sellIds(9) }));
@@ -73,6 +74,7 @@ const { orderFactory } = require(path.join(BUILD, 'services/orderbook/order.fact
         owner.socket.emit('new-order', rawSpotOrder({ action: 'BUY', amount: 1, price: 1, ...buyIds(9) }));
         await waitFor(() => owner.inbox.some((e) => e.event === 'new-channel') || owner.errors.length > errorsH1, { message: 'H1: owner answered' });
         assert.equal(owner.errors.length, errorsH1, `H1 FAIL: a trade at the limit was refused: ${owner.errors[owner.errors.length - 1]}`);
+        await negotiate(sessionOf(owner), owner, counter);
         owner.socket.emit('swap', { sessionId: sessionOf(owner), eventName: 'BUYER:STEP6', data: txidOf('r10-h1') });
         await waitFor(() => activeSwapSessions() === 0, { message: 'H1: settled' });
         console.log('R10 H1 PASS: an account at its limit trades a fully filled order');
@@ -102,7 +104,7 @@ const { orderFactory } = require(path.join(BUILD, 'services/orderbook/order.fact
         for (const [book, r] of [['a', 0], ['b', 1], ['c', 2]]) {
             const lines = [];
             for (let ts = 1 + r; ts <= 1200; ts += 3) {
-                lines.push(JSON.stringify({ uuid: `${book}-${ts}`, timestamp: ts, action: 'SELL', props: { amount: 1, price: 1 } }));
+                lines.push(JSON.stringify({ uuid: `${book}-${ts}`, timestamp: ts, action: 'SELL', props: { amount: 100000000, price: 100000000 } }));
             }
             fs.writeFileSync(path.join(logs, `ORDER-${book}-${today}.log`), `${lines.join('\n')}\n`);
         }

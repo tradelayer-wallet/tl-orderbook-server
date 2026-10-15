@@ -7,11 +7,11 @@ import {
     ITradeInfo,
     TOrder,
 } from "../../utils/types/orderbook.types";
-import { IResult, IResultChannelSwap } from "../../utils/types/mix.types";
-import { isNonNegativeSafeInteger, isValidOrderIdProp, mulDivUnits, readMarketLog, saveLog, toUnits, UNIT_SCALE, updateOrderLog } from "../../utils/pure/mix.pure";
+import { IResult } from "../../utils/types/mix.types";
+import { readMarketLog, saveLog, updateOrderLog } from "../../utils/pure/mix.pure";
+import { valueSats } from "../../utils/pure/units";
 import { socketService } from "../socket";
-import { marketKeyError } from "./order.factory";
-import { ChannelSwap, resolveSwapParticipants } from "../channel-swap/channel-swap.class";
+import { ChannelSwap, resolveSwapParticipants, TSwapOutcome } from "../channel-swap/channel-swap.class";
 import { TFilter } from "../../utils/types/markets.types";
 import { orderbookManager } from ".";
 import { EmitEvents } from "../socket/events";
@@ -83,9 +83,6 @@ export class Orderbook {
     }
 
     private addProps(order: TOrder): void {
-        const propsError = marketKeyError(order.type, order.props);
-        if (propsError) throw new Error(propsError);
-
         if (this.props) {
             throw new Error(`Props for this orderbook already exist`);
         }
@@ -102,26 +99,14 @@ export class Orderbook {
         }
     }
 
-    private async newChannel(tradeInfo: ITradeInfo, unfilled: TOrder): Promise<IResultChannelSwap> {
-        try {
-            const participants = resolveSwapParticipants(socketService.io, tradeInfo);
-            if (participants.error || !participants.data) {
-                return { error: participants.error || 'Counterparty is not connected' };
-            }
-            const channel = new ChannelSwap(participants.data.buyer, participants.data.seller, tradeInfo, unfilled);
-            const channelRes = await channel.ready;
-            if (channelRes.error || !channelRes.data) return channelRes;
-
-            const historyTrade: IHistoryTrade = {
-                txid: channelRes.data.txid,
-                time: Date.now(),
-                ...tradeInfo,
-            };
-            this.saveToHistory(historyTrade);
-            return channelRes;
-        } catch (error) {
-            return { error: error.message };
+    // Starts the swap for a matched trade and resolves with its terminal outcome. A counterparty
+    // that is not connected is an abort before anything is locked or signed.
+    private async runSwap(tradeInfo: ITradeInfo): Promise<TSwapOutcome> {
+        const participants = resolveSwapParticipants(socketService.io, tradeInfo);
+        if (participants.error || !participants.data) {
+            return { state: 'aborted', reason: participants.error || 'Counterparty is not connected' };
         }
+        return new ChannelSwap(participants.data.buyer, participants.data.seller, tradeInfo).outcome;
     }
 
     private lockOrder(order: TOrder, lock: boolean = true) {
@@ -200,11 +185,6 @@ export class Orderbook {
 
     async addOrder(order: TOrder, noTrades: boolean = false): Promise<IResult<{ order?: TOrder, trade?: ITradeInfo }>> {
         try {
-            const propsError = marketKeyError(order.type, order.props);
-            if (propsError) {
-                throw new Error(propsError);
-            }
-
             if (!this.checkCompatible(order)) {
                 throw new Error(`Order missmatch current orderbook interface or type`);
             }
@@ -234,44 +214,38 @@ export class Orderbook {
                     const restingError = orderbookManager.restingCapError(order);
                     if (restingError) throw new Error(restingError);
                 }
-                this.lockOrder(matchRes.data.match);
-
-                const newChannelRes = await this.newChannel(buildTradeRes.data.tradeInfo, buildTradeRes.data.unfilled);
-                if (newChannelRes.error || !newChannelRes.data) {
-                    if (newChannelRes.timedOut) {
-                        // The swap timed out (silent counterparty): reverse the lock
-                        // taken above so the maker order cannot stay locked forever.
-                        this.lockOrder(matchRes.data.match, false);
+                const maker = matchRes.data.match;
+                this.lockOrder(maker);
+                const outcome = await this.runSwap(buildTradeRes.data.tradeInfo);
+                if (outcome.state !== 'settled') {
+                    // Only the owner of the resting order may take it out of the book by ending the
+                    // trade. Any other outcome unlocks it. A swap that expired unverified leaves it
+                    // unlocked too: the bounded residual risk in protocol-v2.md B.4.
+                    const ownerEnded = outcome.state === 'aborted' && outcome.terminatorSocketId === maker.socket_id;
+                    if (ownerEnded) {
+                        // Removal goes through the manager so the CANCALED audit state is written.
+                        orderbookManager.removeOrder(maker.uuid, maker.socket_id, true);
                     } else {
-                        // `newChannelRes.socketId` is the server-derived terminator
-                        // (the socket that actually emitted TERMINATE_TRADE). Only
-                        // the owner of the resting order may cancel it out of the
-                        // book; anyone else terminating the trade just unlocks it.
-                        if (newChannelRes.socketId && newChannelRes.socketId === matchRes.data.match.socket_id) {
-                            // Removal goes through the manager so the CANCALED audit state is written.
-                            // The order is still locked here, so this is the settlement-owned removal.
-                            orderbookManager.removeOrder(matchRes.data.match.uuid, newChannelRes.socketId, true);
-                        } else {
-                            this.lockOrder(matchRes.data.match, false);
-                        }
+                        this.lockOrder(maker, false);
                     }
-                    this.updatePlacedOrdersForSocketId(matchRes.data.match.socket_id);
-                    throw new Error(`${newChannelRes.error || "Undefined Error"}`);
+                    this.updatePlacedOrdersForSocketId(maker.socket_id);
+                    throw new Error(outcome.state === 'aborted' ? outcome.reason : 'Swap expired without a verified outcome: no trade recorded');
                 }
+                this.saveToHistory({ txid: outcome.txid, time: Date.now(), ...buildTradeRes.data.tradeInfo });
 
-                if (buildTradeRes.data.unfilled?.uuid === matchRes.data.match.uuid) {
-                    matchRes.data.match.props.amount = buildTradeRes.data.unfilled.props.amount;
-                    this.lockOrder(matchRes.data.match, false);
+                if (buildTradeRes.data.unfilled?.uuid === maker.uuid) {
+                    maker.props.amount = buildTradeRes.data.unfilled.props.amount;
+                    this.lockOrder(maker, false);
                 } else {
                     // The matched order is fully filled. The FILLED marker is only
                     // written now that the swap has actually settled — never before,
                     // so an aborted/timed-out swap cannot mark a live order FILLED.
-                    updateOrderLog(this.logNames, matchRes.data.match.uuid, 'FILLED');
-                    orderbookManager.markOrderHistory(matchRes.data.match.uuid, 'FILLED');
-                    this.removeOrder(matchRes.data.match.uuid, matchRes.data.match.socket_id, true);
+                    updateOrderLog(this.logNames, maker.uuid, 'FILLED');
+                    orderbookManager.markOrderHistory(maker.uuid, 'FILLED');
+                    this.removeOrder(maker.uuid, maker.socket_id, true);
                     orderbookManager.releaseEmptyOrderbooks();
                 }
-                this.updatePlacedOrdersForSocketId(matchRes.data.match.socket_id);
+                this.updatePlacedOrdersForSocketId(maker.socket_id);
 
                 if (buildTradeRes.data.unfilled?.uuid === order.uuid) {
                     // The taker's remainder re-enters through the manager, the single
@@ -282,7 +256,7 @@ export class Orderbook {
                 }
                 this.updatePlacedOrdersForSocketId(order.socket_id);
 
-                return { data: { trade: newChannelRes.data }};
+                return { data: { trade: buildTradeRes.data.tradeInfo } };
             }
         } catch (error) {
             return { error: error.message };
@@ -290,8 +264,6 @@ export class Orderbook {
     }
 
     findByFilter(filter: TFilter) {
-        // A client filter is untrusted: anything that is not an object matches nothing.
-        if (!filter || typeof filter !== 'object') return false;
         if (!this.props) return false;
         if (filter.type !== this.type) return false;
         if (filter.type === EOrderType.SPOT && 'id_desired' in this.props) {
@@ -357,18 +329,11 @@ export class Orderbook {
 export const spotLogNames = (id_for_sale: number | string, id_desired: number | string): string[] =>
     [`spot_${id_for_sale}_${id_desired}`, `spot_${id_desired}_${id_for_sale}`];
 
-// The log names of the market a client filter names. An invalid filter names no market.
-export const filterLogNames = (filter: TFilter): string[] => {
-    if (!filter || typeof filter !== 'object') return [];
-    if (filter.type === EOrderType.SPOT) {
-        return isValidOrderIdProp(filter.first_token) && isValidOrderIdProp(filter.second_token)
-            ? spotLogNames(filter.first_token, filter.second_token)
-            : [];
-    }
-    return filter.type === EOrderType.FUTURES && isNonNegativeSafeInteger(filter.contract_id)
-        ? [`futures-${filter.contract_id}`]
-        : [];
-};
+// The log names of the market a parsed filter names.
+export const filterLogNames = (filter: TFilter): string[] =>
+    filter.type === EOrderType.SPOT
+        ? spotLogNames(filter.first_token, filter.second_token)
+        : [`futures-${filter.contract_id}`];
 
 // Trades of a market from its logs, newest first, at most as many as a live book keeps.
 export const readTradeHistory = (names: string[]): IHistoryTrade[] =>
@@ -384,19 +349,14 @@ const samePair = (
     (a.id_desired === b.id_desired && a.id_for_sale === b.id_for_sale)
     || (a.id_desired === b.id_for_sale && a.id_for_sale === b.id_desired);
 
-// The exact settlement of a match between a taker and the maker it meets: both quantities in units,
-// the matched quantity, and for spot the LTC value in satoshis at the maker's price (futures carry
-// no value). Null when a quantity or the price is not a positive multiple of 1e-8, or the value is
-// not a whole number of satoshis. Such a match is refused, never rounded.
+// The exact settlement of a match between a taker and the maker it meets: the matched quantity and,
+// for spot, the LTC value in satoshis at the maker's price (futures carry no value). Null when the
+// value is not a whole number of satoshis. Such a match is refused, never rounded.
 const settleMatch = (taker: TOrder, maker: TOrder) => {
-    const takerUnits = toUnits(taker.props.amount);
-    const makerUnits = toUnits(maker.props.amount);
-    const priceUnits = toUnits(maker.props.price);
-    if (takerUnits === null || makerUnits === null || priceUnits === null) return null;
-    const amountUnits = Math.min(takerUnits, makerUnits);
-    const valueSats = taker.type === EOrderType.FUTURES ? 0 : mulDivUnits(amountUnits, priceUnits);
-    if (valueSats === null) return null;
-    return { takerUnits, makerUnits, amountUnits, valueSats };
+    const amountUnits = Math.min(taker.props.amount, maker.props.amount);
+    const value = taker.type === EOrderType.FUTURES ? 0 : valueSats(amountUnits, maker.props.price);
+    if (value === null) return null;
+    return { takerUnits: taker.props.amount, makerUnits: maker.props.amount, amountUnits, valueSats: value };
 };
 
 const buildTrade = (new_order: TOrder, old_order: TOrder): IResult<{ unfilled: TOrder, tradeInfo: ITradeInfo }> => {
@@ -415,13 +375,13 @@ const buildTrade = (new_order: TOrder, old_order: TOrder): IResult<{ unfilled: T
         const remainderUnits = Math.abs(takerUnits - makerUnits);
 
         const unfilled = (takerUnits > makerUnits
-            ? {...new_order, props: {...new_order.props, amount: remainderUnits / UNIT_SCALE}}
+            ? {...new_order, props: {...new_order.props, amount: remainderUnits}}
             : takerUnits < makerUnits
-                ? {...old_order, props: {...old_order.props, amount: remainderUnits / UNIT_SCALE}}
+                ? {...old_order, props: {...old_order.props, amount: remainderUnits}}
                 : null) as TOrder;
 
         const price = old_order.props.price;
-        const amount = amountUnits / UNIT_SCALE;
+        const amount = amountUnits;
         const isFutures = buyOrder.type === EOrderType.FUTURES;
 
         const tradeInfo: ITradeInfo = {
@@ -454,7 +414,8 @@ const buildTrade = (new_order: TOrder, old_order: TOrder): IResult<{ unfilled: T
                     propIdDesired: buyOrder.props.id_desired,
                     propIdForSale:  buyOrder.props.id_for_sale,
                     amountDesired: amount,
-                    amountForSale: valueSats / UNIT_SCALE,
+                    amountForSale: valueSats,
+                    price,
                 }
         };
         return { data: { unfilled, tradeInfo }}

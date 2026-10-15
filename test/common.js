@@ -206,9 +206,18 @@ async function waitForEvent(client, event, pred = () => true, opts = {}) {
 
 // --- order / swap payload helpers -------------------------------------------
 
+// Wire units (protocol-v2.md B.1) for a human quantity: whole tokens for an amount, LTC for a
+// price, both scaled to 1e-8. Test authoring only. The product must be exact on the 1e-8 grid.
+const units = (human) => {
+    const u = Math.round(human * 1e8);
+    if (u / 1e8 !== human) throw new Error(`units(${human}) is not on the 1e-8 grid`);
+    return u;
+};
+
 let orderSeq = 0;
-// Accepts shorthand top-level amount/price/id_for_sale/id_desired and/or a full
-// `props` override; everything else is spread at the top level of the payload.
+// Accepts shorthand top-level amount/price (whole tokens and LTC, converted to units here)
+// id_for_sale/id_desired, and/or a full `props` override that is sent exactly as given (wire
+// units). Everything else is spread at the top level of the payload.
 const rawSpotOrder = (over = {}) => {
     const {
         props: propsOver = {},
@@ -216,8 +225,8 @@ const rawSpotOrder = (over = {}) => {
         ...rest
     } = over;
     const shorthand = {};
-    if (amount !== undefined) shorthand.amount = amount;
-    if (price !== undefined) shorthand.price = price;
+    if (amount !== undefined) shorthand.amount = units(amount);
+    if (price !== undefined) shorthand.price = units(price);
     if (id_for_sale !== undefined) shorthand.id_for_sale = id_for_sale;
     if (id_desired !== undefined) shorthand.id_desired = id_desired;
     return {
@@ -227,11 +236,44 @@ const rawSpotOrder = (over = {}) => {
         marketName: 'TEST/TEST',
         keypair: { address: `addr-${++orderSeq}`, pubkey: `pk-${orderSeq}` },
         ...rest,
-        props: { id_for_sale: 2, id_desired: 1, amount: 1, price: 1, ...shorthand, ...propsOver },
+        props: { id_for_sale: 2, id_desired: 1, amount: units(1), price: units(1), ...shorthand, ...propsOver },
     };
 };
 
 const swapEvent = (eventName, socketId, data) => ({ eventName, socketId, data });
+
+// The negotiation steps of a swap, with valid data for each (protocol-v2.md B.3.5). Each step is
+// sent only after the counterparty has received the previous one, as a wallet does: the two
+// sockets are separate connections, so steps sent in one tick could reach the server out of order.
+const MS_DATA = { address: 'ms-addr-test', redeemScript: 'aa'.repeat(40), scriptPubKey: 'bb'.repeat(34) };
+const COMMIT_UTXO = { txid: 'cd'.repeat(32), vout: 0, sats: 100000, scriptPubKey: 'bb'.repeat(34), redeemScript: 'aa'.repeat(40) };
+const PSBT_HEX = 'ef'.repeat(64);
+const awaitRelay = (client, sessionId, eventName) => waitForEvent(client, 'swap',
+    (ev) => !!ev && ev.sessionId === sessionId && ev.eventName === eventName,
+    { message: `${client.name} to receive ${eventName}` });
+const NEGOTIATION_STEPS = [
+    { name: 'SELLER:STEP1', from: 'seller', data: () => MS_DATA },
+    { name: 'BUYER:STEP2', from: 'buyer', data: () => null },
+    { name: 'SELLER:STEP3', from: 'seller', data: () => COMMIT_UTXO },
+    { name: 'BUYER:STEP4', from: 'buyer', data: () => PSBT_HEX },
+    { name: 'SELLER:STEP5', from: 'seller', data: () => PSBT_HEX },
+];
+// Sends negotiation step `index` from its sender, then waits until the counterpart has it.
+const sendStep = async (sessionId, buyer, seller, index) => {
+    const step = NEGOTIATION_STEPS[index];
+    const [from, to] = step.from === 'seller' ? [seller, buyer] : [buyer, seller];
+    emitSwap(from, sessionId, step.name, step.data());
+    await awaitRelay(to, sessionId, step.name);
+};
+// Drives steps 0 .. count-1 (default: all of them, ending at the signed step).
+const negotiate = async (sessionId, buyer, seller, count = NEGOTIATION_STEPS.length) => {
+    for (let i = 0; i < count; i++) await sendStep(sessionId, buyer, seller, i);
+};
+// Negotiates, then the buyer reports the txid with BUYER:STEP6.
+const settleSwap = async (sessionId, buyer, seller, txid) => {
+    await negotiate(sessionId, buyer, seller);
+    emitSwap(buyer, sessionId, 'BUYER:STEP6', txid);
+};
 
 // Swap protocol: every swap event is sent on the single 'swap' event and must
 // carry the sessionId the server issued in 'new-channel'.
@@ -292,6 +334,15 @@ const httpGet = (url, headers = {}) => new Promise((res, rej) => {
 module.exports = {
     assert,
     txidOf,
+    units,
+    negotiate,
+    sendStep,
+    NEGOTIATION_STEPS,
+    MS_DATA,
+    COMMIT_UTXO,
+    settleSwap,
+    awaitRelay,
+    PSBT_HEX,
     BUILD,
     workDir,
     sleep,

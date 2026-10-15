@@ -23,7 +23,7 @@ const fs = require('fs');
 const path = require('path');
 const {
     assert, sleep, waitFor, startServer, stopServer, connectClient,
-    eventsOf, rawSpotOrder, emitSwap, sessionOf, ordersOf, allHistory,
+    eventsOf, rawSpotOrder, emitSwap, sessionOf, ordersOf, allHistory, negotiate, units,
 } = require('./common');
 
 const { txidOf } = require('./common');
@@ -66,10 +66,13 @@ const { txidOf } = require('./common');
         T2.socket.emit('new-order', rawSpotOrder({ action: 'BUY', amount: 3, price: 3, id_for_sale: 7, id_desired: 8, keypair: { address: 'addr-t2', pubkey: 'pk-t2' } }));
         await waitFor(() => eventsOf(T2, 'new-channel').length === 1, { message: 'second swap channel opened' });
 
-        M2.socket.close(); // maker disappears before the swap settles
+        // The maker signs (SELLER:STEP5), then disappears before the buyer reports. Without its
+        // signature no BUYER:STEP6 can come, so the disconnect has to follow the signing step.
+        const sid2 = sessionOf(T2);
+        await negotiate(sid2, T2, M2);
+        M2.socket.close();
         await sleep(200);
-
-        emitSwap(T2, sessionOf(T2), 'BUYER:STEP6', txidOf('txid-s3'));
+        emitSwap(T2, sid2, 'BUYER:STEP6', txidOf('txid-s3'));
         await waitFor(() => allHistory().some((h) => h.txid === txidOf('txid-s3')), { timeout: 3000, message: 'trade settled' });
 
         await sleep(300);
@@ -77,7 +80,7 @@ const { txidOf } = require('./common');
             `S3 FAIL: order:error leaked on the success path: ${T2.errors.join('; ')}`);
         const remainder = ordersOf(T2.id);
         assert.strictEqual(remainder.length, 1, `S3 FAIL: taker's unfilled remainder lost (orders: ${JSON.stringify(remainder)})`);
-        assert.strictEqual(remainder[0].props.amount, 1, 'S3 FAIL: wrong remainder amount');
+        assert.strictEqual(remainder[0].props.amount, units(1), 'S3 FAIL: wrong remainder amount');
         console.log('S3c PASS: success path with vanished counterparty -> no TypeError, unfilled remainder preserved');
 
         // the fully-filled maker order must be logged FILLED after settlement

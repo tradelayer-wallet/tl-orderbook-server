@@ -16,7 +16,7 @@ const fs = require('fs');
 const path = require('path');
 const {
     assert, sleep, waitFor, waitForEvent, startServer, stopServer, connectClient, rawSpotOrder,
-    ordersOf, sessionOf, activeSwapSessions, eventsOf, BUILD, workDir,
+    ordersOf, sessionOf, activeSwapSessions, eventsOf, BUILD, workDir, negotiate, units,
 } = require('./common');
 
 const mixPure = require(path.join(BUILD, 'utils/pure/mix.pure'));
@@ -47,7 +47,7 @@ const r11_3 = async () => {
         M = await connectClient(url, 'r11-3-maker');
         T = await connectClient(url, 'r11-3-taker');
         const sell = (idForSale) => M.socket.emit('new-order', rawSpotOrder({
-            action: 'SELL', props: { id_for_sale: idForSale, id_desired: 1, amount: 1, price: 1 },
+            action: 'SELL', props: { id_for_sale: idForSale, id_desired: 1, amount: units(1), price: units(1) },
         }));
 
         // Two pairs fill the cap.
@@ -65,8 +65,9 @@ const r11_3 = async () => {
             `R11-3 FAIL: a pair was refused after its book was emptied by a cancel (${M.errors.join(' | ')})`);
 
         // Filling the only order of pair 2 empties its book through the settlement path.
-        T.socket.emit('new-order', rawSpotOrder({ action: 'BUY', props: { id_for_sale: 1, id_desired: 2, amount: 1, price: 1 } }));
+        T.socket.emit('new-order', rawSpotOrder({ action: 'BUY', props: { id_for_sale: 1, id_desired: 2, amount: units(1), price: units(1) } }));
         await waitForEvent(T, 'new-channel', () => true, { message: 'r11-3: taker new-channel' });
+        await negotiate(sessionOf(T), T, M);
         T.socket.emit('swap', { sessionId: sessionOf(T), eventName: 'BUYER:STEP6', data: TXID });
         await waitFor(() => activeSwapSessions() === 0, { message: 'r11-3: swap settled' });
         await waitFor(() => ordersOf(M.id).every((o) => o.props.id_for_sale !== 2), { message: 'r11-3: maker filled' });
@@ -111,7 +112,7 @@ const r11_4 = async () => {
     let M = null;
     try {
         M = await connectClient(url, 'r11-4-maker');
-        M.socket.emit('new-order', rawSpotOrder({ action: 'SELL', props: { id_for_sale: 7, id_desired: 1, amount: 1, price: 1 } }));
+        M.socket.emit('new-order', rawSpotOrder({ action: 'SELL', props: { id_for_sale: 7, id_desired: 1, amount: units(1), price: units(1) } }));
         await waitFor(() => orderbookManager().orderbooks.length === 1, { message: 'r11-4: book created' });
         const markers = orderbookManager().orderbooks[0].historyTrades.map((t) => t.marker);
         assert.deepStrictEqual(markers, ['newer', 'older'], 'R11-4 FAIL: restored history is not newest first');
@@ -139,7 +140,7 @@ const r11_5 = async () => {
     let M = null;
     try {
         M = await connectClient(url, 'r11-5');
-        M.socket.emit('new-order', rawSpotOrder({ action: 'BUY', props: { id_for_sale: 15, id_desired: 16, amount: 1, price: 1 } }));
+        M.socket.emit('new-order', rawSpotOrder({ action: 'BUY', props: { id_for_sale: 15, id_desired: 16, amount: units(1), price: units(1) } }));
         await waitFor(() => bookNamed('spot_15_16'), { message: 'r11-5: book created' });
         assert.deepStrictEqual(bookNamed('spot_15_16').historyTrades.map((t) => t.marker), ['after', 'before'],
             'R11-5 FAIL: a torn line hid the trades around it');

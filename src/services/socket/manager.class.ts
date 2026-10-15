@@ -2,10 +2,9 @@ import * as fs from 'fs';
 import { FastifyInstance } from "fastify";
 import { Server, Socket } from "socket.io";
 import { socketIoAllowRequest, socketIoCorsOptions } from "../../config/cors";
-import { TFilter } from "../../utils/types/markets.types";
-import { TOrder, TRawOrder } from "../../utils/types/orderbook.types";
+import { TOrder } from "../../utils/types/orderbook.types";
 import { orderbookManager } from "../orderbook";
-import { orderFactory } from "../orderbook/order.factory";
+import { parseCloseOrder, parseNewOrder, parseOrderFilter } from "../../protocol/messages";
 import { routeSwapEvent } from "../channel-swap/channel-swap.class";
 import { EmitEvents, OnEvents, OrderEmitEvents } from "./events";
 import { orderRateLimiter, queryRateLimiter, releaseSocketLimiters } from "./limiters";
@@ -113,7 +112,7 @@ const admit = (socket: Socket, limiter: { consume(key: string): boolean }): bool
     return false;
 };
 
-const onManyOrders = (socket: Socket) => async (rawOrders: TRawOrder[]) => {
+const onManyOrders = (socket: Socket) => async (rawOrders: unknown[]) => {
     if (!Array.isArray(rawOrders)) {
         socket.emit(OrderEmitEvents.ERROR, 'Invalid many-orders payload: expected an array of orders');
         return;
@@ -130,34 +129,29 @@ const onManyOrders = (socket: Socket) => async (rawOrders: TRawOrder[]) => {
             if (i > 0) socket.emit(OrderEmitEvents.SAVED);
             return;
         }
-        const rawOrder = rawOrders[i];
-        const factoryRes = orderFactory(rawOrder, socket.id);
-        if (factoryRes.error || !factoryRes.data) {
-            socket.emit(OrderEmitEvents.ERROR, factoryRes.error || 'Invalid order');
+        const parsed = parseNewOrder(rawOrders[i], socket.id);
+        if (parsed.error || !parsed.data) {
+            socket.emit(OrderEmitEvents.ERROR, parsed.error || 'Invalid order');
             continue;
         }
         // Each entry is applied on its own (the batch is not atomic): an entry that
         // is refused is reported with its own error, and entries placed before it
         // stay on the book. The client's book view is refreshed by PLACED_ORDERS for
         // every placed entry. SAVED marks the end of the batch, not success of all.
-        const res = await orderbookManager.addOrder(factoryRes.data, true);
+        const res = await orderbookManager.addOrder(parsed.data, true);
         if (res.error) socket.emit(OrderEmitEvents.ERROR, res.error);
     }
     socket.emit(OrderEmitEvents.SAVED);
 }
 
-const onNewOrder = (socket: Socket) => async (rawOrder: TRawOrder) => {
+const onNewOrder = (socket: Socket) => async (rawOrder: unknown) => {
     if (!admit(socket, orderRateLimiter)) return;
-    if (!rawOrder || !rawOrder.isLimitOrder) {
-        socket.emit(OrderEmitEvents.ERROR, 'Merket Orders Not allowed');
+    const parsed = parseNewOrder(rawOrder, socket.id);
+    if (parsed.error || !parsed.data) {
+        socket.emit(OrderEmitEvents.ERROR, parsed.error || 'Invalid order');
         return;
     }
-    const factoryRes = orderFactory(rawOrder, socket.id);
-    if (factoryRes.error || !factoryRes.data) {
-        socket.emit(OrderEmitEvents.ERROR, factoryRes.error || 'Invalid order');
-        return;
-    }
-    const order: TOrder = factoryRes.data;
+    const order: TOrder = parsed.data;
     const res = await orderbookManager.addOrder(order);
     // No logging of the order or result here: they carry the keypair address and pubkey.
     if (res.error || !res.data) {
@@ -171,20 +165,26 @@ const onNewOrder = (socket: Socket) => async (rawOrder: TRawOrder) => {
     }
 };
 
-const onUpdateOrderbook = (socket: Socket) => async (filter: TFilter) => {
+const onUpdateOrderbook = (socket: Socket) => (rawFilter: unknown) => {
     if (!admit(socket, queryRateLimiter)) return;
-    if (!filter || typeof filter !== 'object') {
-        socket.emit(OrderEmitEvents.ERROR, 'Invalid orderbook filter: expected an object');
+    const filter = parseOrderFilter(rawFilter);
+    if (filter.error || !filter.data) {
+        socket.emit(OrderEmitEvents.ERROR, filter.error);
         return;
     }
-    socket.emit(EmitEvents.ORDERBOOK_DATA, orderbookManager.marketView(filter));
+    socket.emit(EmitEvents.ORDERBOOK_DATA, orderbookManager.marketView(filter.data));
 };
 
-const onClosedOrder = (socket: Socket) => (orderUUID: string) => {
+const onClosedOrder = (socket: Socket) => (rawUuid: unknown) => {
     if (!admit(socket, orderRateLimiter)) return;
+    const orderUUID = parseCloseOrder(rawUuid);
+    if (orderUUID.error || !orderUUID.data) {
+        socket.emit(OrderEmitEvents.ERROR, orderUUID.error);
+        return;
+    }
     // Client-initiated cancel: the default (duringSettlement=false) refuses an order
     // that a swap currently has locked.
-    const res = orderbookManager.removeOrder(orderUUID, socket.id);
+    const res = orderbookManager.removeOrder(orderUUID.data, socket.id);
     if (res.error) socket.emit(OrderEmitEvents.ERROR, res.error);
     socket.emit(EmitEvents.PLACED_ORDERS, orderbookManager.placedOrdersOf(socket.id));
 };
