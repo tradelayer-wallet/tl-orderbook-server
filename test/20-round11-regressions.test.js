@@ -23,7 +23,7 @@ const today = () => {
     return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()}`;
 };
 const seedTradeLog = (market, marker) => {
-    const record = { txid: marker.padEnd(64, '0'), time: 1, marker, type: 'SPOT' };
+    const record = { txid: marker.padEnd(64, '0'), time: 1, marker, type: 'SPOT', props: { amountDesired: 1, amountForSale: 1, price: 1 } };
     fs.writeFileSync(path.join(workDir, 'logs', `TRADE-${market}-${today()}.log`), `${JSON.stringify(record)}\n`);
 };
 const markersOf = (book) => book.historyTrades.map((t) => t.marker).sort();

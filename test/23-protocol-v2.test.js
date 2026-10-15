@@ -5,6 +5,9 @@
 process.env.SWAP_TIMEOUT_MS = '3000';
 process.env.SWAP_SIGNED_WINDOW_MS = '1500';
 
+const fs = require('fs');
+const path = require('path');
+const moment = require('moment');
 const {
     assert, sleep, waitFor, startServer, stopServer, connectClient, units,
     eventsOf, ordersOf, allHistory, activeSwapSessions, sessionOf, emitSwap, negotiate,
@@ -181,6 +184,26 @@ const rawSellSpot = (props) => ({
         assert.ok(relayed && relayed.data === 'no keys for me' && relayed.socketId === T4.id, 'G: the terminate relay');
         assert.strictEqual(ordersOf(M4.id)[0].lock, false, 'G: maker unlocked');
         console.log('V2 G PASS: TERMINATE before signing aborts, the reason is relayed, the maker is unlocked');
+        });
+
+        // ---- H) trade records written before v2 are skipped, never sent -----------------
+        await check('H', async () => {
+            const legacy = {
+                txid: TX('legacy'), time: 1, type: 'SPOT',
+                buyer: { socketId: 'x', keypair: { address: 'a', pubkey: 'p' } },
+                seller: { socketId: 'y', keypair: { address: 'b', pubkey: 'q' } },
+                taker: 'x', maker: 'y',
+                props: { propIdDesired: 8, propIdForSale: 7, amountDesired: 0.5, amountForSale: 0.15, price: 0.3 },
+            };
+            const v2 = { ...legacy, txid: TX('v2rec'), time: 2, props: { ...legacy.props, amountDesired: 50000000, amountForSale: 15000000, price: 30000000 } };
+            const logFile = path.join(process.cwd(), 'logs', `TRADE-spot_7_8-${moment().format('DD-MM-YYYY')}.log`);
+            fs.writeFileSync(logFile, `${JSON.stringify(legacy)}\n${JSON.stringify(v2)}\n`);
+            const H = await connect('v2-h');
+            H.socket.emit('update-orderbook', { type: 'SPOT', first_token: 8, second_token: 7 });
+            await waitFor(() => eventsOf(H, 'orderbook-data').length > 0, { message: 'H: market view' });
+            const view = eventsOf(H, 'orderbook-data').slice(-1)[0].args[0];
+            assert.deepStrictEqual(view.history.map((h) => h.txid), [TX('v2rec')], 'H: a pre-v2 record was sent or the v2 one lost');
+            console.log('V2 H PASS: a trade record written before v2 is skipped, the v2 record is served');
         });
 
         for (const c of clients) c.socket.close();

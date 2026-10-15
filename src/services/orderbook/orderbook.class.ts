@@ -9,7 +9,7 @@ import {
 } from "../../utils/types/orderbook.types";
 import { IResult } from "../../utils/types/mix.types";
 import { readMarketLog, saveLog, updateOrderLog } from "../../utils/pure/mix.pure";
-import { valueSats } from "../../utils/pure/units";
+import { isWireUnits, valueSats } from "../../utils/pure/units";
 import { socketService } from "../socket";
 import { ChannelSwap, resolveSwapParticipants, TSwapOutcome } from "../channel-swap/channel-swap.class";
 import { TFilter } from "../../utils/types/markets.types";
@@ -335,9 +335,20 @@ export const filterLogNames = (filter: TFilter): string[] =>
         ? spotLogNames(filter.first_token, filter.second_token)
         : [`futures-${filter.contract_id}`];
 
+// A trade record in the protocol v2 shape: its amounts and price are integer units. Records written
+// before v2 hold floats. They are skipped, never sent, because one malformed record would make a
+// client refuse the whole market view (protocol-v2.md N5).
+const isV2TradeRecord = (record: any): boolean => {
+    const p = record?.props;
+    if (!p) return false;
+    const quantities = 'amountDesired' in p ? [p.amountDesired, p.amountForSale, p.price] : [p.amount, p.price];
+    return quantities.every(isWireUnits);
+};
+
 // Trades of a market from its logs, newest first, at most as many as a live book keeps.
 export const readTradeHistory = (names: string[]): IHistoryTrade[] =>
     readMarketLog<IHistoryTrade>('TRADE', names)
+        .filter(isV2TradeRecord)
         .sort((a, b) => (b.time || 0) - (a.time || 0))
         .slice(0, 2000);
 

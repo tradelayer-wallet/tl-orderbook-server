@@ -102,7 +102,7 @@ const logDate = () => {
     const pad = (n) => String(n).padStart(2, '0');
     return `${pad(day.getDate())}-${pad(day.getMonth() + 1)}-${day.getFullYear()}`;
 };
-const tradeLine = (marker, time) => JSON.stringify({ txid: marker.padEnd(64, '0'), time, marker, type: 'SPOT' });
+const tradeLine = (marker, time) => JSON.stringify({ txid: marker.padEnd(64, '0'), time, marker, type: 'SPOT', props: { amountDesired: 1, amountForSale: 1, price: 1 } });
 
 const r11_4 = async () => {
     fs.writeFileSync(path.join(workDir, 'logs', `TRADE-spot_7_1-${logDate()}.log`),
