@@ -120,7 +120,7 @@ export class OrderbookManager {
             // The audit state follows the outcome of the removal. A rejected
             // removal (not the owner, order gone) must leave the log untouched.
             if (!res.error) {
-                updateOrderLog(orderbook.orderbookName, order.uuid, "CANCALED");
+                updateOrderLog(orderbook.logNames, order.uuid, "CANCALED");
                 this.markOrderHistory(order.uuid, "CANCALED");
             }
             return res;

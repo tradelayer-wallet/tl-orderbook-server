@@ -88,11 +88,14 @@ interface IClosedOrders {
     socket_id: string;
 };
 
+// A log file is `${type}-${market}-${DD-MM-YYYY}.log`. Markets are matched by exact name:
+// "futures-1" is not a prefix of "futures-10", and the market name itself may contain "-".
+const LOG_FILE_PATTERN = /^(ORDER|TRADE)-(.+)-\d{2}-\d{2}-\d{4}\.log$/;
+
 export const saveLog = (name: string, type: TLogType, data: IHistoryTrade | TOrder | IClosedOrders) => {
     try {
         const date = moment().format('DD-MM-YYYY');
-        const safeName = sanitizeName(name);
-        const filePath = resolveInsideLogsDir(`${type}-${safeName}-${date}.log`);
+        const filePath = resolveInsideLogsDir(`${type}-${sanitizeName(name)}-${date}.log`);
         const _data = `${JSON.stringify(data)}\n`;
         appendFile(filePath, _data, (err) => {
             if (err) console.log(err.message);
@@ -102,11 +105,30 @@ export const saveLog = (name: string, type: TLogType, data: IHistoryTrade | TOrd
     }
 };
 
-export const updateOrderLog = (name: string, uuid: string, type: "CANCALED" | "FILLED") => {
+// File names of one record type for the given market names, across all dates.
+const marketLogFiles = (type: TLogType, names: string[]): string[] => {
+    const markets = names.map(sanitizeName);
+    return readdirSync(LOGS_DIR).filter(file => {
+        const match = LOG_FILE_PATTERN.exec(file);
+        return match !== null && match[1] === type && markets.indexOf(match[2]) !== -1;
+    });
+};
+
+// Every record of one type for the given market names, in file order.
+export const readMarketLog = <T>(type: TLogType, names: string[]): T[] => {
+    const records: T[] = [];
+    marketLogFiles(type, names).forEach(file => {
+        readFileSync(resolveInsideLogsDir(file), 'utf8')
+            .split('\n')
+            .slice(0, -1)
+            .forEach(line => records.push(JSON.parse(line) as T));
+    });
+    return records;
+};
+
+export const updateOrderLog = (names: string[], uuid: string, type: "CANCALED" | "FILLED") => {
     try {
-        const safeName = sanitizeName(name);
-        const data = readdirSync(LOGS_DIR);
-        const fileNamesList = data.filter(q => q.includes(safeName));
+        const fileNamesList = marketLogFiles("ORDER", names);
         for (let i = 0; i < fileNamesList.length; i++) {
             const file = fileNamesList[i];
             const filePath = resolveInsideLogsDir(file);

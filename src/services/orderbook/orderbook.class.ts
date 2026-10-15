@@ -8,13 +8,12 @@ import {
     TOrder,
 } from "../../utils/types/orderbook.types";
 import { IResult, IResultChannelSwap } from "../../utils/types/mix.types";
-import { isNonNegativeSafeInteger, isValidOrderIdProp, mulDivUnits, saveLog, toUnits, UNIT_SCALE, updateOrderLog } from "../../utils/pure/mix.pure";
+import { isNonNegativeSafeInteger, isValidOrderIdProp, mulDivUnits, readMarketLog, saveLog, toUnits, UNIT_SCALE, updateOrderLog } from "../../utils/pure/mix.pure";
 import { socketService } from "../socket";
 import { ChannelSwap, resolveSwapParticipants } from "../channel-swap/channel-swap.class";
 import { TFilter } from "../../utils/types/markets.types";
 import { orderbookManager } from ".";
 import { EmitEvents } from "../socket/events";
-import { readdirSync, readFileSync } from "fs";
 
 export class Orderbook {
     private _type: EOrderType;
@@ -54,29 +53,20 @@ export class Orderbook {
         return this._historyTrades;
     }
 
+    // The names this market's logs are written under. A spot market is logged under the orientation
+    // of the order that created its book, and a book created later may have the other orientation,
+    // so both are read back.
+    get logNames(): string[] {
+        if (this.type === EOrderType.SPOT && 'id_desired' in this.props) {
+            const { id_for_sale, id_desired } = this.props as ISpotOrderProps;
+            return [`spot_${id_for_sale}_${id_desired}`, `spot_${id_desired}_${id_for_sale}`];
+        }
+        return [this.orderbookName];
+    }
+
     private addExistingTradesHistory() {
         try {
-            const data: IHistoryTrade[] = [];
-            const existingFiles = readdirSync('logs');
-            const names = this.type === EOrderType.SPOT && 'id_desired' in this.props && 'id_for_sale' in this.props
-            ? [`spot_${this.props.id_for_sale}-${this.props.id_desired}`, `spot_${this.props.id_desired}_${this.props.id_for_sale}`]
-            : this.type === EOrderType.FUTURES && 'contract_id' in this.props
-                ? [`futures-${this.props.contract_id}`]
-                : null;
-            const currentOBTradeFiles = existingFiles.filter(q => {
-                if (!q.startsWith('TRADE')) return false;
-                if (!names) return false;
-                return names.some(w => q.includes(w));
-            });
-            currentOBTradeFiles.forEach(f => {
-                const stringData = readFileSync(`logs/${f}`, 'utf8');
-                const arrayData = stringData
-                    .split('\n')
-                    .slice(0, -1)
-                    .map(q => JSON.parse(q) as IHistoryTrade);
-                arrayData.forEach(d => data.push(d));
-            });
-            this._historyTrades = data.slice(0, 2000);
+            this._historyTrades = readMarketLog<IHistoryTrade>('TRADE', this.logNames).slice(0, 2000);
             socketService.io.emit(EmitEvents.UPDATE_ORDERS_REQUEST);
         } catch (error) {
             console.log({ error });
@@ -271,7 +261,7 @@ export class Orderbook {
                     // The matched order is fully filled. The FILLED marker is only
                     // written now that the swap has actually settled — never before,
                     // so an aborted/timed-out swap cannot mark a live order FILLED.
-                    updateOrderLog(this.orderbookName, matchRes.data.match.uuid, 'FILLED');
+                    updateOrderLog(this.logNames, matchRes.data.match.uuid, 'FILLED');
                     orderbookManager.markOrderHistory(matchRes.data.match.uuid, 'FILLED');
                     this.removeOrder(matchRes.data.match.uuid, matchRes.data.match.socket_id, true);
                 }
