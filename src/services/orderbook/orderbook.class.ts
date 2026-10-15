@@ -10,6 +10,7 @@ import {
 import { IResult, IResultChannelSwap } from "../../utils/types/mix.types";
 import { isNonNegativeSafeInteger, isValidOrderIdProp, mulDivUnits, readMarketLog, saveLog, toUnits, UNIT_SCALE, updateOrderLog } from "../../utils/pure/mix.pure";
 import { socketService } from "../socket";
+import { marketKeyError } from "./order.factory";
 import { ChannelSwap, resolveSwapParticipants } from "../channel-swap/channel-swap.class";
 import { TFilter } from "../../utils/types/markets.types";
 import { orderbookManager } from ".";
@@ -74,7 +75,7 @@ export class Orderbook {
     }
 
     private addProps(order: TOrder): void {
-        const propsError = validateOrderbookNameProps(order);
+        const propsError = marketKeyError(order.type, order.props);
         if (propsError) throw new Error(propsError);
 
         if (this.props) {
@@ -193,7 +194,7 @@ export class Orderbook {
 
     async addOrder(order: TOrder, noTrades: boolean = false): Promise<IResult<{ order?: TOrder, trade?: ITradeInfo }>> {
         try {
-            const propsError = validateOrderbookNameProps(order);
+            const propsError = marketKeyError(order.type, order.props);
             if (propsError) {
                 throw new Error(propsError);
             }
@@ -289,15 +290,9 @@ export class Orderbook {
         if (!filter || typeof filter !== 'object') return false;
         if (!this.props) return false;
         if (filter.type !== this.type) return false;
-        if (filter.type === EOrderType.SPOT && 'id_desired' in this.props ) {
-
-            const checkA = filter.first_token === this.props.id_desired 
-                && filter.second_token === this.props.id_for_sale;
-
-            const checkB = filter.first_token === this.props.id_for_sale 
-                && filter.second_token  === this.props.id_desired;
-
-            return checkA || checkB;
+        if (filter.type === EOrderType.SPOT && 'id_desired' in this.props) {
+            // The filter names the pair as (first, second), in either order.
+            return samePair({ id_desired: filter.first_token, id_for_sale: filter.second_token }, this.props);
         }
         if (filter.type === EOrderType.FUTURES && 'contract_id' in this.props) {
             return filter.contract_id === this.props.contract_id;
@@ -310,14 +305,7 @@ export class Orderbook {
         if (!this.props) return false;
         if (order.type !== this.type) return false;
         if (order.type === EOrderType.SPOT && 'id_desired' in this.props) {
-
-            const checkA = order.props.id_desired === this.props.id_desired 
-                && order.props.id_for_sale === this.props.id_for_sale;
-
-            const checkB = order.props.id_desired === this.props.id_for_sale 
-                && order.props.id_for_sale === this.props.id_desired;
-
-            return checkA || checkB;
+            return samePair(order.props, this.props);
         }
 
         if (order.type === EOrderType.FUTURES && 'contract_id' in this.props) {
@@ -384,27 +372,13 @@ export const readTradeHistory = (names: string[]): IHistoryTrade[] =>
         .sort((a, b) => (b.time || 0) - (a.time || 0))
         .slice(0, 2000);
 
-// The values below end up in `orderbookName`, which is used to build log file
-// names. They must be non-negative safe integers (or whitelisted string ids)
-// at runtime — the type annotations alone do not protect against raw JSON input.
-const validateOrderbookNameProps = (order: TOrder): string | null => {
-    const { type } = order;
-    if (type === EOrderType.SPOT) {
-        const { id_for_sale, id_desired } = order.props;
-        if (!isValidOrderIdProp(id_for_sale) || !isValidOrderIdProp(id_desired)) {
-            return `Invalid order props: id_for_sale and id_desired must be non-negative safe integers or whitelisted ids`;
-        }
-        return null;
-    }
-    if (type === EOrderType.FUTURES) {
-        const { contract_id } = order.props;
-        if (!isNonNegativeSafeInteger(contract_id)) {
-            return `Invalid order props: contract_id must be a non-negative safe integer`;
-        }
-        return null;
-    }
-    return `Invalid order type`;
-};
+// Two spot markets are the same when their id pairs match in either order.
+const samePair = (
+    a: Pick<ISpotOrderProps, 'id_desired' | 'id_for_sale'>,
+    b: Pick<ISpotOrderProps, 'id_desired' | 'id_for_sale'>,
+): boolean =>
+    (a.id_desired === b.id_desired && a.id_for_sale === b.id_for_sale)
+    || (a.id_desired === b.id_for_sale && a.id_for_sale === b.id_desired);
 
 // The exact settlement of a match between a taker and the maker it meets: both quantities in units,
 // the matched quantity, and for spot the LTC value in satoshis at the maker's price (futures carry

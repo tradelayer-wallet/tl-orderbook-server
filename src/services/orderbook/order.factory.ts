@@ -6,6 +6,19 @@ import { v4 as uuidv4 } from 'uuid';
 const isNonEmptyString = (value: any): boolean =>
     typeof value === 'string' && value.length > 0 && value.length <= 256;
 
+// The fields that name the market an order trades in. They become part of the orderbook name and so
+// of its log file names: each must be a non-negative safe integer, or a whitelisted synthetic id.
+// Checked at intake and again by the orderbook, the only place a book is created.
+export const marketKeyError = (type: EOrderType, props: any): string | null => {
+    if (type === EOrderType.SPOT) {
+        if (!isValidOrderIdProp(props.id_for_sale)) return 'Invalid id_for_sale';
+        if (!isValidOrderIdProp(props.id_desired)) return 'Invalid id_desired';
+        return null;
+    }
+    if (type === EOrderType.FUTURES) return isNonNegativeSafeInteger(props.contract_id) ? null : 'Invalid contract_id';
+    return 'Invalid order type';
+};
+
 const validateRawOrder = (rawOrder: TRawOrder): string | null => {
     if (!rawOrder || typeof rawOrder !== 'object') return 'Order payload must be an object';
 
@@ -28,11 +41,9 @@ const validateRawOrder = (rawOrder: TRawOrder): string | null => {
     if (toUnits(props.amount) === null) return 'Order amount must be a multiple of 1e-8 within the safe range';
     if (toUnits(props.price) === null) return 'Order price must be a multiple of 1e-8 within the safe range';
 
-    if (type === EOrderType.SPOT) {
-        if (!isValidOrderIdProp(props.id_for_sale)) return 'Invalid id_for_sale';
-        if (!isValidOrderIdProp(props.id_desired)) return 'Invalid id_desired';
-    } else {
-        if (!isNonNegativeSafeInteger(props.contract_id)) return 'Invalid contract_id';
+    const keyError = marketKeyError(type, props);
+    if (keyError) return keyError;
+    if (type === EOrderType.FUTURES) {
         if (!isPositiveFiniteNumber(props.levarage)) return 'Order levarage must be a finite number > 0';
         if (!isPositiveFiniteNumber(props.collateral)) return 'Order collateral must be a finite number > 0';
     }
