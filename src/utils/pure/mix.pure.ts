@@ -1,4 +1,4 @@
-import { appendFileSync, readdirSync, readFileSync, writeFileSync } from "fs";
+import { appendFileSync, closeSync, fstatSync, openSync, readdirSync, readFileSync, readSync, writeFileSync } from "fs";
 import { resolve, sep } from "path";
 import { IHistoryTrade, TOrder } from "../types/orderbook.types";
 import * as moment from 'moment';
@@ -81,13 +81,58 @@ const parseLogLine = (line: string): any | null => {
 export const parseLogRecords = (text: string): any[] =>
     text.split('\n').map(parseLogLine).filter(record => record !== null);
 
-// Every record of one type for the given market names, in file order.
-export const readMarketLog = <T>(type: TLogType, names: string[]): T[] => {
-    const records: T[] = [];
+const TAIL_CHUNK_BYTES = 64 * 1024;
+
+// The records of one log file that pass `keep`, newest first, at most `limit`. The file is read from its
+// end in chunks and reading stops once `limit` records are found. Lines are split on the newline byte
+// and decoded one by one, so a multi-byte character or a long record that spans chunks stays whole.
+const tailRecords = (filePath: string, limit: number, keep: (record: any) => boolean): any[] => {
+    const fd = openSync(filePath, 'r');
+    try {
+        const records: any[] = [];
+        const pushLine = (bytes: string) => {
+            const record = parseLogLine(Buffer.from(bytes, 'latin1').toString('utf8'));
+            if (record !== null && keep(record)) records.push(record);
+        };
+        let offset = fstatSync(fd).size;
+        // The first line read so far: its start may be in the chunk before, not read yet.
+        let head = '';
+        while (records.length < limit) {
+            if (offset === 0) {
+                pushLine(head);
+                break;
+            }
+            const length = Math.min(TAIL_CHUNK_BYTES, offset);
+            offset -= length;
+            const chunk = Buffer.alloc(length);
+            if (readSync(fd, chunk, 0, length, offset) !== length) throw new Error(`short read of ${filePath}`);
+            const lines = (chunk.toString('latin1') + head).split('\n');
+            head = lines.shift();
+            for (let i = lines.length - 1; i >= 0 && records.length < limit; i--) pushLine(lines[i]);
+        }
+        return records;
+    } finally {
+        closeSync(fd);
+    }
+};
+
+// The newest `limit` records of one type for the given market names that pass `keep`, newest first.
+// A market has one log file per day, and a day's records are all newer than an earlier day's. So the
+// files are read from the newest day back, and reading stops after the day that completes `limit`
+// records: a read costs the records it returns, not the size of the logs.
+export const readNewestRecords = <T>(type: TLogType, names: string[], limit: number, keep: (record: any) => boolean): T[] => {
+    const days = new Map<string, string[]>();
     marketLogFiles(type, names).forEach(file => {
-        parseLogRecords(readFileSync(resolveInsideLogsDir(file), 'utf8')).forEach(record => records.push(record));
+        // The file name ends with DD-MM-YYYY; the key sorts as YYYY-MM-DD.
+        const day = file.slice(-14, -4).split('-').reverse().join('-');
+        days.set(day, [...(days.get(day) || []), file]);
     });
-    return records as T[];
+    const records: T[] = [];
+    for (const day of Array.from(days.keys()).sort().reverse()) {
+        days.get(day).forEach(file => records.push(...tailRecords(resolveInsideLogsDir(file), limit, keep)));
+        if (records.length >= limit) break;
+    }
+    return records;
 };
 
 // Sets the state of the ORDER record with this uuid in the market's log. Lines are rewritten as they

@@ -8,7 +8,7 @@ import {
     TOrder,
 } from "../../utils/types/orderbook.types";
 import { IResult } from "../../utils/types/mix.types";
-import { readMarketLog, saveLog, updateOrderLog } from "../../utils/pure/mix.pure";
+import { readNewestRecords, saveLog, updateOrderLog } from "../../utils/pure/mix.pure";
 import { isWireUnits, valueSats } from "../../utils/pure/units";
 import { socketService } from "../socket";
 import { ChannelSwap, resolveSwapParticipants, TSwapOutcome } from "../channel-swap/channel-swap.class";
@@ -348,8 +348,7 @@ const isV2TradeRecord = (record: any): boolean => {
 
 // Trades of a market from its logs, newest first, at most as many as a live book keeps.
 export const readTradeHistory = (names: string[]): IHistoryTrade[] =>
-    readMarketLog<IHistoryTrade>('TRADE', names)
-        .filter(isV2TradeRecord)
+    readNewestRecords<IHistoryTrade>('TRADE', names, 2000, isV2TradeRecord)
         .sort((a, b) => (b.time || 0) - (a.time || 0))
         .slice(0, 2000);
 
