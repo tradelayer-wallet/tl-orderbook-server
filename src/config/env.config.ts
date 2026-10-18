@@ -32,6 +32,7 @@ export const envConfig: {
     MAX_ORDERBOOKS: number;
     MAX_OPEN_ORDERS_PER_SOCKET: number;
     MAX_OPEN_ORDERS: number;
+    MAX_CONNECTIONS_PER_IP: number;
 } = {
     SERVER_PORT: parseInt(process.env.SERVER_PORT),
     HTTP_PORT: parseInt(process.env.HTTP_PORT),
@@ -49,6 +50,9 @@ export const envConfig: {
     // any number of sockets can connect, so the per-account and the total are both bounded.
     MAX_OPEN_ORDERS_PER_SOCKET: parsePositiveInt(process.env.MAX_OPEN_ORDERS_PER_SOCKET, 500),
     MAX_OPEN_ORDERS: parsePositiveInt(process.env.MAX_OPEN_ORDERS, 100000),
+    // Live sockets per address. Sockets are not authenticated and the per-socket limits are
+    // per socket, so this is the bound on how many of them one client can hold.
+    MAX_CONNECTIONS_PER_IP: parsePositiveInt(process.env.MAX_CONNECTIONS_PER_IP, 20),
     // When unset, the /logs admin endpoints are disabled entirely (fail closed).
     ADMIN_API_KEY: (process.env.ADMIN_API_KEY || '').trim(),
     // Comma-separated allowlist of browser origins. Unset = the wallet FE

@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import { FastifyInstance } from "fastify";
 import { Server, Socket } from "socket.io";
 import { socketIoAllowRequest, socketIoCorsOptions } from "../../config/cors";
+import { envConfig } from "../../config/env.config";
 import { TOrder } from "../../utils/types/orderbook.types";
 import { orderbookManager } from "../orderbook";
 import { parseCloseOrder, parseNewOrder, parseOrderFilter } from "../../protocol/messages";
@@ -56,13 +57,26 @@ export class SocketManager {
         });
     }
 
-    // Per-connection setup: the live-session entry and every event handler.
+    // The one admission decision for a new socket: at most MAX_CONNECTIONS_PER_IP live sockets per address.
+    private admitConnection(ip: string): boolean {
+        return this._liveSessions.filter(s => s.ip === ip).length < envConfig.MAX_CONNECTIONS_PER_IP;
+    }
+
+    // Per-connection setup: the live-session entry and every event handler. A socket that is not
+    // admitted gets neither, so it holds no state the disconnect hook would have to release.
     private onConnection(socket: Socket) {
+        const ip = socket.client.conn.remoteAddress;
+        if (!this.admitConnection(ip)) {
+            console.log(`${socket.id} refused: too many connections from this address`);
+            socket.emit(OrderEmitEvents.ERROR, 'Too many connections from this address');
+            socket.disconnect();
+            return;
+        }
         console.log(`New Connection: ${socket.id}`);
         this._liveSessions.push({
             id: socket.id,
             startTime: Date.now(),
-            ip: socket.client.conn.remoteAddress,
+            ip,
         });
         // Every client event goes through guarded(): nothing in this process catches a throw
         // or a rejection from a listener, so one bad payload would take the whole server down.
