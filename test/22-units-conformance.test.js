@@ -11,7 +11,7 @@ const assert = require('assert');
 const { BUILD } = require('./common');
 
 const VECTORS = path.join(__dirname, 'conformance', 'units-conformance.json');
-const EXPECTED_SHA256 = '95cd95b834cdbb4df37b7275132f0cc03c0860e07f6d8977256ef6cc331783e6';
+const EXPECTED_SHA256 = 'c68d619fd9a05e837a77092cdd808eb3ed1ea52e26b71449a6043f22ab71393c';
 
 const { isWireUnits, valueSats } = require(path.join(BUILD, 'utils/pure/units'));
 
