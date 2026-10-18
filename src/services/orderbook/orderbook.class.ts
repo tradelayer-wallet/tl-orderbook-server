@@ -168,12 +168,13 @@ export class Orderbook {
                 if (!settleable.length) {
                     return { error: 'Trade value is not a whole number of satoshis: the match is refused' };
                 }
-                const matchOrder = settleable[0];
-                if (matchOrder.socket_id === order.socket_id) {
-                    throw new Error("Match of the order from the same Account");
-                }
-                if (matchOrder.keypair.address === order.keypair.address) {
-                    throw new Error("Match of the order from the same address");
+                // The best settleable order of another account. The taker's own orders are skipped,
+                // so it is refused only when every settleable crossing order is its own.
+                const matchOrder = settleable.find(o => !isSameAccount(order, o));
+                if (!matchOrder) {
+                    throw new Error(settleable[0].socket_id === order.socket_id
+                        ? "Match of the order from the same Account"
+                        : "Match of the order from the same address");
                 }
                 return { data: { match: matchOrder } };
             }
@@ -351,6 +352,10 @@ export const readTradeHistory = (names: string[]): IHistoryTrade[] =>
         .filter(isV2TradeRecord)
         .sort((a, b) => (b.time || 0) - (a.time || 0))
         .slice(0, 2000);
+
+// The same account as the taker: the same socket, or the same address on another socket.
+const isSameAccount = (taker: TOrder, maker: TOrder): boolean =>
+    maker.socket_id === taker.socket_id || maker.keypair.address === taker.keypair.address;
 
 // Two spot markets are the same when their id pairs match in either order.
 const samePair = (

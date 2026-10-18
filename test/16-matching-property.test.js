@@ -16,8 +16,9 @@
  * The model uses BigInt and exact arithmetic. It applies the server's rules: best price,
  * then arrival order, among crossing orders whose trade settles exactly (a whole number of
  * satoshis); a crossing order that cannot settle is skipped, and when none settles the order is
- * refused; a best match from the same socket or address refuses the order; a remainder re-enters
- * as a new order at the back of its price level.
+ * refused; the best settleable order of the same socket or address is skipped, and the order is
+ * refused only when every settleable crossing order is one of those; a remainder re-enters as a
+ * new order at the back of its price level.
  */
 const fs = require('fs');
 const path = require('path');
@@ -85,8 +86,8 @@ class Model {
                 this.dropped += taker.amountU;
                 return 'refused-value';
             }
-            const m = settleable[0];
-            if (m.socket === taker.socket || m.address === taker.address) {
+            const m = settleable.find((x) => x.socket !== taker.socket && x.address !== taker.address);
+            if (!m) {
                 this.dropped += taker.amountU;
                 return 'refused-self';
             }
