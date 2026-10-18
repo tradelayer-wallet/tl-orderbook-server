@@ -1,7 +1,7 @@
 import { IHistoryTrade, TOrder } from "../../utils/types/orderbook.types";
 import { IResult } from "../../utils/types/mix.types";
 import { TFilter } from "../../utils/types/markets.types";
-import { filterLogNames, Orderbook, readTradeHistory } from "./orderbook.class";
+import { filterLogNames, isV2Record, Orderbook, readTradeHistory } from "./orderbook.class";
 import { parseLogRecords, updateOrderLog } from "../../utils/pure/mix.pure";
 import moment = require("moment");
 import { readdirSync, readFileSync } from "fs";
@@ -32,7 +32,7 @@ export class OrderbookManager {
                 .filter(f => f.includes(today) || f.includes(yesterday));
             const records: any[] = [];
             files.forEach(f => {
-                parseLogRecords(readFileSync(`logs/${f}`, 'utf8')).forEach(record => records.push(record));
+                parseLogRecords(readFileSync(`logs/${f}`, 'utf8')).filter(isV2Record).forEach(record => records.push(record));
             });
             // Files are per book and their order is not time order, so sort before taking the newest.
             records.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));

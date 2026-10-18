@@ -336,10 +336,10 @@ export const filterLogNames = (filter: TFilter): string[] =>
         ? spotLogNames(filter.first_token, filter.second_token)
         : [`futures-${filter.contract_id}`];
 
-// A trade record in the protocol v2 shape: its amounts and price are integer units. Records written
-// before v2 hold floats. They are skipped, never sent, because one malformed record would make a
-// client refuse the whole market view (protocol-v2.md N5).
-const isV2TradeRecord = (record: any): boolean => {
+// An ORDER or TRADE record in the protocol v2 shape: its amounts and price are integer units. Records
+// written before v2 hold floats. Every reader skips them, so they are never sent or restored, because
+// one malformed record would make a client refuse the whole view (protocol-v2.md N5).
+export const isV2Record = (record: any): boolean => {
     const p = record?.props;
     if (!p) return false;
     const quantities = 'amountDesired' in p ? [p.amountDesired, p.amountForSale, p.price] : [p.amount, p.price];
@@ -348,7 +348,7 @@ const isV2TradeRecord = (record: any): boolean => {
 
 // Trades of a market from its logs, newest first, at most as many as a live book keeps.
 export const readTradeHistory = (names: string[]): IHistoryTrade[] =>
-    readNewestRecords<IHistoryTrade>('TRADE', names, 2000, isV2TradeRecord)
+    readNewestRecords<IHistoryTrade>('TRADE', names, 2000, isV2Record)
         .sort((a, b) => (b.time || 0) - (a.time || 0))
         .slice(0, 2000);
 
