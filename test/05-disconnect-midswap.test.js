@@ -23,7 +23,7 @@ const fs = require('fs');
 const path = require('path');
 const {
     assert, sleep, waitFor, startServer, stopServer, connectClient,
-    eventsOf, rawSpotOrder, emitSwap, sessionOf, ordersOf, allHistory, negotiate, units,
+    eventsOf, rawSpotOrder, emitSwap, sessionOf, ordersOf, allOrders, allHistory, negotiate, units,
 } = require('./common');
 
 const { txidFor } = require('./common');
@@ -93,8 +93,50 @@ const { txidFor } = require('./common');
             'S3 FAIL: fully-filled maker order not marked FILLED after settlement');
         console.log('S3d PASS: FILLED marker written only after successful settlement');
 
+        // ---- 3) the maker disconnects while its order is locked: the order stays locked, and leaves with the swap ----
+        const M3 = await connectClient(url, 'maker3');
+        const T3 = await connectClient(url, 'taker3');
+
+        M3.socket.emit('new-order', rawSpotOrder({ action: 'SELL', amount: 1, price: 1, id_for_sale: 4, id_desired: 3, keypair: { address: 'addr-m3', pubkey: 'pk-m3' } }));
+        await waitFor(() => ordersOf(M3.id).length === 1, { message: 'maker3 order on book' });
+        const m3Uuid = ordersOf(M3.id)[0].uuid;
+
+        T3.socket.emit('new-order', rawSpotOrder({ action: 'BUY', amount: 1, price: 1, id_for_sale: 3, id_desired: 4, keypair: { address: 'addr-t3', pubkey: 'pk-t3' } }));
+        await waitFor(() => eventsOf(T3, 'new-channel').length === 1, { message: 'third swap channel opened' });
+
+        M3.socket.close();
+        await sleep(200);
+        const locked = allOrders().find((o) => o.uuid === m3Uuid);
+        assert.ok(locked && locked.lock, `S3 FAIL: a swap-locked order left the book when its owner disconnected`);
+        await waitFor(() => T3.errors.length > 0, { timeout: 6000, message: 'third swap times out' });
+        assert.ok(!allOrders().some((o) => o.uuid === m3Uuid), 'S3 FAIL: the order of a disconnected maker rests after its swap ended');
+        console.log('S3e PASS: a locked order stays locked while the swap runs, and leaves the book when the swap ends');
+
+        // ---- 4) the maker disconnects after signing, its order is part filled: the remainder leaves with it ----
+        const M4 = await connectClient(url, 'maker4');
+        const T4 = await connectClient(url, 'taker4');
+
+        M4.socket.emit('new-order', rawSpotOrder({ action: 'SELL', amount: 2, price: 1, id_for_sale: 6, id_desired: 5, keypair: { address: 'addr-m4', pubkey: 'pk-m4' } }));
+        await waitFor(() => ordersOf(M4.id).length === 1, { message: 'maker4 order on book' });
+        const m4Uuid = ordersOf(M4.id)[0].uuid;
+
+        T4.socket.emit('new-order', rawSpotOrder({ action: 'BUY', amount: 1, price: 1, id_for_sale: 5, id_desired: 6, keypair: { address: 'addr-t4', pubkey: 'pk-t4' } }));
+        await waitFor(() => eventsOf(T4, 'new-channel').length === 1, { message: 'fourth swap channel opened' });
+
+        const sid4 = sessionOf(T4);
+        await negotiate(sid4, T4, M4);
+        M4.socket.close();
+        await sleep(200);
+        emitSwap(T4, sid4, 'BUYER:STEP6', txidFor(sid4));
+        await waitFor(() => allHistory().some((h) => h.txid === txidFor(sid4)), { timeout: 3000, message: 'fourth swap settled' });
+        await sleep(300);
+        assert.ok(!allOrders().some((o) => o.uuid === m4Uuid), 'S3 FAIL: the remainder of a disconnected maker rests on the book after the trade settled');
+        console.log('S3f PASS: a part-filled order of a maker that disconnected after signing does not rest after settlement');
+
         T.socket.close();
         T2.socket.close();
+        T3.socket.close();
+        T4.socket.close();
         await stopServer(server);
         console.log('S3 (disconnect mid-swap): ALL PASS');
         process.exit(0);

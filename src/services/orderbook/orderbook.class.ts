@@ -114,6 +114,17 @@ export class Orderbook {
         socketService.io.emit(EmitEvents.UPDATE_ORDERS_REQUEST);
     }
 
+    // Ends the maker's lock when its swap ends. The order rests again while its owner is connected.
+    // Otherwise it is removed here: the disconnect hook leaves a locked order in place, so this is the
+    // point where it leaves the book with its swap. Removal goes through the manager for the audit state.
+    private releaseMaker(maker: TOrder, ownerEnded: boolean = false): void {
+        if (ownerEnded || !socketService.io.sockets.sockets.has(maker.socket_id)) {
+            orderbookManager.removeOrder(maker.uuid, maker.socket_id, true);
+        } else {
+            this.lockOrder(maker, false);
+        }
+    }
+
     private saveToHistory(historyTrade: IHistoryTrade) {
         this._historyTrades = [historyTrade, ...this.historyTrades.slice(0, 1999)];
         saveLog(this.orderbookName, "TRADE", historyTrade);
@@ -223,12 +234,7 @@ export class Orderbook {
                     // trade. Any other outcome unlocks it. A swap that expired unverified leaves it
                     // unlocked too: the bounded residual risk in protocol-v2.md B.4.
                     const ownerEnded = outcome.state === 'aborted' && outcome.terminatorSocketId === maker.socket_id;
-                    if (ownerEnded) {
-                        // Removal goes through the manager so the CANCALED audit state is written.
-                        orderbookManager.removeOrder(maker.uuid, maker.socket_id, true);
-                    } else {
-                        this.lockOrder(maker, false);
-                    }
+                    this.releaseMaker(maker, ownerEnded);
                     this.updatePlacedOrdersForSocketId(maker.socket_id);
                     throw new Error(outcome.state === 'aborted' ? outcome.reason : 'Swap expired without a verified outcome: no trade recorded');
                 }
@@ -236,7 +242,7 @@ export class Orderbook {
 
                 if (buildTradeRes.data.unfilled?.uuid === maker.uuid) {
                     maker.props.amount = buildTradeRes.data.unfilled.props.amount;
-                    this.lockOrder(maker, false);
+                    this.releaseMaker(maker);
                 } else {
                     // The matched order is fully filled. The FILLED marker is only
                     // written now that the swap has actually settled — never before,

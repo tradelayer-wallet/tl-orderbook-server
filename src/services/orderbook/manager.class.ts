@@ -147,12 +147,11 @@ export class OrderbookManager {
         return { orders: [], history: readTradeHistory(filterLogNames(filter)).filter(o => o.txid) };
     }
 
-    // Removes every resting order owned by a socket. Called from the socket
-    // disconnect hook, the only place a socket's book state is released. A locked
-    // order is removed too: its owner is gone, and the settlement path tolerates a
-    // missing order.
+    // Removes every unlocked resting order owned by a socket. Called from the socket
+    // disconnect hook, the only place a socket's book state is released. A locked order
+    // is refused here by the same rule as a cancel: it leaves the book with its swap.
     removeOrdersOfSocket(socket_id: string): void {
-        this.getOrdersBySocketId(socket_id).forEach(o => this.removeOrder(o.uuid, socket_id, true));
+        this.getOrdersBySocketId(socket_id).forEach(o => this.removeOrder(o.uuid, socket_id));
     }
 
     openOrderCount(): number {
