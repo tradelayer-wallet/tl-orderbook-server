@@ -11,7 +11,7 @@ const moment = require('moment');
 const {
     assert, sleep, waitFor, startServer, stopServer, connectClient, units,
     eventsOf, ordersOf, allHistory, activeSwapSessions, sessionOf, emitSwap, negotiate,
-    sendStep, txidOf,
+    sendStep, txidOf, txidFor,
 } = require('./common');
 
 // V2_OLD_WIRE=1 sends the same scenarios with the pre-v2 float amounts, so each v2 assertion can be
@@ -143,12 +143,12 @@ const rawSellSpot = (props) => ({
         const sid2 = sessionOf(T2);
         await negotiate(sid2, T2, M2);
         await sleep(300);
-        emitSwap(T2, sid2, 'BUYER:STEP6', TX('settled'));
+        emitSwap(T2, sid2, 'BUYER:STEP6', txidFor(sid2));
         await waitFor(() => serverStates(T2).some((s) => s.state === 'settled'), { message: 'E: settled notice (buyer)' });
         await waitFor(() => serverStates(M2).some((s) => s.state === 'settled'), { message: 'E: settled notice (seller)' });
-        assert.strictEqual(serverStates(M2).find((s) => s.state === 'settled').txid, TX('settled'), 'E: settled notice txid');
+        assert.strictEqual(serverStates(M2).find((s) => s.state === 'settled').txid, txidFor(sid2), 'E: settled notice txid');
         assert.ok(ordersOf(M2.id).length === 0, 'E: the fully filled maker is removed');
-        const trade = allHistory().find((h) => h.txid === TX('settled'));
+        const trade = allHistory().find((h) => h.txid === txidFor(sid2));
         assert.ok(trade && trade.props.price === wire(0.3) && trade.props.amountForSale === units(0.15), 'E: trade record');
         console.log('V2 E PASS: a report inside the signed window settles the trade, both sides are told, the maker is consumed');
         });

@@ -22,10 +22,8 @@ const path = require('path');
 const {
     assert, waitFor, sleep, startServer, stopServer, connectClient,
     eventsOf, waitForEvent, rawSpotOrder, ordersOf, allHistory,
-    activeSwapSessions, sessionOf, emitSwap, workDir, openSocket, negotiate, MS_DATA,
+    activeSwapSessions, sessionOf, emitSwap, workDir, openSocket, negotiate, MS_DATA, txidFor,
 } = require('./common');
-
-const TXID = 'ab'.repeat(32); // a well-formed 64-hex txid
 
 // R3_ONLY=b,d runs only those scenarios (used to show each one fails on old code).
 const run = (k) => !process.env.R3_ONLY || process.env.R3_ONLY.split(',').includes(k);
@@ -99,9 +97,9 @@ const openSwap = async (url, tag) => {
                 'R3b FAIL: a BUYER:STEP6 with no txid settled the swap');
 
             // A well-formed txid settles, and that txid is what gets recorded.
-            T.socket.emit('swap', { sessionId: sid, eventName: 'BUYER:STEP6', socketId: T.id, data: TXID });
+            T.socket.emit('swap', { sessionId: sid, eventName: 'BUYER:STEP6', socketId: T.id, data: txidFor(sid) });
             await waitFor(() => activeSwapSessions() === openNow - 1, { message: 'b: valid txid settles' });
-            await waitFor(() => allHistory().some((h) => h.txid === TXID), { message: 'b: txid recorded' });
+            await waitFor(() => allHistory().some((h) => h.txid === txidFor(sid)), { message: 'b: txid recorded' });
             console.log('R3b PASS: junk or missing BUYER:STEP6 data neither settles nor reaches history');
             M.socket.close(); T.socket.close();
         }

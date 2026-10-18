@@ -15,7 +15,7 @@
 const path = require('path');
 const {
     assert, waitFor, sleep, startServer, stopServer, connectClient, rawSpotOrder,
-    allOrders, activeSwapSessions, sessionOf, waitForEvent, txidOf, BUILD, negotiate, units,
+    allOrders, activeSwapSessions, sessionOf, waitForEvent, txidFor, BUILD, negotiate, units,
 } = require('./common');
 
 // Each section trades on its own pair, so no section can match another section's resting orders.
@@ -53,7 +53,7 @@ const orderOf = (uuid) => allOrders().find((o) => o.uuid === uuid);
         t1.socket.emit('new-order', rawSpotOrder({ action: 'BUY', amount: 1, price: 1, ...buyIds(1) }));
         await waitForEvent(t1, 'new-channel', () => true, { message: 'B: swap' });
         await negotiate(sessionOf(t1), t1, m1);
-        t1.socket.emit('swap', { sessionId: sessionOf(t1), eventName: 'BUYER:STEP6', data: txidOf('r8-b') });
+        t1.socket.emit('swap', { sessionId: sessionOf(t1), eventName: 'BUYER:STEP6', data: txidFor(sessionOf(t1)) });
         await waitFor(() => activeSwapSessions() === 0, { message: 'B: settled' });
         await sleep(30);
         assert.equal(orderOf(mUuid).props.amount, 60, `B FAIL: remainder is ${orderOf(mUuid).props.amount} units, expected 60 (6e-7)`);
@@ -68,7 +68,7 @@ const orderOf = (uuid) => allOrders().find((o) => o.uuid === uuid);
         t2.socket.emit('new-order', rawSpotOrder({ action: 'BUY', amount: 1, price: 1, ...buyIds(2) }));
         await waitForEvent(t2, 'new-channel', () => true, { message: 'B2: swap' });
         await negotiate(sessionOf(t2), t2, m2);
-        t2.socket.emit('swap', { sessionId: sessionOf(t2), eventName: 'BUYER:STEP6', data: txidOf('r8-b2') });
+        t2.socket.emit('swap', { sessionId: sessionOf(t2), eventName: 'BUYER:STEP6', data: txidFor(sessionOf(t2)) });
         await waitFor(() => activeSwapSessions() === 0, { message: 'B2: settled' });
         await sleep(30);
         assert.equal(orderOf(m2Uuid).props.amount, 40, 'B2 FAIL: remainder rounded away');

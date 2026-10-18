@@ -23,7 +23,7 @@ const fs = require('fs');
 const path = require('path');
 const {
     assert, sleep, waitFor, startServer, stopServer, connectClient,
-    rawSpotOrder, allOrders, allHistory, activeSwapSessions, txidOf, workDir, negotiate,
+    rawSpotOrder, allOrders, allHistory, activeSwapSessions, txidFor, workDir, negotiate,
 } = require('./common');
 
 const UNIT = 100000000n;
@@ -124,7 +124,7 @@ const settle = async (clients, answered) => {
                 answered.add(sid);
                 const seller = clients.find((x) => x.id === tradeInfo.seller.socketId);
                 await negotiate(sid, c, seller);
-                c.socket.emit('swap', { sessionId: sid, eventName: 'BUYER:STEP6', data: txidOf(`s8-${sid}`) });
+                c.socket.emit('swap', { sessionId: sid, eventName: 'BUYER:STEP6', data: txidFor(sid) });
             }
         }
         await sleep(15);

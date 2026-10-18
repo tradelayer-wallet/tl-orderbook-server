@@ -26,7 +26,7 @@ const {
     eventsOf, rawSpotOrder, emitSwap, sessionOf, ordersOf, allHistory, negotiate, units,
 } = require('./common');
 
-const { txidOf } = require('./common');
+const { txidFor } = require('./common');
 
 (async () => {
     const { server, url } = await startServer();
@@ -72,8 +72,8 @@ const { txidOf } = require('./common');
         await negotiate(sid2, T2, M2);
         M2.socket.close();
         await sleep(200);
-        emitSwap(T2, sid2, 'BUYER:STEP6', txidOf('txid-s3'));
-        await waitFor(() => allHistory().some((h) => h.txid === txidOf('txid-s3')), { timeout: 3000, message: 'trade settled' });
+        emitSwap(T2, sid2, 'BUYER:STEP6', txidFor(sid2));
+        await waitFor(() => allHistory().some((h) => h.txid === txidFor(sid2)), { timeout: 3000, message: 'trade settled' });
 
         await sleep(300);
         assert.strictEqual(T2.errors.length, 0,

@@ -19,7 +19,7 @@ const {
     eventsOf, rawSpotOrder, emitSwap, sessionOf, ordersOf, allHistory,
 } = require('./common');
 
-const { txidOf, negotiate, units } = require('./common');
+const { txidOf, txidFor, negotiate, units } = require('./common');
 
 (async () => {
     const { server, url } = await startServer();
@@ -84,8 +84,8 @@ const { txidOf, negotiate, units } = require('./common');
 
         // The real buyer completes the swap, through the negotiation.
         await negotiate(sessionOf(T), T, M);
-        emitSwap(T, sessionOf(T), 'BUYER:STEP6', txidOf('real-txid'));
-        await waitFor(() => allHistory().some((h) => h.txid === txidOf('real-txid')), { message: 'real fill recorded' });
+        emitSwap(T, sessionOf(T), 'BUYER:STEP6', txidFor(sessionOf(T)));
+        await waitFor(() => allHistory().some((h) => h.txid === txidFor(sessionOf(T))), { message: 'real fill recorded' });
         assert.ok(!allHistory().some((h) => h.txid === txidOf('fake-txid')),
             'S2 FAIL: seller-faked BUYER:STEP6 was recorded as a fill');
         console.log('S2c PASS: BUYER:STEP6 only settles from the buyer\'s socket; fake txid rejected');

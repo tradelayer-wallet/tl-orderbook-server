@@ -16,14 +16,13 @@ const fs = require('fs');
 const path = require('path');
 const {
     assert, sleep, waitFor, waitForEvent, startServer, stopServer, connectClient, rawSpotOrder,
-    ordersOf, sessionOf, activeSwapSessions, eventsOf, BUILD, workDir, negotiate, units,
+    ordersOf, sessionOf, activeSwapSessions, eventsOf, BUILD, workDir, negotiate, units, txidFor,
 } = require('./common');
 
 const mixPure = require(path.join(BUILD, 'utils/pure/mix.pure'));
 const orderbookManager = () => require(path.join(BUILD, 'services/orderbook')).orderbookManager;
 const bookNamed = (name) => orderbookManager().orderbooks.find((b) => b.orderbookName === name);
 
-const TXID = 'ef'.repeat(32);
 
 const r11_2 = async () => {
     const uuid = 'r11-2-order';
@@ -68,7 +67,7 @@ const r11_3 = async () => {
         T.socket.emit('new-order', rawSpotOrder({ action: 'BUY', props: { id_for_sale: 1, id_desired: 2, amount: units(1), price: units(1) } }));
         await waitForEvent(T, 'new-channel', () => true, { message: 'r11-3: taker new-channel' });
         await negotiate(sessionOf(T), T, M);
-        T.socket.emit('swap', { sessionId: sessionOf(T), eventName: 'BUYER:STEP6', data: TXID });
+        T.socket.emit('swap', { sessionId: sessionOf(T), eventName: 'BUYER:STEP6', data: txidFor(sessionOf(T)) });
         await waitFor(() => activeSwapSessions() === 0, { message: 'r11-3: swap settled' });
         await waitFor(() => ordersOf(M.id).every((o) => o.props.id_for_sale !== 2), { message: 'r11-3: maker filled' });
 
@@ -77,7 +76,7 @@ const r11_3 = async () => {
         M.socket.emit('update-orderbook', { type: 'SPOT', first_token: 1, second_token: 2 });
         await waitFor(() => eventsOf(M, 'orderbook-data').length > viewsBefore, { message: 'r11-3: market view answered' });
         const view = eventsOf(M, 'orderbook-data').slice(-1)[0].args[0];
-        assert.ok(view.history.some((h) => h.txid === TXID), 'R11-3 FAIL: released market lost its trade history');
+        assert.ok(view.history.some((h) => h.txid === txidFor(sessionOf(T))), 'R11-3 FAIL: released market lost its trade history');
         assert.deepStrictEqual(view.orders, [], 'R11-3 FAIL: released market still lists orders');
 
         const errorsAfterFill = M.errors.length;

@@ -8,10 +8,9 @@
  */
 const {
     assert, waitFor, waitForEvent, startServer, stopServer, connectClient,
-    rawSpotOrder, ordersOf, allHistory, sessionOf, eventsOf, units, settleSwap,
+    rawSpotOrder, ordersOf, allHistory, sessionOf, eventsOf, units, settleSwap, txidFor,
 } = require('./common');
 
-const TXID = 'ab'.repeat(32);
 
 const rawFuturesOrder = ({ props = {}, ...over } = {}) => ({
     type: 'FUTURES',
@@ -93,10 +92,10 @@ const rawFuturesOrder = ({ props = {}, ...over } = {}) => ({
         T.socket.emit('new-order', rawSpotOrder({ action: 'BUY', props: { id_for_sale: 2, id_desired: 1, amount: units(0.5), price: units(0.3) } }));
         await waitForEvent(T, 'new-channel', () => true, { message: 'taker new-channel' });
         const sid = sessionOf(T);
-        await settleSwap(sid, T, M, TXID);
+        await settleSwap(sid, T, M, txidFor(sid));
         await waitFor(() => allHistory().length === historyBefore + 1, { message: 'trade recorded' });
         const trade = allHistory()[0];
-        assert.strictEqual(trade.txid, TXID);
+        assert.strictEqual(trade.txid, txidFor(sid));
         assert.strictEqual(trade.props.amountDesired, units(0.5), 'amountDesired');
         assert.strictEqual(trade.props.amountForSale, units(0.15), 'amountForSale = 0.5 * 0.3, in sats');
         assert.strictEqual(trade.props.price, units(0.3), 'price in sats per token');

@@ -15,10 +15,8 @@
  */
 const {
     assert, waitFor, waitForEvent, startServer, stopServer, connectClient,
-    rawSpotOrder, ordersOf, sessionOf, activeSwapSessions, negotiate,
+    rawSpotOrder, ordersOf, sessionOf, activeSwapSessions, negotiate, txidFor,
 } = require('./common');
-
-const TXID = 'cd'.repeat(32);
 
 (async () => {
     const { server, url } = await startServer();
@@ -38,7 +36,7 @@ const TXID = 'cd'.repeat(32);
         await waitForEvent(T, 'new-channel', () => true, { message: 'r13: taker new-channel' });
         const sid = sessionOf(T);
         await negotiate(sid, T, M);
-        T.socket.emit('swap', { sessionId: sid, eventName: 'BUYER:STEP6', data: TXID });
+        T.socket.emit('swap', { sessionId: sid, eventName: 'BUYER:STEP6', data: txidFor(sid) });
 
         await waitFor(() => T.errors.length > errorsBefore, { message: 'r13: taker received an error' });
         const msg = String(T.errors[T.errors.length - 1]);

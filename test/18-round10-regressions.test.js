@@ -17,7 +17,7 @@ const fs = require('fs');
 const path = require('path');
 const {
     assert, waitFor, sleep, startServer, stopServer, connectClient, rawSpotOrder,
-    allOrders, activeSwapSessions, sessionOf, txidOf, BUILD, workDir, negotiate,
+    allOrders, activeSwapSessions, sessionOf, txidFor, BUILD, workDir, negotiate,
 } = require('./common');
 
 // Each section trades on its own pair, so no section can match another section's resting orders.
@@ -44,7 +44,7 @@ const { parseNewOrder } = require(path.join(BUILD, 'protocol/messages'));
         await waitFor(() => buyer.inbox.some((e) => e.event === 'new-channel'), { message: 'G1: buyer traded with the settleable seller' });
         assert.equal(buyer.errors.length, 0, `G1 FAIL: buyer refused: ${buyer.errors}`);
         await negotiate(sessionOf(buyer), buyer, honest);
-        buyer.socket.emit('swap', { sessionId: sessionOf(buyer), eventName: 'BUYER:STEP6', data: txidOf('r10-g1') });
+        buyer.socket.emit('swap', { sessionId: sessionOf(buyer), eventName: 'BUYER:STEP6', data: txidFor(sessionOf(buyer)) });
         await waitFor(() => activeSwapSessions() === 0, { message: 'G1: settled' });
         console.log('R10 G1 PASS: a dust order does not block a settleable seller at its price');
 
@@ -75,7 +75,7 @@ const { parseNewOrder } = require(path.join(BUILD, 'protocol/messages'));
         await waitFor(() => owner.inbox.some((e) => e.event === 'new-channel') || owner.errors.length > errorsH1, { message: 'H1: owner answered' });
         assert.equal(owner.errors.length, errorsH1, `H1 FAIL: a trade at the limit was refused: ${owner.errors[owner.errors.length - 1]}`);
         await negotiate(sessionOf(owner), owner, counter);
-        owner.socket.emit('swap', { sessionId: sessionOf(owner), eventName: 'BUYER:STEP6', data: txidOf('r10-h1') });
+        owner.socket.emit('swap', { sessionId: sessionOf(owner), eventName: 'BUYER:STEP6', data: txidFor(sessionOf(owner)) });
         await waitFor(() => activeSwapSessions() === 0, { message: 'H1: settled' });
         console.log('R10 H1 PASS: an account at its limit trades a fully filled order');
 

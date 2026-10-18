@@ -46,7 +46,7 @@ const openSwap = async (maker, taker, tokA, tokB, tag) => {
 const relayedWith = (client, data) =>
     eventsOf(client, 'swap').some((e) => e.args[0] && e.args[0].data === data);
 
-const { txidOf, negotiate, sendStep, NEGOTIATION_STEPS } = require('./common');
+const { txidOf, txidFor, negotiate, sendStep, NEGOTIATION_STEPS } = require('./common');
 
 (async () => {
     const { server, url } = await startServer();
@@ -104,11 +104,11 @@ const { txidOf, negotiate, sendStep, NEGOTIATION_STEPS } = require('./common');
 
         // ---- a) one settle event settles only its own session ---------------
         for (let i = 2; i < NEGOTIATION_STEPS.length; i++) await sendStep(S1, X, M1, i);
-        emitSwap(X, S1, 'BUYER:STEP6', txidOf('txid-s1'));
-        await waitFor(() => allHistory().some((h) => h.txid === txidOf('txid-s1')), { timeout: 3000, message: 'S1 settled' });
+        emitSwap(X, S1, 'BUYER:STEP6', txidFor(S1));
+        await waitFor(() => allHistory().some((h) => h.txid === txidFor(S1)), { timeout: 3000, message: 'S1 settled' });
         await sleep(300);
         assert.strictEqual(activeSwapSessions(), 1, 'N1 FAIL: settling S1 also settled S2 (cross-session bleed)');
-        assert.ok(!allHistory().some((h) => h.txid === txidOf('txid-s2')), 'N1 FAIL: S2 recorded a fill it never received');
+        assert.ok(!allHistory().some((h) => h.txid === txidFor(S2)), 'N1 FAIL: S2 recorded a fill it never received');
         assert.ok(ordersOf(M2.id).some((o) => o.keypair.address === 's2-m' && o.lock === true),
             'N1 FAIL: S2 maker order was unlocked by S1 settlement');
         console.log('N1a PASS: a single BUYER:STEP6 on the shared socket settles only the session it names');
@@ -122,8 +122,8 @@ const { txidOf, negotiate, sendStep, NEGOTIATION_STEPS } = require('./common');
 
         // S2 still settles normally with its own txid.
         await negotiate(S2, X, M2);
-        emitSwap(X, S2, 'BUYER:STEP6', txidOf('txid-s2'));
-        await waitFor(() => allHistory().some((h) => h.txid === txidOf('txid-s2')), { timeout: 3000, message: 'S2 settled' });
+        emitSwap(X, S2, 'BUYER:STEP6', txidFor(S2));
+        await waitFor(() => allHistory().some((h) => h.txid === txidFor(S2)), { timeout: 3000, message: 'S2 settled' });
         assert.strictEqual(activeSwapSessions(), 0, 'N1 FAIL: session registry not drained after both settled');
 
         for (const c of [X, M1, M2, W]) c.socket.close();

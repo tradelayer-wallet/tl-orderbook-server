@@ -247,7 +247,41 @@ const swapEvent = (eventName, socketId, data) => ({ eventName, socketId, data })
 // sockets are separate connections, so steps sent in one tick could reach the server out of order.
 const MS_DATA = { address: 'ms-addr-test', redeemScript: 'aa'.repeat(40), scriptPubKey: 'bb'.repeat(34) };
 const COMMIT_UTXO = { txid: 'cd'.repeat(32), vout: 0, sats: 100000, scriptPubKey: 'bb'.repeat(34), redeemScript: 'aa'.repeat(40) };
-const PSBT_HEX = 'ef'.repeat(64);
+
+// The PSBT of a session's swap, built as the wallets build it (BIP174): a global PSBT_GLOBAL_UNSIGNED_TX
+// entry holding a non-witness transaction that spends the session's own commit outpoint, then one
+// empty input map and one empty output map. The transaction is per session, so each session has its
+// own txid. Its txid is computed here from the bytes, not by the server's parser.
+const sha256 = (buf) => require('crypto').createHash('sha256').update(buf).digest();
+const le = (value, bytes) => {
+    const b = Buffer.alloc(bytes);
+    b.writeUIntLE(value, 0, bytes);
+    return b;
+};
+const psbtCache = new Map();
+const psbtFor = (sessionId) => {
+    if (!psbtCache.has(sessionId)) {
+        const prevHash = sha256(Buffer.from(`commit:${sessionId}`));
+        const script = Buffer.concat([Buffer.from('0020', 'hex'), sha256(Buffer.from(`out:${sessionId}`))]);
+        const tx = Buffer.concat([
+            le(2, 4),                                                    // version
+            Buffer.from([1]), prevHash, le(0, 4), Buffer.from([0]), le(0xffffffff, 4), // one input, empty scriptSig
+            Buffer.from([1]), Buffer.from('e803000000000000', 'hex'), Buffer.from([script.length]), script, // one output of 1000 sats
+            le(0, 4),                                                    // locktime
+        ]);
+        const psbt = Buffer.concat([
+            Buffer.from('70736274ff', 'hex'),                            // "psbt" 0xff
+            Buffer.from([1, 0x00, tx.length]), tx, Buffer.from([0]),     // global unsigned tx
+            Buffer.from([0]), Buffer.from([0]),                          // input map, output map
+        ]);
+        const txid = Buffer.from(sha256(sha256(tx))).reverse().toString('hex');
+        psbtCache.set(sessionId, { hex: psbt.toString('hex'), txid });
+    }
+    return psbtCache.get(sessionId);
+};
+// The txid a session's BUYER:STEP6 must report for the swap to settle.
+const txidFor = (sessionId) => psbtFor(sessionId).txid;
+
 const awaitRelay = (client, sessionId, eventName) => waitForEvent(client, 'swap',
     (ev) => !!ev && ev.sessionId === sessionId && ev.eventName === eventName,
     { message: `${client.name} to receive ${eventName}` });
@@ -255,14 +289,14 @@ const NEGOTIATION_STEPS = [
     { name: 'SELLER:STEP1', from: 'seller', data: () => MS_DATA },
     { name: 'BUYER:STEP2', from: 'buyer', data: () => null },
     { name: 'SELLER:STEP3', from: 'seller', data: () => COMMIT_UTXO },
-    { name: 'BUYER:STEP4', from: 'buyer', data: () => PSBT_HEX },
-    { name: 'SELLER:STEP5', from: 'seller', data: () => PSBT_HEX },
+    { name: 'BUYER:STEP4', from: 'buyer', data: (sid) => psbtFor(sid).hex },
+    { name: 'SELLER:STEP5', from: 'seller', data: (sid) => psbtFor(sid).hex },
 ];
 // Sends negotiation step `index` from its sender, then waits until the counterpart has it.
 const sendStep = async (sessionId, buyer, seller, index) => {
     const step = NEGOTIATION_STEPS[index];
     const [from, to] = step.from === 'seller' ? [seller, buyer] : [buyer, seller];
-    emitSwap(from, sessionId, step.name, step.data());
+    emitSwap(from, sessionId, step.name, step.data(sessionId));
     await awaitRelay(to, sessionId, step.name);
 };
 // Drives steps 0 .. count-1 (default: all of them, ending at the signed step).
@@ -342,7 +376,8 @@ module.exports = {
     COMMIT_UTXO,
     settleSwap,
     awaitRelay,
-    PSBT_HEX,
+    psbtFor,
+    txidFor,
     BUILD,
     workDir,
     sleep,

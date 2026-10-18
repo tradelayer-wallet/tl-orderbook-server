@@ -20,7 +20,7 @@
 const {
     assert, sleep, waitFor, startServer, stopServer, connectClient,
     eventsOf, rawSpotOrder, ordersOf, allHistory, activeSwapSessions,
-    sessionOf, waitForEvent, txidOf, negotiate,
+    sessionOf, waitForEvent, txidOf, txidFor, negotiate,
 } = require('./common');
 
 // R6_ONLY=a,c runs only those scenarios (used to show each one fails on old code).
@@ -47,7 +47,7 @@ const openSwap = async (url, tag, price = 1) => {
         // ---- a) cancel of a swap-locked order ------------------------------
         if (run('a')) {
             const { M, T, sid, uuid } = await openSwap(url, 'r6a');
-            const txid = txidOf('r6a');
+            const txid = txidFor(sid);
             const placedBefore = eventsOf(M, 'placed-orders').length;
             M.socket.emit('close-order', uuid);
             await waitFor(() => M.errors.length > 0 || eventsOf(M, 'placed-orders').length > placedBefore,
@@ -68,7 +68,7 @@ const openSwap = async (url, tag, price = 1) => {
         // ---- b) txid canonical lowercase ------------------------------------
         if (run('b')) {
             const { M, T, sid } = await openSwap(url, 'r6b', 2);
-            const txid = txidOf('r6b');
+            const txid = txidFor(sid);
             await negotiate(sid, T, M);
             T.socket.emit('swap', { sessionId: sid, eventName: 'BUYER:STEP6', data: txid.toUpperCase() });
             await waitFor(() => T.errors.length > 0, { message: 'r6b: upper-case txid answered' });

@@ -27,7 +27,7 @@ const {
     eventsOf, rawSpotOrder, emitSwap, sessionOf, ordersOf, allHistory, activeSwapSessions, negotiate,
 } = require('./common');
 
-const { txidOf } = require('./common');
+const { txidFor } = require('./common');
 
 (async () => {
     // Generous swap timeout: a spurious timeout shows up as "did not settle
@@ -63,17 +63,17 @@ const { txidOf } = require('./common');
         console.log('T4a PASS: trade1 relays (both directions) alive after trade2 opened (pre-fix: wiped)');
 
         // ---- trade1 completes with its own txid ---------------------------
-        emitSwap(A, sid1, 'BUYER:STEP6', txidOf('txid-trade1'));
-        await waitFor(() => allHistory().some((h) => h.txid === txidOf('txid-trade1')), { timeout: 3000, message: 'trade1 settled' });
+        emitSwap(A, sid1, 'BUYER:STEP6', txidFor(sid1));
+        await waitFor(() => allHistory().some((h) => h.txid === txidFor(sid1)), { timeout: 3000, message: 'trade1 settled' });
 
         // ---- trade2 still settles normally, with its own txid -------------
         await negotiate(sessionOf(C, 0), C, A);
-        emitSwap(C, sessionOf(C, 0), 'BUYER:STEP6', txidOf('txid-trade2'));
-        await waitFor(() => allHistory().some((h) => h.txid === txidOf('txid-trade2')), { timeout: 3000, message: 'trade2 settled (no spurious timeout)' });
+        emitSwap(C, sessionOf(C, 0), 'BUYER:STEP6', txidFor(sessionOf(C, 0)));
+        await waitFor(() => allHistory().some((h) => h.txid === txidFor(sessionOf(C, 0))), { timeout: 3000, message: 'trade2 settled (no spurious timeout)' });
 
         await sleep(300);
-        const hist1 = allHistory().find((h) => h.txid === txidOf('txid-trade1'));
-        const hist2 = allHistory().find((h) => h.txid === txidOf('txid-trade2'));
+        const hist1 = allHistory().find((h) => h.txid === txidFor(sid1));
+        const hist2 = allHistory().find((h) => h.txid === txidFor(sessionOf(C, 0)));
         assert.strictEqual(hist1.buyer.socketId, A.id, 'trade1 buyer attribution wrong');
         assert.strictEqual(hist1.seller.socketId, B.id, 'trade1 seller attribution wrong');
         assert.strictEqual(hist2.buyer.socketId, C.id, 'trade2 buyer attribution wrong');

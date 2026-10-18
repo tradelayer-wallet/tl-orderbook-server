@@ -4,6 +4,7 @@ import { envConfig } from "../../config/env.config";
 import { ITradeInfo } from "../../utils/types/orderbook.types";
 import { EmitEvents, OrderEmitEvents } from "../socket/events";
 import { swapRelayLimiter } from "../socket/limiters";
+import { psbtTxid } from "../../utils/pure/psbt.pure";
 import {
     parseSwapEnvelope,
     parseTerminateReason,
@@ -88,6 +89,8 @@ export class ChannelSwap {
     private resolveOutcome: (outcome: TSwapOutcome) => void = () => {};
     // Index into SWAP_STEPS of the next event the server accepts. Past the last step the swap is settled.
     private nextStep = 0;
+    // The txid of the transaction SELLER:STEP5 signed. BUYER:STEP6 must report it.
+    private signedTxid: string | null = null;
     private timer: ReturnType<typeof setTimeout> | null = null;
     private ended = false;
 
@@ -132,6 +135,21 @@ export class ChannelSwap {
             from.emit(OrderEmitEvents.ERROR, `Invalid swap event: ${envelope.eventName} data does not match its schema`);
             return;
         }
+        // The signed transaction's txid is taken from the PSBT the seller signs, and it is the only
+        // txid the buyer may report (protocol-v2.md B.4). A PSBT that carries no transaction is refused.
+        if (this.nextStep === SIGNED_STEP_INDEX) {
+            const signed = psbtTxid(parsed.data as string);
+            if (signed.error) {
+                from.emit(OrderEmitEvents.ERROR, `Invalid swap event: ${envelope.eventName} data does not match its schema`);
+                return;
+            }
+            this.signedTxid = signed.data;
+        }
+        const isReport = this.nextStep === SWAP_STEPS.length - 1;
+        if (isReport && parsed.data !== this.signedTxid) {
+            from.emit(OrderEmitEvents.ERROR, 'Invalid swap event: BUYER:STEP6 is not the txid of the signed transaction');
+            return;
+        }
         this.nextStep++;
         const counterparty = from === this.buyer ? this.seller : this.buyer;
         counterparty.emit(EmitEvents.SWAP, { sessionId: this.sessionId, eventName: envelope.eventName, socketId: from.id, data: parsed.data });
@@ -139,7 +157,7 @@ export class ChannelSwap {
         if (this.nextStep - 1 === SIGNED_STEP_INDEX) {
             this.arm(envConfig.SWAP_SIGNED_WINDOW_MS, () => this.end({ state: 'expired-unverified' }));
         }
-        if (this.nextStep === SWAP_STEPS.length) {
+        if (isReport) {
             this.end({ state: 'settled', txid: parsed.data as string });
         }
     }
