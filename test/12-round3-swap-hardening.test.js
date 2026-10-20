@@ -14,7 +14,9 @@
  *     order:error.
  *  d) a many-orders entry that cannot be placed (crosses the book under noTrades)
  *     is reported with an explicit error, not silently discarded.
- *  e) a maker that terminates a swap has its removal recorded as CANCALED.
+ *  e) a maker that terminates a swap keeps its order, unlocked, with no CANCALED entry;
+ *     its close-order then removes it and records CANCALED. (Terminating used to remove
+ *     the order, which let a taker delete any order its swap made the maker's wallet refuse.)
  *  f) a swap event with a non-string eventName is rejected, not relayed.
  */
 const fs = require('fs');
@@ -142,15 +144,21 @@ const openSwap = async (url, tag) => {
             M.socket.close(); T.socket.close();
         }
 
-        // ---- e) maker-side termination audits CANCALED -------------------------
+        // ---- e) maker-side termination unlocks; close-order audits CANCALED -----
         if (run('e')) {
             const { M, T, sid } = await openSwap(url, 'e');
             const uuid = ordersOf(M.id)[0].uuid;
             M.socket.emit('swap', { sessionId: sid, eventName: 'TERMINATE_TRADE', socketId: M.id, data: 'owner abort' });
-            await waitFor(() => ordersOf(M.id).length === 0, { message: 'e: maker order removed' });
+            await waitFor(() => ordersOf(M.id).some((o) => o.uuid === uuid && o.lock === false),
+                { message: 'e: maker order unlocked' });
+            await sleep(200);
+            assert.ok(!orderLogEntries(uuid).some((x) => x.state === 'CANCALED'),
+                'R3e FAIL: a terminated swap recorded its maker order as CANCALED');
+            M.socket.emit('close-order', uuid);
+            await waitFor(() => ordersOf(M.id).length === 0, { message: 'e: owner close-order removes the order' });
             await waitFor(() => orderLogEntries(uuid).some((x) => x.state === 'CANCALED'),
-                { message: 'e: CANCALED written' });
-            console.log('R3e PASS: maker-terminated order is removed and its audit state is CANCALED');
+                { message: 'e: CANCALED written by close-order' });
+            console.log('R3e PASS: maker-terminated order stays unlocked; its close-order removes it and audits CANCALED');
             M.socket.close(); T.socket.close();
         }
 

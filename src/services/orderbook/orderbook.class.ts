@@ -117,8 +117,8 @@ export class Orderbook {
     // Ends the maker's lock when its swap ends. The order rests again while its owner is connected.
     // Otherwise it is removed here: the disconnect hook leaves a locked order in place, so this is the
     // point where it leaves the book with its swap. Removal goes through the manager for the audit state.
-    private releaseMaker(maker: TOrder, ownerEnded: boolean = false): void {
-        if (ownerEnded || !socketService.io.sockets.sockets.has(maker.socket_id)) {
+    private releaseMaker(maker: TOrder): void {
+        if (!socketService.io.sockets.sockets.has(maker.socket_id)) {
             orderbookManager.removeOrder(maker.uuid, maker.socket_id, true);
         } else {
             this.lockOrder(maker, false);
@@ -230,11 +230,15 @@ export class Orderbook {
                 this.lockOrder(maker);
                 const outcome = await this.runSwap(buildTradeRes.data.tradeInfo);
                 if (outcome.state !== 'settled') {
-                    // Only the owner of the resting order may take it out of the book by ending the
-                    // trade. Any other outcome unlocks it. A swap that expired unverified leaves it
-                    // unlocked too: the bounded residual risk in protocol-v2.md B.4.
-                    const ownerEnded = outcome.state === 'aborted' && outcome.terminatorSocketId === maker.socket_id;
-                    this.releaseMaker(maker, ownerEnded);
+                    // A swap that did not settle never takes the maker's order out of the book,
+                    // whoever ended it: the order is unlocked to rest again, or removed if its owner
+                    // has disconnected. The maker's wallet sends TERMINATE_TRADE on its own whenever
+                    // it refuses a step or its negotiation timer runs out, so reading the maker's
+                    // TERMINATE as a cancel let any taker delete the order it matched by sending a
+                    // junk step or by stalling. Only the owner's close-order cancels an order. A swap
+                    // that expired unverified is unlocked too: the bounded residual risk in
+                    // protocol-v2.md B.4.
+                    this.releaseMaker(maker);
                     this.updatePlacedOrdersForSocketId(maker.socket_id);
                     throw new Error(outcome.state === 'aborted' ? outcome.reason : 'Swap expired without a verified outcome: no trade recorded');
                 }
