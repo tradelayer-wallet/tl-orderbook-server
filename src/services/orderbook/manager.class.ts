@@ -1,15 +1,64 @@
-import { TOrder } from "../../utils/types/orderbook.types";
+import { IHistoryTrade, TOrder } from "../../utils/types/orderbook.types";
 import { IResult } from "../../utils/types/mix.types";
-import { Orderbook } from "./orderbook.class";
-import { saveLog, updateOrderLog } from "../../utils/pure/mix.pure";
+import { TFilter } from "../../utils/types/markets.types";
+import { filterLogNames, isV2Record, Orderbook, readTradeHistory } from "./orderbook.class";
+import { parseLogRecords, updateOrderLog } from "../../utils/pure/mix.pure";
 import moment = require("moment");
 import { readdirSync, readFileSync } from "fs";
+import { getConnectedSocket } from "../socket";
+import { envConfig } from "../../config/env.config";
+
+// Order history sent to clients, at most this many records. It is kept in memory: the
+// history is sent on every placement and cancel, and it must not re-read and re-parse the
+// day's log files each time (that cost grew with the log, see the review notes).
+export const ORDER_HISTORY_LIMIT = 500;
 
 export class OrderbookManager {
     orderbooks: Orderbook[] = [];
+    private recentOrders: any[] = [];
 
     constructor () {
         console.log(`Orderbook Service Initialized`);
+        this.recentOrders = this.loadRecentOrders();
+    }
+
+    // The most recent ORDER records of today and yesterday, read once at start-up.
+    private loadRecentOrders(): any[] {
+        try {
+            const today = moment().format('DD-MM-YYYY');
+            const yesterday = moment().subtract(1, 'days').format('DD-MM-YYYY');
+            const files = readdirSync('logs/')
+                .filter(f => f.startsWith('ORDER'))
+                .filter(f => f.includes(today) || f.includes(yesterday));
+            const records: any[] = [];
+            files.forEach(f => {
+                parseLogRecords(readFileSync(`logs/${f}`, 'utf8')).filter(isV2Record).forEach(record => records.push(record));
+            });
+            // Files are per book and their order is not time order, so sort before taking the newest.
+            records.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+            return records.slice(-ORDER_HISTORY_LIMIT);
+        } catch (error) {
+            console.log(error);
+            return [];
+        }
+    }
+
+    // Called when an order is saved to the ORDER log. The snapshot is what the log holds.
+    recordOrderHistory(order: TOrder): void {
+        this.recentOrders.push(JSON.parse(JSON.stringify(order)));
+        if (this.recentOrders.length > ORDER_HISTORY_LIMIT) {
+            this.recentOrders.splice(0, this.recentOrders.length - ORDER_HISTORY_LIMIT);
+        }
+    }
+
+    // Mirrors updateOrderLog: the state of a recent record follows the log.
+    markOrderHistory(uuid: string, state: "CANCALED" | "FILLED"): void {
+        for (let i = this.recentOrders.length - 1; i >= 0; i--) {
+            if (this.recentOrders[i].uuid === uuid) {
+                this.recentOrders[i].state = state;
+                return;
+            }
+        }
     }
 
     private newOrderbook(firstOrder: TOrder): IResult<{ order?: any, trade?: any }> {
@@ -25,7 +74,24 @@ export class OrderbookManager {
 
     async addOrder(order: TOrder, noTrades: boolean = false): Promise<IResult<{ order?: TOrder, trade?: any }>> {
             try {
+                // Every order that enters the book goes through this method: client
+                // orders, and the taker remainder of a swap (see orderbook.class.ts).
+                // An order whose owner is not connected is refused here, so no ghost
+                // order can rest or be matched.
+                if (!getConnectedSocket(order.socket_id)) {
+                    return { error: 'Order owner is not connected' };
+                }
                 const existingOrderbook = this.orderbooks.find(b => b.checkCompatible(order));
+                // A new book starts with this order resting, so the limits below apply to it.
+                // Any client can name a pair, so new books are capped. Refused before
+                // anything is created, so a refusal leaves no state behind.
+                if (!existingOrderbook) {
+                    const restingError = this.restingCapError(order);
+                    if (restingError) return { error: restingError };
+                    if (this.orderbooks.length >= envConfig.MAX_ORDERBOOKS) {
+                        return { error: `Too many orderbooks: the server holds at most ${envConfig.MAX_ORDERBOOKS}` };
+                    }
+                }
                 const res = existingOrderbook
                     ? await existingOrderbook.addOrder(order, noTrades)
                     : this.newOrderbook(order);
@@ -35,7 +101,10 @@ export class OrderbookManager {
             }
     }
 
-    removeOrder(uuid: string, socket_id: string): IResult {
+    // duringSettlement is false by default, so a caller that forgets it gets the
+    // safe behaviour (a locked order cannot be cancelled). Only internal settlement
+    // and disconnect paths pass true.
+    removeOrder(uuid: string, socket_id: string, duringSettlement: boolean = false): IResult {
         try {
             const orderbook = this.orderbooks.find(b => b.orders.find(o => o.uuid === uuid));
             if (!orderbook) {
@@ -45,12 +114,62 @@ export class OrderbookManager {
             if (!order) {
                 throw new Error(`Order with uuid: ${uuid} dont exist`);
             }
-            const res = orderbook.removeOrder(uuid, socket_id);
-            updateOrderLog(orderbook.orderbookName,order.uuid, "CANCALED");
+            const res = orderbook.removeOrder(uuid, socket_id, duringSettlement);
+            // The audit state follows the outcome of the removal. A rejected
+            // removal (not the owner, order gone) must leave the log untouched.
+            if (!res.error) {
+                updateOrderLog(orderbook.logNames, order.uuid, "CANCALED");
+                this.markOrderHistory(order.uuid, "CANCALED");
+                this.releaseEmptyOrderbooks();
+            }
             return res;
         } catch (error) {
             return { error: error.message };
         }
+    }
+
+    // A book that holds no orders is released, so the MAX_ORDERBOOKS cap counts only books that
+    // hold orders. Its trades stay in the logs: marketView reads them for a market with no live book.
+    releaseEmptyOrderbooks(): void {
+        this.orderbooks = this.orderbooks.filter(b => b.orders.length > 0);
+    }
+
+    // What a client sees for the market a filter names: its unlocked resting orders and its trades,
+    // newest first. A market with no live book has no orders, and its trades come from its logs.
+    marketView(filter: TFilter): { orders: TOrder[], history: IHistoryTrade[] } {
+        const book = this.orderbooks.find(b => b.findByFilter(filter));
+        if (book) {
+            return {
+                orders: book.orders.filter(o => !o.lock),
+                history: book.historyTrades.filter(o => o.txid),
+            };
+        }
+        return { orders: [], history: readTradeHistory(filterLogNames(filter)).filter(o => o.txid) };
+    }
+
+    // Removes every unlocked resting order owned by a socket. Called from the socket
+    // disconnect hook, the only place a socket's book state is released. A locked order
+    // is refused here by the same rule as a cancel: it leaves the book with its swap.
+    removeOrdersOfSocket(socket_id: string): void {
+        this.getOrdersBySocketId(socket_id).forEach(o => this.removeOrder(o.uuid, socket_id));
+    }
+
+    openOrderCount(): number {
+        return this.orderbooks.reduce((sum, ob) => sum + ob.orders.length, 0);
+    }
+
+    // Limits on resting orders: per socket (the account, as this server identifies it) and in
+    // total. Checked only where an order would come to rest (a new order that stays on the book,
+    // or the taker remainder of a trade), never for an order that trades at once. A refusal here
+    // leaves no state behind, since it is checked before anything rests or locks.
+    restingCapError(order: TOrder): string | null {
+        if (this.getOrdersBySocketId(order.socket_id).length >= envConfig.MAX_OPEN_ORDERS_PER_SOCKET) {
+            return `Too many open orders: at most ${envConfig.MAX_OPEN_ORDERS_PER_SOCKET} per account`;
+        }
+        if (this.openOrderCount() >= envConfig.MAX_OPEN_ORDERS) {
+            return `Too many open orders on this server: at most ${envConfig.MAX_OPEN_ORDERS}`;
+        }
+        return null;
     }
 
     getOrdersBySocketId(id: string) {
@@ -64,28 +183,11 @@ export class OrderbookManager {
     }
 
     getOrdersHistory() {
-        try {
-            const _path = `logs/`;
-            const today = moment()
-                .format('DD-MM-YYYY');
-            const yesterday = moment()
-                .subtract(1, 'days')
-                .format('DD-MM-YYYY');
-            const files = readdirSync(_path)
-                .filter(f => f.startsWith('ORDER'))
-                .filter(f => f.includes(today) || f.includes(yesterday));
-            const resArray = [];
-            files.forEach(f => {
-                const filePath = _path + f;
-                readFileSync(filePath, 'utf8')
-                    .split('\n')
-                    .slice(0, -1)
-                    .forEach(q => resArray.push(JSON.parse(q)));
-            });
-            return  resArray.slice(0, 500);
-        } catch (error) {
-            console.log(error);
-            return [];
-        }
+        return this.recentOrders.slice();
+    }
+
+    // What a client's view of the book holds after a change: its own resting orders and the order history.
+    placedOrdersOf(socketId: string) {
+        return { openedOrders: this.getOrdersBySocketId(socketId), orderHistory: this.getOrdersHistory() };
     }
 }

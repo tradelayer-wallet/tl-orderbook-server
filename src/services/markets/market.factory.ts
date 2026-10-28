@@ -1,5 +1,8 @@
 import { IContract, IMarket, IMarketType, IToken } from "../../utils/types/markets.types";
 
+// The property id of LTC on the wire: 0, the TradeLayer consensus id. The wallet uses the same value.
+export const LTC_PROPERTY_ID = 0;
+
 export const createToken = (shortName: string, fullName: string, propertyId: number|string): IToken => {
     return { shortName, fullName, propertyId };
 };

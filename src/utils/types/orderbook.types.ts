@@ -4,8 +4,9 @@ interface IKeyPair {
 };
 
 export interface ISpotOrderProps {
-    id_desired: number;
-    id_for_sale: number;
+    id_desired: number | string;
+    id_for_sale: number | string;
+    // Integer units (protocol-v2.md B.1): amount in 1e-8 whole tokens, price in sats per whole token.
     amount: number;
     price: number;
 };
@@ -16,6 +17,13 @@ export interface IFuturesOrderProps {
     price: number;
     levarage: number;
     collateral: number;
+};
+
+interface IBuiltOrder {
+    uuid: string;
+    timestamp: number;
+    socket_id: string;
+    lock: boolean;
 };
 
 interface IRawSpotOrder {
@@ -36,13 +44,6 @@ interface IRawFuturesOrder {
     props: IFuturesOrderProps;
 };
 
-interface IBuiltOrder {
-    uuid: string;
-    timestamp: number;
-    socket_id: string;
-    lock: boolean;
-};
-
 interface ISpotOrder extends IRawSpotOrder, IBuiltOrder {};
 interface IFuturesOrder extends IRawFuturesOrder, IBuiltOrder {};
 
@@ -57,7 +58,6 @@ export enum EOrderAction {
 };
 
 export type TOrder = ISpotOrder | IFuturesOrder;
-export type TRawOrder = IRawSpotOrder | IRawFuturesOrder;
 
 export interface IHistoryTrade extends ITradeInfo {
     txid: string;
@@ -78,10 +78,11 @@ interface IFuturesTradeProps {
 };
 
 interface ISpotTradeProps {
-    propIdDesired: number;
-    propIdForSale: number;
+    propIdDesired: number | string;
+    propIdForSale: number | string;
     amountDesired: number;
     amountForSale: number;
+    price: number;
 };
 
 export interface ITradeInfo {

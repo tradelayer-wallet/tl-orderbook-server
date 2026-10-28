@@ -33,8 +33,8 @@ export interface IMarketType {
 
 interface ISpotFilter {
     type: EOrderType.SPOT,
-    first_token: number,
-    second_token: number,
+    first_token: number | string,
+    second_token: number | string,
 }
 
 interface IFuturesFilter {

@@ -1,0 +1,10 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "noEmitOnError": false,
+    "outDir": "./.build",
+    "rootDir": "../src",
+    "skipLibCheck": true
+  },
+  "include": ["../src/**/*"]
+}

@@ -1,6 +1,6 @@
 import { IContract, IMarket, IMarketType } from "../../utils/types/markets.types";
 import { IResult } from "../../utils/types/mix.types";
-import { createContract, createMarket, createMarketType, createToken, MARKET_ICONS } from "./market.factory";
+import { createContract, createMarket, createMarketType, createToken, LTC_PROPERTY_ID, MARKET_ICONS } from "./market.factory";
 
 export class MarketsManager {
     constructor() {
@@ -10,7 +10,7 @@ export class MarketsManager {
     // Correctly defined method
     getAvailableSpotMarkets(): IResult<IMarketType[]> {
         try {
-            const LTC = createToken('LTC', 'LTC', 0);
+            const LTC = createToken('LTC', 'LTC', LTC_PROPERTY_ID);
             const USDT = createToken('USDT', 'Tether USD', 5);
             const TL = createToken('TL', 'TL', 1);
             const sLTC = createToken('sLTC', 'sLTC', 's-1-5');
@@ -35,7 +35,7 @@ export class MarketsManager {
     // Correctly defined method
     getAvailableFuturesMarkets(): IResult<IMarketType[]> {
         try {
-            const LTC = createToken('LTC', 'Litecoin', 0);
+            const LTC = createToken('LTC', 'Litecoin', LTC_PROPERTY_ID);
             const USDT = createToken('USDT', 'Tether USD', 5);
             const TL = createToken('TL', 'TradeLayer Native Metacoin', 1);
             const BTCoracle = createToken('BTC', 'Bitcoin Oracle', 1);
