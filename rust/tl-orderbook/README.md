@@ -88,7 +88,7 @@ when it is exactly a six-decimal number. 1e-8 (satoshi) precision is **not** rep
 
 | # | status | legacy | new behaviour | test |
 |---|---|---|---|---|
-| P1 | preserved | `orderbook.class.ts:148-186` crossing filter, best price, stable-sort ties, `[0]` | `Orderbook::find_match`, `min_by_key` (first minimum) | `tests/parity.rs` (319 cases vs legacy) |
+| P1 | preserved | `orderbook.class.ts:148-186` crossing filter, best price, stable-sort ties, `[0]` | `Orderbook::find_match`: lowest/highest price level, smallest sequence number in it (= first minimum in book order) | `tests/parity.rs` (319 cases vs legacy), `tests/index_differential.rs` (index vs linear scan) |
 | P2 | preserved | `:312-367` `buildTrade`: fill `min(amounts)` at the **maker's** price, `unfilled` remainder | `build_trade` | parity, `protocol.rs` |
 | P3 | preserved | `:178-184` best candidate from same socket / same address fails the whole submission (next-best is not tried) | `Error::SameAccount` / `SameAddress`, same text | parity (`final error=`), `same_session_best_match_blocks_the_taker_like_legacy` |
 | P4 | preserved | `:208` `many-orders` crossing order is silently dropped; `socket/manager.class.ts:75-80` | `SubmitOutcome::Skipped`, logged as `BatchCrossing` | `many_orders_places_resting_and_silently_skips_crossing` |
@@ -119,7 +119,7 @@ when it is exactly a six-decimal number. 1e-8 (satoshi) precision is **not** rep
 |---|---|---|
 | `Lifecycle.lean` `allowed`, `terminal`, `transition` | `lifecycle::edge_allowed`, `is_terminal`, `Order::transition` | event log omitted |
 | `Swap.lean` `accept`, `run`, `terminate` | `SwapState::on_message` | payload size, txid shape, trade-id equality only add refusals and are omitted |
-| `Match.lean` `eligible`, `bestFrom`, `pickBest`, `findMatch`, `build`, `splitDust` | `Orderbook::find_match`, `min_by_key`, `build_trade` amounts, `split_dust` | `Nat` for raw 1e-6 units; futures use the spot-shaped `desired/sale` ids |
+| `Match.lean` `eligible`, `bestFrom`, `pickBest`, `findMatch`, `build`, `splitDust` | `Orderbook::find_match` (specification: the linear scan with `min_by_key`; the Rust code selects through a price-level index, tested equal in `tests/index_differential.rs`), `build_trade` amounts, `split_dust` | `Nat` for raw 1e-6 units; futures use the spot-shaped `desired/sale` ids |
 | `Book.lean` `place`, `cancel`, `unlock`, `sideCount`, `Bounded` | `Orderbook::submit` placement branch, `cancel`, `abort` on the maker | the pending-trade table |
 
 Theorems (36 `#print axioms` in `AxiomCheck.lean`; only `propext`, `Classical.choice`, `Quot.sound`):
@@ -135,11 +135,47 @@ Concrete vectors are repeated as `example ... := by decide`/`rfl` in Lean and as
 `taker_partial_then_rests`, the dust vectors of `d2_*`, the cancel vectors of `d1_*`, and the swap-step vectors of
 `swap.rs`.
 
+## Performance
+
+`Orderbook` keeps resting orders in a `BTreeMap` keyed by an insertion sequence number (iteration = legacy array
+order; a partial fill keeps its number, a remainder gets a new one) plus, for the unlocked orders, a price-level
+index per (action, market leg). `submit` finds the best candidate as the first or last price level and its smallest
+sequence number, `complete`/`abort`/`cancel` find orders by id and pending swaps by trade id in `O(log n)`, and side
+depth and per-session load are counters. Behaviour is unchanged: `orders()` now returns an iterator over the same
+sequence (`order_count()` / `is_empty()` added), and `find_match` returns the chosen `OrderId` instead of a vector
+index. `tests/index_differential.rs` drives the old linear scan (kept there as a reference) against the index on
+random books with locks, price ties, both spot orientations and futures, and through random submit / complete /
+abort / cancel sequences.
+
+Measured with `examples/throughput.rs` on workloads from `scripts/gen-workload.cjs` (seed 20261030; `cross` = a
+crossing mix, `deep` = a deep book, every swap settles at once and the taker remainder is resubmitted). Hardware:
+WSL2, 20 vCPU, kernel 6.18.54.1-microsoft-standard-WSL2, release build, single run per cell on a shared desktop
+(expect noise of tens of percent). Latency is per submitted order including its fills.
+
+| workload, orders | before orders/s | before p50 / p99 µs | before RSS MB | after orders/s | after p50 / p99 µs | after RSS MB |
+|---|---|---|---|---|---|---|
+| cross, 20k | 35,224 | 9.8 / 234.3 | 11.4 | 126,064 | 2.3 / 66.4 | 12.6 |
+| deep, 20k | 1,458 | 125.8 / 12,792 | 12.5 | 123,845 | 1.1 / 78.4 | 15.8 |
+| cross, 100k | 1,589 | 146.0 / 11,531 | 44.1 | 165,177 | 2.1 / 36.6 | 48.2 |
+| deep, 100k | 329 | 893.2 / 42,587 | 52.3 | 80,417 | 1.2 / 135.2 | 68.3 |
+
+The Rust traces (trades plus final book) are byte-identical before and after (sha256 prefixes `f6e7f4c0c2b7912d`,
+`65c868532f368110`, `0de9c11bb6e4b366`, `d8b0c7a966ed56b4`). Memory grows modestly (up to +30% on the deep book)
+because of the tree and index nodes.
+
+Legacy comparison (`cross`, 20k orders, Node v18.19.1, `scripts/bench-legacy.cjs`): legacy 411 orders/s, p50 697.4
+µs, p99 24,467 µs, peak RSS 109 MB; Rust in the same run 108,306 orders/s, p50 2.4 µs, p99 76.3 µs; traces IDENTICAL
+(sha256 `f6e7f4c0c2b7912d`, 19,937 lines). The legacy numbers were measured with its socket, swap channel and
+persistence I/O stubbed, so they are an upper bound for the real service.
+
+Reproduce (from WSL, `tools/ob-bench.sh <cross|deep> <n> 20261030 [skip-legacy]`): it builds the example, generates
+the workload, runs Rust and, unless `skip-legacy`, the legacy matcher, and compares the two traces.
+
 ## Commands
 
 ```
 # from rust/tl-orderbook (WSL: tools/rust.sh and tools/lean.sh wrap these)
-cargo test --locked --offline
+cargo test --locked --offline   # incl. tests/index_differential.rs
 cargo clippy --locked --offline --all-targets -- -D warnings
 cargo fmt --all -- --check
 node scripts/compare-legacy.cjs --check     # re-runs the compiled legacy matcher; --write regenerates fixtures

@@ -26,9 +26,22 @@
 //! session or the taker's address, the whole submission fails (the legacy
 //! behaviour; the next-best candidate is *not* tried). The fill is
 //! `min(amounts)` at the **maker's** price.
+//!
+//! # Data structure
+//!
+//! Resting orders live in a `BTreeMap` keyed by an insertion sequence number
+//! (iteration order = book order = legacy array order; a partially filled
+//! maker keeps its number, a resting remainder gets a fresh, larger one).
+//! Unlocked (`Open`) orders are also indexed per (action, market leg) by price
+//! level, each level holding its sequence numbers, so the best candidate is
+//! the first/last level and its smallest sequence number: price priority, then
+//! time priority, in `O(log n)`. Locked orders are not in the price index.
+//! Side depth and per-session load are counters; pending swaps are found by
+//! trade id. Every lookup that used to be a linear `position` keeps its "first
+//! match in book order" meaning.
 
-use std::cmp::Reverse;
-use std::collections::VecDeque;
+use std::collections::btree_map::Values;
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 
 use crate::amount::{notional, Amount, Price};
 use crate::error::Error;
@@ -308,14 +321,57 @@ pub struct Aborted {
     pub maker_session: SessionId,
 }
 
+/// Price-index group: (is sell side, kind, leg a, leg b). A spot order
+/// `(desired, for_sale)` is filed under `(action, 0, desired, for_sale)`; a
+/// futures order under `(action, 1, contract, 0)`.
+type GroupKey = (bool, u8, u32, u32);
+
+fn group_of(action: Action, props: &Props) -> GroupKey {
+    let sell = action == Action::Sell;
+    match props {
+        Props::Spot(s) => (sell, 0, s.id_desired, s.id_for_sale),
+        Props::Futures(f) => (sell, 1, f.contract_id, 0),
+    }
+}
+
+/// Group a taker looks in: the opposite action with its legs mirrored.
+fn counter_group_of(taker: &Order) -> GroupKey {
+    let sell = taker.action.opposite() == Action::Sell;
+    match &taker.props {
+        Props::Spot(s) => (sell, 0, s.id_for_sale, s.id_desired),
+        Props::Futures(f) => (sell, 1, f.contract_id, 0),
+    }
+}
+
+fn side(action: Action) -> usize {
+    match action {
+        Action::Buy => 0,
+        Action::Sell => 1,
+    }
+}
+
 /// One market's resting orders, history and in-flight swaps.
 #[derive(Debug, Clone)]
 pub struct Orderbook {
     key: MarketKey,
     limits: Limits,
-    orders: Vec<Order>,
+    /// Resting orders by insertion sequence number (= book order).
+    orders: BTreeMap<u64, Order>,
+    next_seq: u64,
+    /// `(order id, seq)`, so the first order with an id is `range((id, 0)..)`.
+    by_id: BTreeSet<(OrderId, u64)>,
+    /// Price index of the `Open` orders: group -> price -> sequence numbers.
+    levels: BTreeMap<GroupKey, BTreeMap<Price, BTreeSet<u64>>>,
+    /// Resting orders per side (`side()` index).
+    depth: [usize; 2],
+    /// Resting orders plus in-flight takers per session.
+    load: HashMap<SessionId, usize>,
     history: VecDeque<HistoryTrade>,
-    pending: Vec<Pending>,
+    /// In-flight swaps by creation number (= creation order).
+    pending: BTreeMap<u64, Pending>,
+    next_pending: u64,
+    /// `(trade id, creation number)`.
+    pending_by_trade: BTreeSet<(TradeId, u64)>,
     events: Vec<LifecycleEvent>,
 }
 
@@ -324,9 +380,16 @@ impl Orderbook {
         Orderbook {
             key,
             limits,
-            orders: Vec::new(),
+            orders: BTreeMap::new(),
+            next_seq: 0,
+            by_id: BTreeSet::new(),
+            levels: BTreeMap::new(),
+            depth: [0; 2],
+            load: HashMap::new(),
             history: VecDeque::new(),
-            pending: Vec::new(),
+            pending: BTreeMap::new(),
+            next_pending: 0,
+            pending_by_trade: BTreeSet::new(),
             events: Vec::new(),
         }
     }
@@ -352,7 +415,9 @@ impl Orderbook {
                 return Err(Error::BookFull);
             }
         }
-        book.orders = orders;
+        for o in orders {
+            book.insert_order(o);
+        }
         Ok(book)
     }
 
@@ -363,8 +428,16 @@ impl Orderbook {
         self.key.name()
     }
     /// Resting orders in book (insertion) order.
-    pub fn orders(&self) -> &[Order] {
-        &self.orders
+    pub fn orders(&self) -> Values<'_, u64, Order> {
+        self.orders.values()
+    }
+    /// Number of resting orders.
+    pub fn order_count(&self) -> usize {
+        self.orders.len()
+    }
+    /// No resting orders.
+    pub fn is_empty(&self) -> bool {
+        self.orders.is_empty()
     }
     /// Settled trades, newest first.
     pub fn history(&self) -> &VecDeque<HistoryTrade> {
@@ -374,16 +447,11 @@ impl Orderbook {
         self.pending.len()
     }
     pub fn side_depth(&self, action: Action) -> usize {
-        self.orders.iter().filter(|o| o.action == action).count()
+        self.depth[side(action)]
     }
     /// Resting orders plus in-flight takers owned by `session`.
     pub fn session_load(&self, session: SessionId) -> usize {
-        self.orders.iter().filter(|o| o.session == session).count()
-            + self
-                .pending
-                .iter()
-                .filter(|p| p.taker.session == session)
-                .count()
+        self.load.get(&session).copied().unwrap_or(0)
     }
     /// Take and clear the lifecycle events recorded since the last call.
     pub fn take_events(&mut self) -> Vec<LifecycleEvent> {
@@ -393,42 +461,159 @@ impl Orderbook {
         self.key.compatible(&order.props)
     }
 
-    /// Legacy `checkMatch`: index of the best crossing resting order.
-    pub fn find_match(&self, taker: &Order) -> Result<Option<usize>, Error> {
-        let t_price = taker.props.price();
-        let crosses = |o: &Order| -> bool {
-            let ids = match (&o.props, &taker.props) {
-                (Props::Spot(a), Props::Spot(b)) => {
-                    a.id_desired == b.id_for_sale && a.id_for_sale == b.id_desired
-                }
-                (Props::Futures(a), Props::Futures(b)) => a.contract_id == b.contract_id,
-                _ => false,
-            };
-            let price_ok = match taker.action {
-                Action::Buy => o.props.price() <= t_price,
-                Action::Sell => o.props.price() >= t_price,
-            };
-            ids && o.action == taker.action.opposite() && price_ok && !o.is_locked()
-        };
-        let candidates = self.orders.iter().enumerate().filter(|(_, o)| crosses(o));
-        // min_by_key returns the first minimum: price priority, then book
-        // order (time priority), matching a stable sort followed by [0].
-        let best = match taker.action {
-            Action::Buy => candidates.min_by_key(|(_, o)| o.props.price()),
-            Action::Sell => candidates.min_by_key(|(_, o)| Reverse(o.props.price())),
-        };
-        match best {
-            None => Ok(None),
-            Some((idx, m)) => {
-                if m.session == taker.session {
-                    return Err(Error::SameAccount);
-                }
-                if m.keypair.address == taker.keypair.address {
-                    return Err(Error::SameAddress);
-                }
-                Ok(Some(idx))
+    // ----- storage helpers -------------------------------------------------
+
+    fn bump_load(&mut self, session: SessionId) {
+        *self.load.entry(session).or_insert(0) += 1;
+    }
+
+    fn drop_load(&mut self, session: SessionId) {
+        if let Some(n) = self.load.get_mut(&session) {
+            *n -= 1;
+            if *n == 0 {
+                self.load.remove(&session);
             }
         }
+    }
+
+    fn index(&mut self, seq: u64, group: GroupKey, price: Price) {
+        self.levels
+            .entry(group)
+            .or_default()
+            .entry(price)
+            .or_default()
+            .insert(seq);
+    }
+
+    fn unindex(&mut self, seq: u64, group: GroupKey, price: Price) {
+        if let Some(prices) = self.levels.get_mut(&group) {
+            if let Some(set) = prices.get_mut(&price) {
+                set.remove(&seq);
+                if set.is_empty() {
+                    prices.remove(&price);
+                }
+            }
+            if prices.is_empty() {
+                self.levels.remove(&group);
+            }
+        }
+    }
+
+    /// Append `o` at the end of the book; returns its sequence number.
+    fn insert_order(&mut self, o: Order) -> u64 {
+        let seq = self.next_seq;
+        self.next_seq += 1;
+        self.depth[side(o.action)] += 1;
+        self.bump_load(o.session);
+        self.by_id.insert((o.id, seq));
+        if o.state == OrderState::Open {
+            self.index(seq, group_of(o.action, &o.props), o.props.price());
+        }
+        self.orders.insert(seq, o);
+        seq
+    }
+
+    /// Drop the order at `seq` from every structure.
+    fn remove_order(&mut self, seq: u64) -> Option<Order> {
+        let o = self.orders.remove(&seq)?;
+        if o.state == OrderState::Open {
+            self.unindex(seq, group_of(o.action, &o.props), o.props.price());
+        }
+        self.depth[side(o.action)] -= 1;
+        self.drop_load(o.session);
+        self.by_id.remove(&(o.id, seq));
+        Some(o)
+    }
+
+    /// Sequence number of the first order with `id` in book order.
+    fn seq_of(&self, id: OrderId) -> Option<u64> {
+        self.by_id
+            .range((id, 0)..=(id, u64::MAX))
+            .next()
+            .map(|&(_, seq)| seq)
+    }
+
+    /// Run `f` on the order at `seq`, keeping the price index in step with
+    /// its state (indexed exactly while `Open`).
+    fn mutate<F>(&mut self, seq: u64, f: F) -> Result<(), Error>
+    where
+        F: FnOnce(&mut Order, &mut Vec<LifecycleEvent>) -> Result<(), Error>,
+    {
+        let Some(o) = self.orders.get_mut(&seq) else {
+            return Err(Error::IllegalTransition); // unreachable: callers hold a live seq
+        };
+        let group = group_of(o.action, &o.props);
+        let price = o.props.price();
+        let was_open = o.state == OrderState::Open;
+        let res = f(o, &mut self.events);
+        let is_open = o.state == OrderState::Open;
+        if was_open && !is_open {
+            self.unindex(seq, group, price);
+        } else if !was_open && is_open {
+            self.index(seq, group, price);
+        }
+        res
+    }
+
+    fn push_pending(&mut self, p: Pending) {
+        let n = self.next_pending;
+        self.next_pending += 1;
+        self.bump_load(p.taker.session);
+        self.pending_by_trade.insert((p.trade_id, n));
+        self.pending.insert(n, p);
+    }
+
+    /// Creation number of the oldest pending swap with `trade_id`.
+    fn pending_of(&self, trade_id: TradeId) -> Option<u64> {
+        self.pending_by_trade
+            .range((trade_id, 0)..=(trade_id, u64::MAX))
+            .next()
+            .map(|&(_, n)| n)
+    }
+
+    fn take_pending(&mut self, n: u64) -> Option<Pending> {
+        let p = self.pending.remove(&n)?;
+        self.pending_by_trade.remove(&(p.trade_id, n));
+        self.drop_load(p.taker.session);
+        Some(p)
+    }
+
+    /// Sequence number of the best crossing resting order (before the
+    /// self-match checks, which `find_match` applies).
+    fn best_seq(&self, taker: &Order) -> Option<u64> {
+        let prices = self.levels.get(&counter_group_of(taker))?;
+        let t_price = taker.props.price();
+        // Lowest ask for a buy taker, highest bid for a sell taker; within the
+        // level the smallest sequence number is the earliest in book order.
+        let (_, seqs) = match taker.action {
+            Action::Buy => prices.iter().next().filter(|(p, _)| **p <= t_price),
+            Action::Sell => prices.iter().next_back().filter(|(p, _)| **p >= t_price),
+        }?;
+        seqs.iter().next().copied()
+    }
+
+    /// Legacy `checkMatch`: id of the best crossing resting order.
+    pub fn find_match(&self, taker: &Order) -> Result<Option<OrderId>, Error> {
+        match self.find_seq(taker)? {
+            None => Ok(None),
+            Some(seq) => Ok(self.orders.get(&seq).map(|o| o.id)),
+        }
+    }
+
+    fn find_seq(&self, taker: &Order) -> Result<Option<u64>, Error> {
+        let Some(seq) = self.best_seq(taker) else {
+            return Ok(None);
+        };
+        let Some(m) = self.orders.get(&seq) else {
+            return Ok(None); // unreachable: the index only holds live orders
+        };
+        if m.session == taker.session {
+            return Err(Error::SameAccount);
+        }
+        if m.keypair.address == taker.keypair.address {
+            return Err(Error::SameAddress);
+        }
+        Ok(Some(seq))
     }
 
     /// Legacy `addOrder`, up to the point where the swap channel opens.
@@ -474,7 +659,7 @@ impl Orderbook {
         if !self.check_compatible(order) {
             return Err(Error::Mismatch);
         }
-        match self.find_match(order)? {
+        match self.find_seq(order)? {
             None => {
                 if self.side_depth(order.action) >= self.limits.max_side_depth {
                     return Err(Error::BookFull);
@@ -482,10 +667,10 @@ impl Orderbook {
                 if order.state == OrderState::New {
                     order.transition(OrderState::Open, Reason::Placed, now, &mut self.events)?;
                 }
-                self.orders.push(order.clone());
+                self.insert_order(order.clone());
                 Ok(SubmitOutcome::Placed(order.clone()))
             }
-            Some(idx) => {
+            Some(seq) => {
                 if no_trades {
                     if order.state == OrderState::New {
                         order.transition(
@@ -497,14 +682,12 @@ impl Orderbook {
                     }
                     return Ok(SubmitOutcome::Skipped);
                 }
-                let built = build_trade(order, &self.orders[idx], self.limits.min_amount)?;
-                let maker_id = self.orders[idx].id;
-                self.orders[idx].transition(
-                    OrderState::LockedInSwap,
-                    Reason::Matched,
-                    now,
-                    &mut self.events,
-                )?;
+                let maker = self.orders.get(&seq).ok_or(Error::IllegalTransition)?;
+                let built = build_trade(order, maker, self.limits.min_amount)?;
+                let maker_id = maker.id;
+                self.mutate(seq, |m, ev| {
+                    m.transition(OrderState::LockedInSwap, Reason::Matched, now, ev)
+                })?;
                 order.transition(
                     OrderState::LockedInSwap,
                     Reason::Matched,
@@ -516,7 +699,7 @@ impl Orderbook {
                     info: built.info.clone(),
                     unfilled: built.unfilled.clone(),
                 };
-                self.pending.push(Pending {
+                self.push_pending(Pending {
                     trade_id,
                     taker: order.clone(),
                     maker_id,
@@ -535,18 +718,16 @@ impl Orderbook {
         txid: String,
         now: u64,
     ) -> Result<Completion, Error> {
-        let pos = self
-            .pending
-            .iter()
-            .position(|p| p.trade_id == trade_id)
+        let pn = self
+            .pending_of(trade_id)
             .ok_or(Error::UnknownTrade(trade_id))?;
-        let maker_id = self.pending[pos].maker_id;
-        let midx = self
-            .orders
-            .iter()
-            .position(|o| o.id == maker_id)
-            .ok_or(Error::NotFound(maker_id))?;
-        let p = self.pending.remove(pos);
+        let maker_id = self
+            .pending
+            .get(&pn)
+            .map(|p| p.maker_id)
+            .ok_or(Error::UnknownTrade(trade_id))?;
+        let mseq = self.seq_of(maker_id).ok_or(Error::NotFound(maker_id))?;
+        let p = self.take_pending(pn).ok_or(Error::UnknownTrade(trade_id))?;
         let built = p.built;
 
         if built.maker_live.is_zero() {
@@ -555,12 +736,16 @@ impl Orderbook {
             } else {
                 Reason::FilledDust
             };
-            self.orders[midx].transition(OrderState::Settled, reason, now, &mut self.events)?;
-            self.orders.remove(midx);
+            self.mutate(mseq, |m, ev| {
+                m.transition(OrderState::Settled, reason, now, ev)
+            })?;
+            self.remove_order(mseq);
         } else {
-            let m = &mut self.orders[midx];
-            m.props.set_amount(built.maker_live);
-            m.transition(OrderState::Open, Reason::PartialFill, now, &mut self.events)?;
+            let live = built.maker_live;
+            self.mutate(mseq, |m, ev| {
+                m.props.set_amount(live);
+                m.transition(OrderState::Open, Reason::PartialFill, now, ev)
+            })?;
         }
 
         let mut taker = p.taker;
@@ -599,16 +784,18 @@ impl Orderbook {
     /// cancelled. (Legacy removed the maker order when the TERMINATE event
     /// *claimed* to come from the maker.)
     pub fn abort(&mut self, trade_id: TradeId, reason: Reason, now: u64) -> Result<Aborted, Error> {
-        let pos = self
-            .pending
-            .iter()
-            .position(|p| p.trade_id == trade_id)
+        let pn = self
+            .pending_of(trade_id)
             .ok_or(Error::UnknownTrade(trade_id))?;
-        let p = self.pending.remove(pos);
+        let p = self.take_pending(pn).ok_or(Error::UnknownTrade(trade_id))?;
         let mut maker_session = SessionId(0);
-        if let Some(m) = self.orders.iter_mut().find(|o| o.id == p.maker_id) {
-            maker_session = m.session;
-            m.transition(OrderState::Open, reason, now, &mut self.events)?;
+        if let Some(mseq) = self.seq_of(p.maker_id) {
+            if let Some(m) = self.orders.get(&mseq) {
+                maker_session = m.session;
+            }
+            self.mutate(mseq, |m, ev| {
+                m.transition(OrderState::Open, reason, now, ev)
+            })?;
         }
         let mut taker = p.taker;
         taker.transition(OrderState::Cancelled, reason, now, &mut self.events)?;
@@ -623,14 +810,14 @@ impl Orderbook {
     /// Trades whose swap started at or before `now - timeout`.
     pub fn expired(&self, now: u64, timeout_ms: u64) -> Vec<TradeId> {
         self.pending
-            .iter()
+            .values()
             .filter(|p| now.saturating_sub(p.created_at) >= timeout_ms)
             .map(|p| p.trade_id)
             .collect()
     }
 
     pub fn has_trade(&self, trade_id: TradeId) -> bool {
-        self.pending.iter().any(|p| p.trade_id == trade_id)
+        self.pending_of(trade_id).is_some()
     }
 
     /// Legacy `removeOrder`, with authorization. Only the owning session can
@@ -642,23 +829,22 @@ impl Orderbook {
         reason: Reason,
         now: u64,
     ) -> Result<Order, Error> {
-        let idx = self
-            .orders
-            .iter()
-            .position(|o| o.id == id)
-            .ok_or(Error::NotFound(id))?;
-        if self.orders[idx].session != requester {
+        let seq = self.seq_of(id).ok_or(Error::NotFound(id))?;
+        let o = self.orders.get(&seq).ok_or(Error::NotFound(id))?;
+        if o.session != requester {
             return Err(Error::NotAuthorized(id));
         }
-        if self.orders[idx].is_locked() {
+        if o.is_locked() {
             return Err(Error::OrderLocked(id));
         }
-        self.orders[idx].transition(OrderState::Cancelled, reason, now, &mut self.events)?;
-        Ok(self.orders.remove(idx))
+        self.mutate(seq, |o, ev| {
+            o.transition(OrderState::Cancelled, reason, now, ev)
+        })?;
+        self.remove_order(seq).ok_or(Error::NotFound(id))
     }
 
     /// Whether the book holds `id`.
     pub fn contains(&self, id: OrderId) -> bool {
-        self.orders.iter().any(|o| o.id == id)
+        self.seq_of(id).is_some()
     }
 }

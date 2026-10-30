@@ -158,11 +158,7 @@ fn maker_partial_fill_keeps_its_place_in_the_queue() {
     let out = place(&mut srv, taker, buy(3, "2.0", "1"), 2);
     let t = new_channel_trade(&out).unwrap();
     run_all_steps(&mut srv, t, taker, a, 3);
-    let ids: Vec<u64> = srv.books().books()[0]
-        .orders()
-        .iter()
-        .map(|o| o.id.0)
-        .collect();
+    let ids: Vec<u64> = srv.books().books()[0].orders().map(|o| o.id.0).collect();
     assert_eq!(ids, vec![1, 2], "partially filled maker stays first");
     assert_eq!(
         order_in(&srv, 1).unwrap().props.amount(),
@@ -294,7 +290,7 @@ fn disconnect_cancels_open_orders() {
     place(&mut srv, a, sell(1, "2", "1"), 1);
     place(&mut srv, a, sell(1, "3", "1"), 1);
     srv.disconnect(a, 5);
-    assert!(srv.books().books()[0].orders().is_empty());
+    assert!(srv.books().books()[0].is_empty());
     assert!(!srv.sessions().contains(a));
     assert_eq!(
         srv.handle(a, ClientEvent::CloseOrder(OrderId(1)), 6),

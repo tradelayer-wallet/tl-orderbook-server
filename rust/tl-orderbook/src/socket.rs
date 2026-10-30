@@ -417,11 +417,7 @@ impl Server {
     fn on_update_orderbook(&mut self, s: SessionId, filter: &Filter) {
         let (orders, history) = match self.books.find_by_filter(filter) {
             Some(b) => (
-                b.orders()
-                    .iter()
-                    .filter(|o| !o.is_locked())
-                    .cloned()
-                    .collect(),
+                b.orders().filter(|o| !o.is_locked()).cloned().collect(),
                 b.history().iter().cloned().collect(),
             ),
             None => (Vec::new(), Vec::new()),

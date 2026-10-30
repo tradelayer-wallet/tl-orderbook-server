@@ -139,7 +139,7 @@ pub fn order_in(srv: &Server, id: u64) -> Option<Order> {
     srv.books()
         .books()
         .iter()
-        .flat_map(|b| b.orders().iter())
+        .flat_map(|b| b.orders())
         .find(|o| o.id == OrderId(id))
         .cloned()
 }

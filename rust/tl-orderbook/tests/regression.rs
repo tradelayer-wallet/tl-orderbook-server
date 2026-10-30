@@ -102,11 +102,11 @@ fn d1_book_abort_keeps_the_maker_order_in_place() {
         .unwrap();
     book.submit(mk(2, 2, Action::Buy), false, TradeId(1), 0)
         .unwrap();
-    let before = book.orders().len();
+    let before = book.order_count();
     let a = book.abort(TradeId(1), Reason::SwapTerminated, 1).unwrap();
-    assert_eq!(book.orders().len(), before);
+    assert_eq!(book.order_count(), before);
     assert_eq!(a.taker.state, OrderState::Cancelled);
-    assert_eq!(book.orders()[0].state, OrderState::Open);
+    assert_eq!(book.orders().next().unwrap().state, OrderState::Open);
 }
 
 // ---------------------------------------------------------------------------

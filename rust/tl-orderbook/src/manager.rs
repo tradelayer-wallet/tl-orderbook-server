@@ -107,7 +107,7 @@ impl OrderbookManager {
             }
             Ok(_) => {}
             Err(_) => {
-                if created && self.books[idx].orders().is_empty() {
+                if created && self.books[idx].is_empty() {
                     self.books.pop();
                 }
             }
@@ -172,7 +172,7 @@ impl OrderbookManager {
     pub fn orders_by_session(&self, session: SessionId) -> Vec<Order> {
         self.books
             .iter()
-            .flat_map(|b| b.orders().iter())
+            .flat_map(|b| b.orders())
             .filter(|o| o.session == session)
             .cloned()
             .collect()
