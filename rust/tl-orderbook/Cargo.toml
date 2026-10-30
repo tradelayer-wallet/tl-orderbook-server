@@ -1,0 +1,10 @@
+[package]
+name = "tl-orderbook"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.90"
+description = "Std-only port of the TradeLayer external orderbook: matching, order lifecycle, swap relay and socket protocol"
+license = "ISC"
+publish = false
+
+[dependencies]
