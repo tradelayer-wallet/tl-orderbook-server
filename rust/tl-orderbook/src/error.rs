@@ -49,7 +49,10 @@ pub enum Error {
     NotParticipant,
     BadSwapEvent,
     WrongRole,
-    StepOutOfOrder { expected: u8, got: u8 },
+    StepOutOfOrder {
+        expected: u8,
+        got: u8,
+    },
     PayloadTooLarge,
     BadTxid,
     TooManySwaps,

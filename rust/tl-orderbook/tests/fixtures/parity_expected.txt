@@ -1,0 +1,2325 @@
+case empty_book_places
+final ok
+book 9 BUY price=2.500000 amount=1.500000 lock=0
+end
+case exact_fill
+trade type=SPOT buyer=2/A2 seller=1/A1 taker=2 maker=1 desired=1 sale=2 amtD=1.500000 amtS=3.750000 unfilled=none
+final ok
+end
+case taker_partial_then_rests
+trade type=SPOT buyer=2/A2 seller=1/A1 taker=2 maker=1 desired=1 sale=2 amtD=1.000000 amtS=2.500000 unfilled=9:1.500000
+final ok
+book 9 BUY price=3.000000 amount=1.500000 lock=0
+end
+case maker_partial
+trade type=SPOT buyer=2/A2 seller=1/A1 taker=2 maker=1 desired=1 sale=2 amtD=1.250000 amtS=3.125000 unfilled=1:2.750000
+final ok
+book 1 SELL price=2.500000 amount=2.750000 lock=0
+end
+case price_priority_buy
+trade type=SPOT buyer=2/A2 seller=3/A3 taker=2 maker=3 desired=1 sale=2 amtD=1.000000 amtS=2.400000 unfilled=none
+final ok
+book 1 SELL price=2.800000 amount=1.000000 lock=0
+book 3 SELL price=2.600000 amount=1.000000 lock=0
+end
+case price_priority_sell
+trade type=SPOT buyer=4/A4 seller=2/A2 taker=2 maker=4 desired=1 sale=2 amtD=1.000000 amtS=2.900000 unfilled=none
+final ok
+book 1 BUY price=2.800000 amount=1.000000 lock=0
+book 2 BUY price=2.400000 amount=1.000000 lock=0
+end
+case time_priority_tie
+trade type=SPOT buyer=2/A2 seller=3/A3 taker=2 maker=3 desired=1 sale=2 amtD=1.000000 amtS=2.500000 unfilled=none
+final ok
+book 2 SELL price=2.500000 amount=1.000000 lock=0
+end
+case sweeps_three_levels
+trade type=SPOT buyer=2/A2 seller=3/A3 taker=2 maker=3 desired=1 sale=2 amtD=1.000000 amtS=2.400000 unfilled=9:1.500000
+trade type=SPOT buyer=2/A2 seller=4/A4 taker=2 maker=4 desired=1 sale=2 amtD=1.000000 amtS=2.500000 unfilled=9:0.500000
+trade type=SPOT buyer=2/A2 seller=5/A5 taker=2 maker=5 desired=1 sale=2 amtD=0.500000 amtS=1.300000 unfilled=3:0.500000
+final ok
+book 3 SELL price=2.600000 amount=0.500000 lock=0
+end
+case price_not_crossing
+final ok
+book 1 SELL price=3.500000 amount=1.000000 lock=0
+book 9 BUY price=3.000000 amount=1.000000 lock=0
+end
+case locked_skipped
+trade type=SPOT buyer=2/A2 seller=3/A3 taker=2 maker=3 desired=1 sale=2 amtD=1.000000 amtS=2.600000 unfilled=none
+final ok
+book 1 SELL price=2.400000 amount=1.000000 lock=1
+end
+case same_session_errors
+final error=Match of the order from the same Account
+book 1 SELL price=2.400000 amount=1.000000 lock=0
+book 2 SELL price=2.600000 amount=1.000000 lock=0
+end
+case same_address_errors
+final error=Match of the order from the same address
+book 1 SELL price=2.400000 amount=1.000000 lock=0
+end
+case wrong_direction_ids_do_not_cross
+final ok
+book 1 SELL price=2.400000 amount=1.000000 lock=0
+book 9 BUY price=3.000000 amount=1.000000 lock=0
+end
+case batch_crossing_skipped
+final skipped
+book 1 SELL price=2.400000 amount=1.000000 lock=0
+end
+case batch_non_crossing_placed
+final ok
+book 1 SELL price=3.400000 amount=1.000000 lock=0
+book 9 BUY price=3.000000 amount=1.000000 lock=0
+end
+case rounding_small_notional
+trade type=SPOT buyer=2/A2 seller=1/A1 taker=2 maker=1 desired=1 sale=2 amtD=0.001000 amtS=0.000010 unfilled=none
+final ok
+end
+case futures_exact
+trade type=FUTURES buyer=2/A2 seller=1/A1 taker=2 maker=1 contract=5 amount=2.000000 price=100.000000 lev=3.000000 coll=1 unfilled=none
+final ok
+end
+case futures_partial_maker_price
+trade type=FUTURES buyer=2/A2 seller=1/A1 taker=2 maker=1 contract=5 amount=2.000000 price=99.000000 lev=3.000000 coll=1 unfilled=1:3.000000
+final ok
+book 1 SELL price=99.000000 amount=3.000000 lock=0
+end
+case futures_sell_taker_buyer_leverage
+trade type=FUTURES buyer=1/A1 seller=2/A2 taker=2 maker=1 contract=5 amount=1.000000 price=101.000000 lev=7.000000 coll=1 unfilled=9:2.000000
+final ok
+book 9 SELL price=100.000000 amount=2.000000 lock=0
+end
+case rand_000
+final ok
+book 1 BUY price=2.170000 amount=1.417000 lock=1
+book 2 SELL price=1.580000 amount=3.544000 lock=0
+book 3 BUY price=2.300000 amount=2.485000 lock=1
+book 4 SELL price=2.600000 amount=0.103000 lock=0
+book 5 BUY price=1.210000 amount=3.692000 lock=0
+book 6 BUY price=2.850000 amount=4.833000 lock=1
+book 7 SELL price=2.650000 amount=1.411000 lock=0
+book 8 SELL price=2.900000 amount=3.634000 lock=0
+book 100 SELL price=1.920000 amount=1.678000 lock=0
+end
+case rand_001
+final ok
+book 1 BUY price=2.720000 amount=4.221000 lock=0
+book 2 SELL price=1.280000 amount=3.458000 lock=0
+book 3 SELL price=1.600000 amount=0.692000 lock=1
+book 4 BUY price=2.250000 amount=1.371000 lock=0
+book 5 BUY price=2.420000 amount=4.335000 lock=0
+book 6 BUY price=2.810000 amount=1.856000 lock=0
+book 7 BUY price=2.410000 amount=0.668000 lock=0
+book 100 BUY price=1.200000 amount=0.299000 lock=0
+end
+case rand_002
+trade type=SPOT buyer=1/A1 seller=4/A4 taker=1 maker=4 desired=1 sale=2 amtD=4.259000 amtS=4.259000 unfilled=1:0.254000
+final ok
+book 1 SELL price=1.000000 amount=0.254000 lock=0
+book 2 BUY price=2.340000 amount=1.137000 lock=0
+end
+case rand_003
+final ok
+book 1 SELL price=1.000000 amount=0.658000 lock=1
+book 2 SELL price=2.160000 amount=4.817000 lock=1
+book 100 BUY price=1.970000 amount=0.629000 lock=0
+end
+case rand_004
+final ok
+book 100 SELL price=2.550000 amount=4.695000 lock=0
+end
+case rand_005
+trade type=FUTURES buyer=4/A4 seller=1/A1 taker=4 maker=1 contract=5 amount=1.682000 price=1.420000 lev=4.000000 coll=1 unfilled=100:3.073000
+trade type=FUTURES buyer=4/A4 seller=3/A3 taker=4 maker=3 contract=5 amount=0.875000 price=1.440000 lev=4.000000 coll=1 unfilled=100:2.198000
+final ok
+book 1 BUY price=1.710000 amount=2.177000 lock=0
+book 2 BUY price=1.150000 amount=2.653000 lock=1
+book 5 BUY price=2.840000 amount=0.154000 lock=0
+book 100 BUY price=2.480000 amount=2.198000 lock=0
+end
+case rand_006
+trade type=SPOT buyer=2/A2 seller=3/A3 taker=2 maker=3 desired=1 sale=2 amtD=1.705000 amtS=1.960750 unfilled=1:1.567000
+final ok
+book 1 SELL price=1.150000 amount=1.567000 lock=0
+book 2 BUY price=1.860000 amount=0.207000 lock=0
+book 3 SELL price=2.070000 amount=1.760000 lock=0
+book 4 SELL price=1.650000 amount=3.736000 lock=0
+book 5 SELL price=1.960000 amount=0.157000 lock=0
+end
+case rand_007
+final ok
+book 100 SELL price=1.680000 amount=0.949000 lock=0
+end
+case rand_008
+final ok
+book 100 BUY price=2.920000 amount=4.963000 lock=0
+end
+case rand_009
+final ok
+book 100 BUY price=2.240000 amount=3.918000 lock=0
+end
+case rand_010
+final error=Match of the order from the same Account
+book 1 SELL price=1.610000 amount=1.631000 lock=0
+book 2 SELL price=2.480000 amount=0.747000 lock=1
+book 3 SELL price=2.220000 amount=0.048000 lock=0
+book 4 BUY price=2.700000 amount=4.820000 lock=0
+end
+case rand_011
+final ok
+book 1 SELL price=2.920000 amount=2.002000 lock=0
+book 2 SELL price=2.320000 amount=1.905000 lock=0
+book 3 BUY price=1.670000 amount=3.542000 lock=0
+book 100 SELL price=2.720000 amount=3.983000 lock=0
+end
+case rand_012
+final ok
+book 1 BUY price=1.100000 amount=3.974000 lock=0
+book 2 SELL price=1.710000 amount=0.026000 lock=0
+book 100 SELL price=1.980000 amount=3.748000 lock=0
+end
+case rand_013
+final ok
+book 1 BUY price=1.610000 amount=1.253000 lock=0
+book 2 SELL price=1.930000 amount=1.267000 lock=0
+book 100 SELL price=2.900000 amount=0.398000 lock=0
+end
+case rand_014
+final ok
+book 100 BUY price=2.540000 amount=1.159000 lock=0
+end
+case rand_015
+final error=Match of the order from the same address
+book 1 SELL price=1.760000 amount=3.446000 lock=0
+book 2 SELL price=1.640000 amount=3.084000 lock=1
+book 3 BUY price=3.000000 amount=3.002000 lock=0
+end
+case rand_016
+final skipped
+book 1 SELL price=1.950000 amount=4.149000 lock=0
+book 2 SELL price=2.100000 amount=2.800000 lock=0
+book 3 SELL price=1.530000 amount=4.360000 lock=0
+book 4 BUY price=2.460000 amount=0.391000 lock=0
+book 5 SELL price=2.910000 amount=4.156000 lock=0
+book 6 BUY price=1.440000 amount=1.453000 lock=0
+book 7 BUY price=2.040000 amount=2.692000 lock=1
+end
+case rand_017
+trade type=FUTURES buyer=4/A4 seller=1/A1 taker=1 maker=4 contract=5 amount=1.912000 price=2.990000 lev=6.000000 coll=1 unfilled=100:0.418000
+trade type=FUTURES buyer=4/A4 seller=1/A1 taker=1 maker=4 contract=5 amount=0.418000 price=2.940000 lev=9.000000 coll=1 unfilled=1:0.279000
+final ok
+book 1 BUY price=2.940000 amount=0.279000 lock=0
+book 2 SELL price=2.490000 amount=0.107000 lock=0
+book 3 SELL price=1.580000 amount=2.520000 lock=0
+book 4 BUY price=1.990000 amount=3.660000 lock=0
+book 5 BUY price=1.990000 amount=4.387000 lock=0
+book 7 SELL price=1.480000 amount=0.664000 lock=0
+end
+case rand_018
+final ok
+book 100 SELL price=1.030000 amount=3.021000 lock=0
+end
+case rand_019
+final error=Match of the order from the same Account
+book 1 SELL price=1.020000 amount=2.600000 lock=0
+book 2 BUY price=1.330000 amount=1.584000 lock=0
+book 3 SELL price=1.390000 amount=2.530000 lock=0
+end
+case rand_020
+final ok
+book 1 BUY price=2.540000 amount=2.136000 lock=0
+book 2 BUY price=2.770000 amount=0.764000 lock=0
+book 3 SELL price=2.060000 amount=1.843000 lock=1
+book 100 BUY price=2.640000 amount=3.752000 lock=0
+end
+case rand_021
+final ok
+book 100 SELL price=2.080000 amount=1.223000 lock=0
+end
+case rand_022
+final ok
+book 1 SELL price=1.800000 amount=4.095000 lock=0
+book 2 SELL price=2.260000 amount=2.197000 lock=0
+book 3 SELL price=2.850000 amount=2.397000 lock=0
+book 4 BUY price=2.590000 amount=1.345000 lock=0
+book 100 BUY price=1.590000 amount=3.614000 lock=0
+end
+case rand_023
+trade type=FUTURES buyer=2/A2 seller=4/A4 taker=2 maker=4 contract=5 amount=1.094000 price=1.550000 lev=3.000000 coll=1 unfilled=100:0.634000
+trade type=FUTURES buyer=2/A2 seller=4/A4 taker=2 maker=4 contract=5 amount=0.634000 price=1.560000 lev=3.000000 coll=1 unfilled=4:1.157000
+final ok
+book 2 SELL price=2.520000 amount=4.746000 lock=1
+book 3 BUY price=1.320000 amount=0.993000 lock=0
+book 4 SELL price=1.560000 amount=1.157000 lock=0
+book 5 SELL price=2.580000 amount=0.193000 lock=0
+book 6 BUY price=1.270000 amount=3.824000 lock=0
+end
+case rand_024
+trade type=SPOT buyer=1/A1 seller=3/A3 taker=1 maker=3 desired=1 sale=2 amtD=0.187000 amtS=0.190740 unfilled=3:0.587000
+final ok
+book 1 SELL price=2.680000 amount=0.854000 lock=1
+book 2 BUY price=2.730000 amount=2.750000 lock=0
+book 3 SELL price=1.020000 amount=0.587000 lock=0
+book 4 SELL price=1.800000 amount=1.409000 lock=0
+book 5 SELL price=2.210000 amount=3.963000 lock=0
+end
+case rand_025
+final ok
+book 1 SELL price=1.180000 amount=3.514000 lock=0
+book 2 SELL price=2.710000 amount=3.728000 lock=0
+book 3 SELL price=2.520000 amount=3.310000 lock=0
+book 4 BUY price=1.020000 amount=2.432000 lock=0
+book 5 SELL price=2.430000 amount=2.938000 lock=0
+book 6 SELL price=2.380000 amount=3.295000 lock=0
+book 7 SELL price=1.630000 amount=4.273000 lock=0
+book 100 SELL price=2.960000 amount=2.395000 lock=0
+end
+case rand_026
+trade type=FUTURES buyer=2/A2 seller=1/A1 taker=1 maker=2 contract=5 amount=0.778000 price=2.860000 lev=2.000000 coll=1 unfilled=1:3.490000
+final ok
+book 1 BUY price=2.860000 amount=3.490000 lock=0
+end
+case rand_027
+final skipped
+book 1 BUY price=2.040000 amount=1.206000 lock=1
+book 2 SELL price=2.910000 amount=0.767000 lock=0
+book 3 BUY price=1.920000 amount=4.632000 lock=0
+book 4 BUY price=2.890000 amount=4.395000 lock=0
+book 5 SELL price=2.350000 amount=3.795000 lock=0
+book 6 SELL price=1.150000 amount=4.814000 lock=0
+book 7 SELL price=2.880000 amount=2.358000 lock=0
+end
+case rand_028
+trade type=SPOT buyer=2/A2 seller=3/A3 taker=2 maker=3 desired=1 sale=2 amtD=2.187000 amtS=3.236760 unfilled=5:2.278000
+final ok
+book 1 BUY price=1.500000 amount=3.087000 lock=0
+book 2 SELL price=2.150000 amount=3.749000 lock=0
+book 3 SELL price=1.770000 amount=0.070000 lock=0
+book 4 SELL price=2.320000 amount=4.916000 lock=0
+book 5 SELL price=1.480000 amount=2.278000 lock=0
+end
+case rand_029
+final ok
+book 1 SELL price=2.460000 amount=0.861000 lock=0
+book 2 BUY price=1.940000 amount=4.902000 lock=0
+book 3 BUY price=1.620000 amount=2.559000 lock=0
+book 100 SELL price=2.520000 amount=3.001000 lock=0
+end
+case rand_030
+final ok
+book 100 BUY price=2.380000 amount=3.584000 lock=0
+end
+case rand_031
+final error=Match of the order from the same Account
+book 1 SELL price=1.390000 amount=0.453000 lock=0
+book 2 SELL price=1.680000 amount=4.812000 lock=0
+book 3 BUY price=1.630000 amount=4.842000 lock=0
+book 4 BUY price=1.590000 amount=2.335000 lock=0
+book 5 SELL price=1.390000 amount=1.123000 lock=0
+end
+case rand_032
+final ok
+book 1 BUY price=2.990000 amount=2.594000 lock=0
+book 2 BUY price=1.800000 amount=1.134000 lock=0
+book 3 BUY price=1.440000 amount=3.633000 lock=0
+book 100 BUY price=1.640000 amount=2.842000 lock=0
+end
+case rand_033
+trade type=FUTURES buyer=2/A2 seller=4/A4 taker=2 maker=4 contract=5 amount=0.162000 price=1.080000 lev=3.000000 coll=1 unfilled=100:0.690000
+final ok
+book 1 BUY price=1.170000 amount=3.863000 lock=0
+book 3 SELL price=1.530000 amount=2.438000 lock=0
+book 4 BUY price=2.660000 amount=4.560000 lock=0
+book 100 BUY price=1.340000 amount=0.690000 lock=0
+end
+case rand_034
+trade type=SPOT buyer=3/A3 seller=2/A2 taker=3 maker=2 desired=1 sale=2 amtD=1.130000 amtS=2.011400 unfilled=100:2.266000
+final ok
+book 2 BUY price=2.040000 amount=2.038000 lock=0
+book 3 BUY price=1.900000 amount=3.314000 lock=0
+book 100 BUY price=2.230000 amount=2.266000 lock=0
+end
+case rand_035
+trade type=SPOT buyer=4/A4 seller=3/A3 taker=3 maker=4 desired=1 sale=2 amtD=0.925000 amtS=2.645500 unfilled=100:4.058000
+final ok
+book 1 SELL price=1.600000 amount=0.787000 lock=1
+book 100 SELL price=1.320000 amount=4.058000 lock=0
+end
+case rand_036
+final error=Match of the order from the same Account
+book 1 SELL price=1.250000 amount=1.611000 lock=0
+book 2 SELL price=1.940000 amount=4.106000 lock=0
+book 3 BUY price=1.670000 amount=3.569000 lock=0
+book 4 BUY price=1.110000 amount=2.501000 lock=0
+book 5 BUY price=2.330000 amount=0.806000 lock=0
+book 6 BUY price=1.840000 amount=1.230000 lock=0
+book 7 BUY price=1.110000 amount=2.899000 lock=0
+end
+case rand_037
+final ok
+book 1 BUY price=1.350000 amount=4.192000 lock=0
+book 2 BUY price=1.290000 amount=2.633000 lock=0
+book 3 BUY price=1.450000 amount=0.438000 lock=0
+book 4 BUY price=1.710000 amount=0.990000 lock=0
+book 5 SELL price=2.930000 amount=3.432000 lock=0
+book 6 SELL price=1.860000 amount=2.202000 lock=0
+book 7 SELL price=2.560000 amount=2.203000 lock=1
+book 100 BUY price=1.820000 amount=0.996000 lock=0
+end
+case rand_038
+final ok
+book 1 SELL price=1.300000 amount=3.093000 lock=0
+book 100 BUY price=1.370000 amount=1.564000 lock=0
+end
+case rand_039
+final error=Match of the order from the same Account
+book 1 SELL price=2.230000 amount=4.062000 lock=0
+book 2 BUY price=1.010000 amount=1.184000 lock=0
+book 3 SELL price=1.620000 amount=3.985000 lock=0
+book 4 BUY price=2.550000 amount=2.113000 lock=0
+book 5 BUY price=1.980000 amount=4.131000 lock=0
+book 6 SELL price=2.870000 amount=2.194000 lock=0
+end
+case rand_040
+trade type=SPOT buyer=4/A4 seller=3/A3 taker=4 maker=3 desired=1 sale=2 amtD=2.675000 amtS=4.440500 unfilled=6:0.204000
+final ok
+book 1 SELL price=1.610000 amount=4.502000 lock=0
+book 2 BUY price=2.910000 amount=1.335000 lock=0
+book 3 SELL price=1.710000 amount=2.582000 lock=0
+book 4 SELL price=2.500000 amount=0.955000 lock=0
+book 5 BUY price=1.350000 amount=2.208000 lock=0
+book 6 SELL price=1.660000 amount=0.204000 lock=0
+end
+case rand_041
+final ok
+book 1 BUY price=2.700000 amount=2.607000 lock=0
+book 2 BUY price=1.070000 amount=3.147000 lock=0
+book 100 BUY price=1.980000 amount=3.083000 lock=0
+end
+case rand_042
+trade type=SPOT buyer=2/A2 seller=3/A3 taker=3 maker=2 desired=1 sale=2 amtD=0.889000 amtS=2.480310 unfilled=3:2.774000
+final ok
+book 1 SELL price=1.980000 amount=3.519000 lock=0
+book 2 BUY price=1.600000 amount=1.294000 lock=1
+book 3 BUY price=2.790000 amount=2.774000 lock=0
+book 4 SELL price=1.170000 amount=4.614000 lock=1
+end
+case rand_043
+final ok
+book 100 SELL price=2.690000 amount=3.414000 lock=0
+end
+case rand_044
+final ok
+book 100 SELL price=1.760000 amount=3.649000 lock=0
+end
+case rand_045
+final ok
+book 1 SELL price=2.310000 amount=2.386000 lock=0
+book 2 BUY price=1.700000 amount=4.179000 lock=0
+book 3 SELL price=2.970000 amount=4.344000 lock=0
+book 4 BUY price=1.430000 amount=3.797000 lock=0
+book 5 BUY price=2.210000 amount=2.783000 lock=0
+book 6 BUY price=1.020000 amount=0.559000 lock=0
+book 100 BUY price=2.260000 amount=2.089000 lock=0
+end
+case rand_046
+trade type=FUTURES buyer=1/A1 seller=4/A3 taker=4 maker=1 contract=5 amount=2.669000 price=1.750000 lev=5.000000 coll=1 unfilled=100:1.876000
+final ok
+book 1 SELL price=2.600000 amount=1.899000 lock=1
+book 3 SELL price=2.840000 amount=2.218000 lock=0
+book 4 BUY price=1.040000 amount=4.305000 lock=0
+book 5 BUY price=1.100000 amount=4.178000 lock=0
+book 100 SELL price=1.220000 amount=1.876000 lock=0
+end
+case rand_047
+final ok
+book 100 BUY price=1.790000 amount=1.939000 lock=0
+end
+case rand_048
+trade type=FUTURES buyer=3/A3 seller=4/A4 taker=4 maker=3 contract=5 amount=0.951000 price=2.770000 lev=2.000000 coll=1 unfilled=4:2.701000
+final ok
+book 1 BUY price=2.680000 amount=2.228000 lock=0
+book 2 SELL price=2.440000 amount=2.399000 lock=0
+book 3 BUY price=2.510000 amount=4.126000 lock=0
+book 4 BUY price=2.770000 amount=2.701000 lock=0
+book 5 BUY price=2.070000 amount=0.531000 lock=0
+book 6 BUY price=2.420000 amount=0.672000 lock=0
+book 7 BUY price=1.920000 amount=3.710000 lock=0
+book 8 SELL price=1.060000 amount=0.205000 lock=0
+end
+case rand_049
+final ok
+book 1 SELL price=1.370000 amount=1.674000 lock=0
+book 2 SELL price=1.240000 amount=3.519000 lock=1
+book 3 SELL price=1.260000 amount=1.546000 lock=0
+book 4 BUY price=1.770000 amount=0.363000 lock=1
+book 5 SELL price=2.890000 amount=3.816000 lock=0
+book 6 SELL price=2.230000 amount=4.918000 lock=0
+book 100 SELL price=2.250000 amount=2.175000 lock=0
+end
+case rand_050
+final ok
+book 100 SELL price=2.880000 amount=4.064000 lock=0
+end
+case rand_051
+trade type=SPOT buyer=2/A2 seller=3/A3 taker=2 maker=3 desired=1 sale=2 amtD=1.229000 amtS=2.052430 unfilled=100:2.693000
+final ok
+book 1 BUY price=2.030000 amount=3.742000 lock=0
+book 2 BUY price=2.120000 amount=0.876000 lock=1
+book 4 SELL price=2.720000 amount=0.980000 lock=0
+book 100 BUY price=1.960000 amount=2.693000 lock=0
+end
+case rand_052
+final ok
+book 1 SELL price=1.500000 amount=3.838000 lock=0
+book 2 BUY price=2.540000 amount=3.225000 lock=1
+book 3 SELL price=1.000000 amount=1.279000 lock=0
+book 4 SELL price=1.890000 amount=4.063000 lock=0
+book 100 SELL price=3.000000 amount=4.699000 lock=0
+end
+case rand_053
+final error=Match of the order from the same Account
+book 1 SELL price=2.130000 amount=2.576000 lock=0
+book 2 BUY price=1.350000 amount=1.682000 lock=0
+book 3 BUY price=1.760000 amount=1.853000 lock=0
+book 4 SELL price=1.040000 amount=4.036000 lock=0
+book 5 SELL price=1.220000 amount=4.822000 lock=0
+end
+case rand_054
+final ok
+book 1 SELL price=2.350000 amount=1.427000 lock=1
+book 2 SELL price=1.530000 amount=2.552000 lock=0
+book 3 SELL price=2.650000 amount=3.133000 lock=0
+book 4 SELL price=2.760000 amount=0.252000 lock=0
+book 100 SELL price=2.670000 amount=3.146000 lock=0
+end
+case rand_055
+final ok
+book 1 SELL price=2.080000 amount=1.592000 lock=0
+book 2 SELL price=1.830000 amount=0.375000 lock=0
+book 3 BUY price=2.900000 amount=4.041000 lock=0
+book 4 SELL price=1.780000 amount=2.792000 lock=0
+book 5 BUY price=1.670000 amount=1.861000 lock=0
+book 6 BUY price=2.160000 amount=4.589000 lock=0
+book 7 BUY price=1.310000 amount=0.296000 lock=0
+book 8 BUY price=1.220000 amount=1.757000 lock=0
+book 100 BUY price=1.350000 amount=0.598000 lock=0
+end
+case rand_056
+trade type=FUTURES buyer=3/A3 seller=2/A2 taker=2 maker=3 contract=5 amount=3.860000 price=2.720000 lev=4.000000 coll=1 unfilled=1:0.682000
+final ok
+book 1 BUY price=2.720000 amount=0.682000 lock=0
+end
+case rand_057
+final ok
+book 1 SELL price=1.410000 amount=3.438000 lock=0
+book 2 BUY price=2.640000 amount=2.967000 lock=0
+book 3 SELL price=2.300000 amount=4.281000 lock=0
+book 4 SELL price=2.160000 amount=0.928000 lock=1
+book 5 BUY price=2.750000 amount=4.856000 lock=0
+book 6 BUY price=1.910000 amount=1.166000 lock=0
+book 7 BUY price=2.070000 amount=2.012000 lock=0
+book 8 SELL price=2.740000 amount=2.046000 lock=0
+book 100 BUY price=1.020000 amount=1.892000 lock=0
+end
+case rand_058
+final ok
+book 1 SELL price=2.620000 amount=0.086000 lock=0
+book 2 BUY price=1.180000 amount=3.729000 lock=0
+book 3 SELL price=1.250000 amount=0.302000 lock=0
+book 4 BUY price=2.510000 amount=1.101000 lock=0
+book 100 BUY price=2.660000 amount=0.205000 lock=0
+end
+case rand_059
+final skipped
+book 1 SELL price=1.690000 amount=1.161000 lock=0
+book 2 SELL price=1.180000 amount=2.882000 lock=0
+book 3 SELL price=2.460000 amount=0.910000 lock=0
+book 4 BUY price=2.660000 amount=0.024000 lock=0
+end
+case rand_060
+trade type=SPOT buyer=2/A2 seller=4/A4 taker=2 maker=4 desired=1 sale=2 amtD=3.391000 amtS=8.138400 unfilled=100:1.192000
+final ok
+book 1 BUY price=1.440000 amount=1.780000 lock=0
+book 2 BUY price=2.800000 amount=1.605000 lock=1
+book 4 BUY price=1.180000 amount=3.271000 lock=0
+book 5 SELL price=1.640000 amount=0.899000 lock=1
+book 100 BUY price=2.480000 amount=1.192000 lock=0
+end
+case rand_061
+final ok
+book 1 SELL price=2.900000 amount=1.150000 lock=0
+book 2 SELL price=1.110000 amount=4.182000 lock=0
+book 3 BUY price=2.250000 amount=1.000000 lock=0
+book 100 SELL price=2.940000 amount=1.164000 lock=0
+end
+case rand_062
+final ok
+book 1 SELL price=2.870000 amount=2.131000 lock=0
+book 2 BUY price=1.150000 amount=3.064000 lock=0
+book 100 SELL price=2.120000 amount=0.625000 lock=0
+end
+case rand_063
+final error=Match of the order from the same Account
+book 1 SELL price=2.550000 amount=0.369000 lock=0
+book 2 BUY price=2.250000 amount=2.032000 lock=0
+book 3 SELL price=1.350000 amount=1.695000 lock=1
+book 4 BUY price=1.080000 amount=2.182000 lock=0
+book 5 BUY price=2.070000 amount=0.262000 lock=0
+book 6 BUY price=1.480000 amount=0.729000 lock=0
+book 7 SELL price=1.120000 amount=4.222000 lock=0
+end
+case rand_064
+final ok
+book 1 BUY price=2.260000 amount=0.193000 lock=0
+book 2 SELL price=1.690000 amount=3.468000 lock=0
+book 3 BUY price=1.570000 amount=4.769000 lock=0
+book 4 BUY price=1.400000 amount=4.383000 lock=0
+book 100 BUY price=1.620000 amount=0.421000 lock=0
+end
+case rand_065
+trade type=SPOT buyer=1/A1 seller=2/A2 taker=1 maker=2 desired=1 sale=2 amtD=1.802000 amtS=1.946160 unfilled=100:2.467000
+final ok
+book 1 SELL price=2.560000 amount=1.722000 lock=0
+book 3 BUY price=1.490000 amount=3.267000 lock=0
+book 4 BUY price=1.820000 amount=2.683000 lock=0
+book 5 BUY price=1.420000 amount=4.116000 lock=0
+book 6 SELL price=2.810000 amount=2.893000 lock=0
+book 7 SELL price=2.670000 amount=1.789000 lock=0
+book 8 BUY price=1.600000 amount=1.334000 lock=0
+book 100 BUY price=2.210000 amount=2.467000 lock=0
+end
+case rand_066
+final error=Match of the order from the same Account
+book 1 BUY price=2.860000 amount=0.880000 lock=0
+book 2 SELL price=2.220000 amount=4.241000 lock=0
+book 3 BUY price=1.720000 amount=2.053000 lock=0
+book 4 BUY price=1.020000 amount=0.262000 lock=0
+book 5 SELL price=2.830000 amount=1.300000 lock=0
+end
+case rand_067
+final ok
+book 100 BUY price=2.150000 amount=1.252000 lock=0
+end
+case rand_068
+final ok
+book 1 SELL price=2.990000 amount=1.470000 lock=0
+book 100 BUY price=1.330000 amount=2.622000 lock=0
+end
+case rand_069
+final ok
+book 1 BUY price=2.700000 amount=2.710000 lock=0
+book 2 BUY price=1.290000 amount=1.028000 lock=0
+book 3 BUY price=2.750000 amount=1.648000 lock=0
+book 4 SELL price=1.690000 amount=4.576000 lock=1
+book 100 BUY price=2.960000 amount=3.499000 lock=0
+end
+case rand_070
+trade type=SPOT buyer=4/A4 seller=3/A3 taker=4 maker=3 desired=1 sale=2 amtD=2.481000 amtS=4.490610 unfilled=3:1.089000
+final ok
+book 1 SELL price=2.530000 amount=0.121000 lock=0
+book 2 BUY price=2.770000 amount=3.453000 lock=1
+book 3 SELL price=1.810000 amount=1.089000 lock=0
+book 4 SELL price=2.030000 amount=0.196000 lock=0
+book 5 SELL price=2.630000 amount=1.509000 lock=0
+book 6 BUY price=1.760000 amount=0.914000 lock=0
+book 7 BUY price=2.800000 amount=3.988000 lock=0
+end
+case rand_071
+final error=Match of the order from the same Account
+book 1 BUY price=1.100000 amount=0.094000 lock=0
+book 2 BUY price=2.800000 amount=1.379000 lock=0
+book 3 SELL price=2.800000 amount=4.608000 lock=0
+book 4 BUY price=2.040000 amount=0.265000 lock=0
+book 5 SELL price=1.740000 amount=1.054000 lock=0
+book 6 SELL price=2.250000 amount=1.376000 lock=1
+book 7 SELL price=1.100000 amount=3.291000 lock=0
+end
+case rand_072
+final ok
+book 1 SELL price=1.460000 amount=3.343000 lock=0
+book 2 SELL price=1.210000 amount=2.459000 lock=0
+book 3 SELL price=2.800000 amount=2.032000 lock=0
+book 4 SELL price=1.860000 amount=4.099000 lock=0
+book 5 SELL price=2.070000 amount=4.683000 lock=0
+book 6 SELL price=2.940000 amount=0.037000 lock=1
+book 100 BUY price=1.160000 amount=0.348000 lock=0
+end
+case rand_073
+final error=Match of the order from the same Account
+book 1 BUY price=2.350000 amount=3.387000 lock=0
+book 2 SELL price=1.190000 amount=4.735000 lock=0
+book 3 BUY price=2.120000 amount=1.691000 lock=0
+end
+case rand_074
+trade type=FUTURES buyer=4/A4 seller=2/A2 taker=4 maker=2 contract=5 amount=1.593000 price=1.080000 lev=3.000000 coll=1 unfilled=1:2.812000
+final ok
+book 1 SELL price=1.080000 amount=2.812000 lock=0
+book 2 SELL price=1.490000 amount=0.271000 lock=0
+book 3 BUY price=2.540000 amount=4.038000 lock=0
+book 4 SELL price=2.200000 amount=3.173000 lock=0
+book 5 BUY price=2.100000 amount=1.396000 lock=0
+book 6 BUY price=1.470000 amount=3.339000 lock=0
+book 7 SELL price=1.470000 amount=1.281000 lock=0
+book 8 BUY price=1.550000 amount=4.642000 lock=0
+end
+case rand_075
+final ok
+book 1 BUY price=2.710000 amount=4.392000 lock=0
+book 2 BUY price=1.620000 amount=1.777000 lock=1
+book 3 SELL price=1.960000 amount=0.427000 lock=1
+book 4 SELL price=2.180000 amount=1.962000 lock=0
+book 100 BUY price=1.370000 amount=0.857000 lock=0
+end
+case rand_076
+trade type=SPOT buyer=2/A2 seller=1/A1 taker=2 maker=1 desired=1 sale=2 amtD=0.040000 amtS=0.040000 unfilled=100:4.798000
+final ok
+book 100 BUY price=1.200000 amount=4.798000 lock=0
+end
+case rand_077
+final ok
+book 100 SELL price=2.560000 amount=2.193000 lock=0
+end
+case rand_078
+final ok
+book 1 SELL price=2.310000 amount=3.770000 lock=0
+book 2 SELL price=2.750000 amount=2.310000 lock=0
+book 100 BUY price=1.950000 amount=1.494000 lock=0
+end
+case rand_079
+trade type=SPOT buyer=2/A2 seller=4/A4 taker=4 maker=2 desired=1 sale=2 amtD=1.706000 amtS=4.930340 unfilled=4:0.824000
+final ok
+book 1 SELL price=1.610000 amount=2.540000 lock=0
+book 2 BUY price=2.990000 amount=3.569000 lock=1
+book 3 BUY price=1.780000 amount=1.847000 lock=0
+book 4 BUY price=2.890000 amount=0.824000 lock=0
+end
+case rand_080
+final ok
+book 1 SELL price=1.590000 amount=4.594000 lock=0
+book 2 BUY price=2.040000 amount=2.770000 lock=0
+book 3 BUY price=1.990000 amount=4.913000 lock=0
+book 4 SELL price=1.340000 amount=1.809000 lock=0
+book 5 BUY price=1.600000 amount=3.553000 lock=0
+book 100 BUY price=1.140000 amount=3.657000 lock=0
+end
+case rand_081
+final ok
+book 1 SELL price=2.080000 amount=2.423000 lock=0
+book 100 SELL price=2.660000 amount=4.925000 lock=0
+end
+case rand_082
+final ok
+book 1 BUY price=1.850000 amount=3.024000 lock=0
+book 2 SELL price=2.100000 amount=4.062000 lock=0
+book 100 BUY price=1.540000 amount=0.648000 lock=0
+end
+case rand_083
+final skipped
+book 1 SELL price=1.650000 amount=1.479000 lock=0
+book 2 SELL price=1.880000 amount=3.168000 lock=0
+book 3 BUY price=1.490000 amount=0.925000 lock=0
+book 4 SELL price=2.220000 amount=2.543000 lock=0
+book 5 SELL price=1.750000 amount=0.188000 lock=0
+book 6 BUY price=2.980000 amount=4.765000 lock=0
+book 7 SELL price=2.290000 amount=4.080000 lock=0
+book 8 BUY price=1.830000 amount=2.881000 lock=0
+end
+case rand_084
+trade type=SPOT buyer=4/A4 seller=1/A1 taker=4 maker=1 desired=1 sale=2 amtD=4.155000 amtS=4.404300 unfilled=100:0.720000
+final ok
+book 1 SELL price=2.050000 amount=4.095000 lock=0
+book 2 SELL price=2.940000 amount=4.685000 lock=1
+book 3 BUY price=1.490000 amount=2.670000 lock=0
+book 4 BUY price=1.490000 amount=3.655000 lock=0
+book 5 BUY price=1.640000 amount=3.630000 lock=0
+book 6 BUY price=2.760000 amount=0.180000 lock=0
+book 8 BUY price=1.600000 amount=4.296000 lock=0
+book 100 BUY price=1.650000 amount=0.720000 lock=0
+end
+case rand_085
+final ok
+book 1 BUY price=2.450000 amount=4.286000 lock=1
+book 2 SELL price=1.680000 amount=1.302000 lock=0
+book 3 SELL price=2.160000 amount=2.942000 lock=0
+book 100 BUY price=1.150000 amount=2.399000 lock=0
+end
+case rand_086
+trade type=SPOT buyer=4/A3 seller=2/A2 taker=4 maker=2 desired=1 sale=2 amtD=0.460000 amtS=0.736000 unfilled=100:4.477000
+final error=Match of the order from the same address
+book 1 BUY price=1.560000 amount=2.554000 lock=0
+book 2 SELL price=1.830000 amount=2.046000 lock=0
+book 4 BUY price=2.850000 amount=0.992000 lock=0
+book 5 BUY price=2.880000 amount=0.762000 lock=0
+end
+case rand_087
+final ok
+book 1 SELL price=2.330000 amount=1.754000 lock=0
+book 100 SELL price=1.180000 amount=4.692000 lock=0
+end
+case rand_088
+final ok
+book 1 BUY price=1.740000 amount=1.092000 lock=0
+book 100 SELL price=1.860000 amount=4.336000 lock=0
+end
+case rand_089
+final ok
+book 100 SELL price=2.730000 amount=3.182000 lock=0
+end
+case rand_090
+final ok
+book 100 SELL price=1.800000 amount=2.067000 lock=0
+end
+case rand_091
+final ok
+book 1 SELL price=1.870000 amount=2.621000 lock=0
+book 2 SELL price=1.590000 amount=3.834000 lock=0
+book 100 BUY price=1.170000 amount=0.915000 lock=0
+end
+case rand_092
+final ok
+book 1 BUY price=2.080000 amount=1.921000 lock=0
+book 2 SELL price=2.550000 amount=2.908000 lock=0
+book 3 SELL price=2.340000 amount=4.216000 lock=0
+book 4 SELL price=1.420000 amount=4.200000 lock=0
+book 5 BUY price=1.730000 amount=4.325000 lock=0
+book 100 SELL price=2.440000 amount=0.655000 lock=0
+end
+case rand_093
+final ok
+book 100 SELL price=2.660000 amount=4.084000 lock=0
+end
+case rand_094
+final error=Match of the order from the same Account
+book 1 SELL price=1.080000 amount=4.134000 lock=0
+book 2 BUY price=2.190000 amount=2.415000 lock=0
+book 3 SELL price=1.660000 amount=0.008000 lock=0
+book 4 BUY price=2.110000 amount=0.259000 lock=0
+book 5 BUY price=2.040000 amount=3.982000 lock=0
+book 6 BUY price=2.650000 amount=0.620000 lock=0
+book 7 SELL price=2.350000 amount=2.448000 lock=0
+end
+case rand_095
+trade type=SPOT buyer=1/A1 seller=4/A4 taker=1 maker=4 desired=1 sale=2 amtD=0.022000 amtS=0.031460 unfilled=100:1.878000
+final ok
+book 1 BUY price=1.690000 amount=1.329000 lock=0
+book 3 SELL price=1.980000 amount=0.032000 lock=0
+book 4 BUY price=1.470000 amount=3.475000 lock=0
+book 5 BUY price=1.010000 amount=2.724000 lock=0
+book 6 BUY price=2.310000 amount=2.644000 lock=0
+book 100 BUY price=1.550000 amount=1.878000 lock=0
+end
+case rand_096
+trade type=SPOT buyer=1/A1 seller=4/A4 taker=1 maker=4 desired=1 sale=2 amtD=0.211000 amtS=0.263750 unfilled=8:0.982000
+final ok
+book 1 SELL price=1.470000 amount=1.439000 lock=0
+book 2 BUY price=2.830000 amount=1.650000 lock=0
+book 3 SELL price=2.550000 amount=0.292000 lock=1
+book 4 BUY price=1.250000 amount=2.110000 lock=0
+book 5 BUY price=1.230000 amount=3.304000 lock=1
+book 6 SELL price=2.760000 amount=2.674000 lock=0
+book 7 BUY price=1.330000 amount=2.712000 lock=0
+book 8 SELL price=1.250000 amount=0.982000 lock=0
+end
+case rand_097
+final ok
+book 1 BUY price=1.000000 amount=4.044000 lock=0
+book 2 BUY price=1.410000 amount=3.295000 lock=0
+book 3 SELL price=1.360000 amount=1.402000 lock=0
+book 4 BUY price=1.700000 amount=0.902000 lock=0
+book 5 SELL price=2.630000 amount=2.696000 lock=1
+book 6 SELL price=1.510000 amount=3.050000 lock=1
+book 100 SELL price=2.950000 amount=4.286000 lock=0
+end
+case rand_098
+trade type=SPOT buyer=3/A3 seller=4/A4 taker=4 maker=3 desired=1 sale=2 amtD=0.812000 amtS=2.427880 unfilled=100:0.526000
+final ok
+book 100 SELL price=1.100000 amount=0.526000 lock=0
+end
+case rand_099
+trade type=SPOT buyer=3/A3 seller=1/A1 taker=1 maker=3 desired=1 sale=2 amtD=0.279000 amtS=0.831420 unfilled=2:0.392000
+final ok
+book 1 SELL price=2.860000 amount=2.874000 lock=0
+book 2 BUY price=2.980000 amount=0.392000 lock=0
+book 3 BUY price=1.360000 amount=0.283000 lock=0
+book 4 BUY price=1.770000 amount=1.685000 lock=0
+book 5 BUY price=2.410000 amount=1.612000 lock=0
+book 6 SELL price=1.140000 amount=3.263000 lock=0
+end
+case rand_100
+final ok
+book 1 SELL price=2.740000 amount=1.305000 lock=0
+book 2 SELL price=1.680000 amount=1.276000 lock=0
+book 3 SELL price=2.300000 amount=0.296000 lock=0
+book 4 SELL price=2.350000 amount=3.000000 lock=0
+book 5 SELL price=1.260000 amount=2.251000 lock=0
+book 6 BUY price=1.340000 amount=4.937000 lock=0
+book 7 BUY price=2.950000 amount=2.544000 lock=0
+book 100 BUY price=1.060000 amount=1.554000 lock=0
+end
+case rand_101
+final error=Match of the order from the same Account
+book 1 SELL price=1.500000 amount=3.064000 lock=0
+book 2 SELL price=1.780000 amount=2.968000 lock=0
+book 3 SELL price=2.180000 amount=1.531000 lock=0
+book 4 BUY price=2.000000 amount=1.954000 lock=0
+book 5 BUY price=2.220000 amount=0.921000 lock=0
+book 6 BUY price=1.030000 amount=3.027000 lock=0
+book 7 SELL price=2.500000 amount=1.356000 lock=0
+end
+case rand_102
+final ok
+book 1 SELL price=2.100000 amount=2.276000 lock=0
+book 2 BUY price=2.200000 amount=1.693000 lock=1
+book 3 BUY price=1.980000 amount=0.237000 lock=0
+book 4 BUY price=1.240000 amount=3.499000 lock=0
+book 100 SELL price=2.570000 amount=0.086000 lock=0
+end
+case rand_103
+trade type=SPOT buyer=2/A2 seller=1/A1 taker=2 maker=1 desired=1 sale=2 amtD=1.697000 amtS=1.798820 unfilled=1:0.416000
+final ok
+book 1 SELL price=1.060000 amount=0.416000 lock=0
+book 2 SELL price=2.880000 amount=2.262000 lock=0
+book 3 SELL price=2.400000 amount=1.025000 lock=0
+book 4 BUY price=2.070000 amount=3.335000 lock=0
+book 5 BUY price=2.980000 amount=3.595000 lock=0
+end
+case rand_104
+final ok
+book 1 SELL price=2.910000 amount=4.476000 lock=0
+book 2 BUY price=1.630000 amount=1.476000 lock=0
+book 3 BUY price=2.280000 amount=4.700000 lock=0
+book 4 BUY price=1.500000 amount=3.347000 lock=0
+book 5 BUY price=1.070000 amount=4.074000 lock=0
+book 100 BUY price=2.240000 amount=1.150000 lock=0
+end
+case rand_105
+final ok
+book 1 SELL price=2.810000 amount=4.490000 lock=0
+book 100 BUY price=1.010000 amount=1.243000 lock=0
+end
+case rand_106
+trade type=SPOT buyer=1/A1 seller=3/A3 taker=1 maker=3 desired=1 sale=2 amtD=3.622000 amtS=6.628260 unfilled=5:1.320000
+final ok
+book 1 SELL price=3.000000 amount=2.627000 lock=0
+book 2 SELL price=2.020000 amount=1.715000 lock=0
+book 3 SELL price=1.390000 amount=1.967000 lock=0
+book 4 BUY price=2.080000 amount=4.770000 lock=0
+book 5 SELL price=1.830000 amount=1.320000 lock=0
+book 6 BUY price=2.780000 amount=3.028000 lock=0
+book 7 BUY price=1.960000 amount=1.092000 lock=0
+end
+case rand_107
+final ok
+book 1 SELL price=2.810000 amount=0.290000 lock=0
+book 2 BUY price=1.040000 amount=4.639000 lock=0
+book 3 BUY price=1.000000 amount=1.735000 lock=0
+book 4 SELL price=2.030000 amount=4.508000 lock=0
+book 100 SELL price=2.070000 amount=2.158000 lock=0
+end
+case rand_108
+final ok
+book 100 BUY price=2.010000 amount=3.323000 lock=0
+end
+case rand_109
+final error=Match of the order from the same Account
+book 1 BUY price=2.890000 amount=2.024000 lock=0
+book 2 BUY price=2.600000 amount=2.909000 lock=0
+book 3 BUY price=2.000000 amount=1.681000 lock=0
+book 4 SELL price=2.090000 amount=3.743000 lock=0
+book 5 SELL price=1.010000 amount=3.458000 lock=0
+book 6 SELL price=1.090000 amount=4.407000 lock=0
+book 7 BUY price=1.380000 amount=2.411000 lock=0
+end
+case rand_110
+final ok
+book 100 SELL price=1.320000 amount=0.564000 lock=0
+end
+case rand_111
+final ok
+book 1 SELL price=2.400000 amount=3.848000 lock=0
+book 100 BUY price=2.770000 amount=4.452000 lock=0
+end
+case rand_112
+final ok
+book 1 SELL price=2.690000 amount=3.388000 lock=0
+book 2 SELL price=2.110000 amount=3.240000 lock=0
+book 3 SELL price=1.090000 amount=1.866000 lock=0
+book 100 SELL price=2.110000 amount=3.665000 lock=0
+end
+case rand_113
+final ok
+book 100 BUY price=2.600000 amount=1.324000 lock=0
+end
+case rand_114
+final ok
+book 1 SELL price=1.050000 amount=4.517000 lock=0
+book 2 BUY price=1.070000 amount=3.714000 lock=0
+book 3 SELL price=2.270000 amount=0.759000 lock=0
+book 4 SELL price=1.110000 amount=2.908000 lock=0
+book 5 SELL price=1.950000 amount=4.059000 lock=0
+book 6 BUY price=2.260000 amount=3.938000 lock=0
+book 7 SELL price=2.500000 amount=1.820000 lock=0
+book 100 SELL price=2.320000 amount=1.209000 lock=0
+end
+case rand_115
+final error=Match of the order from the same address
+book 1 SELL price=2.220000 amount=4.786000 lock=1
+book 2 BUY price=1.990000 amount=2.510000 lock=0
+book 3 BUY price=1.690000 amount=1.933000 lock=0
+book 4 BUY price=1.490000 amount=2.441000 lock=0
+book 5 BUY price=1.890000 amount=0.257000 lock=0
+book 6 SELL price=2.210000 amount=1.789000 lock=0
+book 7 SELL price=1.700000 amount=0.286000 lock=0
+end
+case rand_116
+final ok
+book 1 BUY price=2.630000 amount=0.094000 lock=0
+book 2 BUY price=1.190000 amount=0.318000 lock=1
+book 100 BUY price=2.050000 amount=1.098000 lock=0
+end
+case rand_117
+trade type=SPOT buyer=2/A2 seller=3/A3 taker=2 maker=3 desired=1 sale=2 amtD=1.004000 amtS=2.018040 unfilled=100:3.695000
+final ok
+book 2 BUY price=2.030000 amount=3.395000 lock=0
+book 3 BUY price=2.060000 amount=4.889000 lock=0
+book 4 SELL price=2.960000 amount=2.740000 lock=1
+book 5 SELL price=2.550000 amount=2.847000 lock=0
+book 100 BUY price=2.390000 amount=3.695000 lock=0
+end
+case rand_118
+final ok
+book 1 BUY price=2.820000 amount=0.141000 lock=1
+book 2 SELL price=1.880000 amount=3.231000 lock=0
+book 100 SELL price=1.430000 amount=2.702000 lock=0
+end
+case rand_119
+final skipped
+book 1 BUY price=1.200000 amount=0.310000 lock=0
+book 2 SELL price=1.180000 amount=0.553000 lock=0
+book 3 BUY price=1.590000 amount=2.840000 lock=0
+book 4 SELL price=2.630000 amount=0.776000 lock=0
+end
+case rand_120
+final ok
+book 100 SELL price=2.340000 amount=0.752000 lock=0
+end
+case rand_121
+final error=Match of the order from the same Account
+book 1 BUY price=1.310000 amount=3.756000 lock=0
+book 2 BUY price=2.090000 amount=0.609000 lock=0
+book 3 SELL price=2.660000 amount=4.009000 lock=0
+book 4 BUY price=1.180000 amount=4.689000 lock=0
+book 5 SELL price=2.430000 amount=0.097000 lock=0
+book 6 SELL price=2.250000 amount=4.134000 lock=0
+book 7 SELL price=1.170000 amount=0.931000 lock=0
+end
+case rand_122
+final ok
+book 1 SELL price=2.610000 amount=2.183000 lock=0
+book 2 SELL price=1.110000 amount=0.819000 lock=0
+book 3 BUY price=1.120000 amount=3.175000 lock=0
+book 4 SELL price=1.240000 amount=2.318000 lock=0
+book 5 BUY price=1.510000 amount=3.152000 lock=0
+book 6 SELL price=1.260000 amount=3.679000 lock=0
+book 7 BUY price=1.030000 amount=0.918000 lock=0
+book 100 SELL price=2.970000 amount=0.646000 lock=0
+end
+case rand_123
+final skipped
+book 1 SELL price=1.490000 amount=0.025000 lock=1
+book 2 BUY price=1.150000 amount=3.788000 lock=0
+book 3 BUY price=1.650000 amount=3.196000 lock=0
+book 4 BUY price=1.220000 amount=3.718000 lock=0
+book 5 SELL price=2.970000 amount=2.985000 lock=0
+book 6 BUY price=1.870000 amount=3.346000 lock=0
+end
+case rand_124
+trade type=SPOT buyer=3/A3 seller=4/A4 taker=4 maker=3 desired=1 sale=2 amtD=3.523000 amtS=10.287160 unfilled=4:1.390000
+final ok
+book 1 BUY price=2.740000 amount=0.427000 lock=0
+book 2 SELL price=1.850000 amount=0.192000 lock=0
+book 3 SELL price=1.460000 amount=2.012000 lock=0
+book 4 BUY price=2.920000 amount=1.390000 lock=0
+book 5 SELL price=1.320000 amount=2.314000 lock=1
+book 6 BUY price=1.200000 amount=3.112000 lock=0
+book 7 BUY price=2.150000 amount=3.655000 lock=0
+end
+case rand_125
+final ok
+book 100 BUY price=2.720000 amount=1.861000 lock=0
+end
+case rand_126
+final ok
+book 1 SELL price=1.100000 amount=2.678000 lock=0
+book 2 SELL price=1.770000 amount=1.634000 lock=0
+book 3 SELL price=1.250000 amount=4.006000 lock=0
+book 4 BUY price=1.190000 amount=3.310000 lock=0
+book 5 SELL price=2.440000 amount=2.486000 lock=0
+book 100 SELL price=2.860000 amount=2.638000 lock=0
+end
+case rand_127
+trade type=FUTURES buyer=4/A4 seller=3/A3 taker=3 maker=4 contract=5 amount=0.067000 price=2.110000 lev=7.000000 coll=1 unfilled=1:4.589000
+final ok
+book 1 BUY price=2.110000 amount=4.589000 lock=0
+book 2 SELL price=2.540000 amount=2.428000 lock=0
+book 3 SELL price=1.470000 amount=3.332000 lock=0
+book 4 SELL price=1.820000 amount=3.638000 lock=0
+end
+case rand_128
+final ok
+book 1 SELL price=1.210000 amount=2.538000 lock=0
+book 100 BUY price=2.880000 amount=1.137000 lock=0
+end
+case rand_129
+final ok
+book 1 BUY price=2.040000 amount=3.538000 lock=0
+book 2 BUY price=2.140000 amount=4.892000 lock=0
+book 3 BUY price=1.600000 amount=1.682000 lock=0
+book 100 SELL price=2.680000 amount=2.434000 lock=0
+end
+case rand_130
+final ok
+book 100 SELL price=1.420000 amount=4.272000 lock=0
+end
+case rand_131
+final ok
+book 100 BUY price=1.230000 amount=4.513000 lock=0
+end
+case rand_132
+final error=Match of the order from the same Account
+book 1 SELL price=2.680000 amount=1.712000 lock=1
+book 2 BUY price=1.350000 amount=4.623000 lock=0
+book 3 BUY price=2.440000 amount=0.442000 lock=0
+end
+case rand_133
+final ok
+book 1 BUY price=1.670000 amount=4.502000 lock=0
+book 2 BUY price=1.260000 amount=2.038000 lock=0
+book 3 SELL price=1.940000 amount=4.134000 lock=0
+book 4 BUY price=2.300000 amount=4.237000 lock=0
+book 100 SELL price=2.400000 amount=1.899000 lock=0
+end
+case rand_134
+trade type=SPOT buyer=3/A3 seller=4/A4 taker=3 maker=4 desired=1 sale=2 amtD=1.758000 amtS=4.412580 unfilled=3:0.094000
+final ok
+book 1 BUY price=1.590000 amount=3.353000 lock=0
+book 2 BUY price=1.490000 amount=0.578000 lock=0
+book 3 SELL price=2.510000 amount=0.094000 lock=0
+book 4 BUY price=2.280000 amount=0.850000 lock=0
+end
+case rand_135
+final ok
+book 1 SELL price=2.850000 amount=4.782000 lock=0
+book 100 BUY price=1.780000 amount=2.768000 lock=0
+end
+case rand_136
+final skipped
+book 1 SELL price=1.620000 amount=4.638000 lock=0
+book 2 SELL price=2.270000 amount=1.378000 lock=0
+book 3 SELL price=2.830000 amount=1.004000 lock=0
+end
+case rand_137
+final error=Match of the order from the same Account
+book 1 SELL price=1.720000 amount=2.631000 lock=0
+book 2 SELL price=1.210000 amount=2.684000 lock=0
+book 3 BUY price=2.550000 amount=2.601000 lock=0
+end
+case rand_138
+final ok
+book 1 SELL price=1.800000 amount=2.421000 lock=0
+book 2 SELL price=1.610000 amount=2.492000 lock=0
+book 3 SELL price=2.050000 amount=2.277000 lock=0
+book 4 SELL price=1.290000 amount=4.159000 lock=0
+book 5 BUY price=2.060000 amount=2.187000 lock=0
+book 6 SELL price=2.450000 amount=0.724000 lock=0
+book 100 SELL price=2.220000 amount=4.706000 lock=0
+end
+case rand_139
+final ok
+book 1 BUY price=1.440000 amount=2.949000 lock=0
+book 2 SELL price=1.110000 amount=3.776000 lock=0
+book 100 SELL price=1.040000 amount=0.456000 lock=0
+end
+case rand_140
+final ok
+book 1 BUY price=1.130000 amount=1.809000 lock=0
+book 2 SELL price=1.310000 amount=2.727000 lock=0
+book 3 BUY price=1.280000 amount=4.979000 lock=0
+book 100 SELL price=2.520000 amount=1.398000 lock=0
+end
+case rand_141
+final ok
+book 100 BUY price=2.560000 amount=3.969000 lock=0
+end
+case rand_142
+trade type=FUTURES buyer=2/A2 seller=4/A4 taker=2 maker=4 contract=5 amount=1.023000 price=1.940000 lev=2.000000 coll=1 unfilled=100:2.427000
+final ok
+book 1 BUY price=1.350000 amount=1.979000 lock=0
+book 2 SELL price=2.920000 amount=0.547000 lock=0
+book 3 BUY price=1.230000 amount=2.193000 lock=0
+book 4 BUY price=2.780000 amount=1.794000 lock=1
+book 6 BUY price=1.320000 amount=4.771000 lock=0
+book 7 BUY price=1.320000 amount=2.363000 lock=0
+book 8 BUY price=2.460000 amount=4.202000 lock=0
+book 100 BUY price=2.650000 amount=2.427000 lock=0
+end
+case rand_143
+trade type=SPOT buyer=4/A4 seller=3/A3 taker=3 maker=4 desired=1 sale=2 amtD=0.979000 amtS=2.799940 unfilled=4:1.034000
+final ok
+book 1 SELL price=2.750000 amount=4.060000 lock=0
+book 2 SELL price=1.420000 amount=4.768000 lock=0
+book 3 SELL price=1.660000 amount=1.425000 lock=0
+book 4 BUY price=2.860000 amount=1.034000 lock=0
+end
+case rand_144
+final ok
+book 100 BUY price=2.430000 amount=1.132000 lock=0
+end
+case rand_145
+final ok
+book 100 SELL price=2.840000 amount=1.227000 lock=0
+end
+case rand_146
+final ok
+book 1 SELL price=1.630000 amount=1.883000 lock=0
+book 2 BUY price=1.810000 amount=4.367000 lock=0
+book 3 SELL price=1.180000 amount=0.120000 lock=0
+book 4 BUY price=1.750000 amount=0.551000 lock=0
+book 100 SELL price=2.370000 amount=4.586000 lock=0
+end
+case rand_147
+final ok
+book 1 BUY price=1.740000 amount=4.504000 lock=0
+book 2 SELL price=2.630000 amount=1.610000 lock=0
+book 3 SELL price=1.130000 amount=2.046000 lock=0
+book 4 SELL price=2.960000 amount=1.602000 lock=1
+book 5 SELL price=2.940000 amount=3.298000 lock=0
+book 6 SELL price=1.800000 amount=0.945000 lock=0
+book 7 SELL price=2.000000 amount=0.599000 lock=0
+book 8 SELL price=2.370000 amount=2.186000 lock=0
+book 100 SELL price=2.780000 amount=0.839000 lock=0
+end
+case rand_148
+final ok
+book 1 BUY price=2.140000 amount=1.793000 lock=0
+book 2 BUY price=2.690000 amount=1.584000 lock=0
+book 3 SELL price=2.680000 amount=1.271000 lock=0
+book 100 BUY price=1.730000 amount=4.436000 lock=0
+end
+case rand_149
+final ok
+book 1 SELL price=2.730000 amount=0.683000 lock=0
+book 2 BUY price=1.370000 amount=1.368000 lock=0
+book 100 BUY price=2.400000 amount=0.744000 lock=0
+end
+case rand_150
+final ok
+book 100 SELL price=1.910000 amount=4.267000 lock=0
+end
+case rand_151
+final ok
+book 1 BUY price=2.360000 amount=4.285000 lock=0
+book 100 BUY price=2.030000 amount=3.016000 lock=0
+end
+case rand_152
+final ok
+book 100 SELL price=2.740000 amount=2.922000 lock=0
+end
+case rand_153
+trade type=SPOT buyer=3/A3 seller=2/A2 taker=2 maker=3 desired=1 sale=2 amtD=2.907000 amtS=8.023320 unfilled=100:1.046000
+final ok
+book 1 BUY price=2.690000 amount=2.911000 lock=0
+book 2 SELL price=1.150000 amount=4.154000 lock=0
+book 4 SELL price=1.210000 amount=1.808000 lock=1
+book 5 SELL price=2.230000 amount=2.827000 lock=0
+book 6 SELL price=1.010000 amount=3.462000 lock=0
+book 7 SELL price=2.600000 amount=1.424000 lock=0
+book 8 SELL price=2.090000 amount=1.800000 lock=0
+book 100 SELL price=1.610000 amount=1.046000 lock=0
+end
+case rand_154
+final ok
+book 100 BUY price=2.070000 amount=4.878000 lock=0
+end
+case rand_155
+trade type=SPOT buyer=1/A1 seller=2/A2 taker=2 maker=1 desired=1 sale=2 amtD=2.315000 amtS=6.181050 unfilled=6:0.102000
+final ok
+book 1 SELL price=2.320000 amount=0.054000 lock=0
+book 2 BUY price=1.940000 amount=1.098000 lock=0
+book 3 BUY price=2.110000 amount=3.494000 lock=0
+book 4 SELL price=1.870000 amount=1.843000 lock=0
+book 5 BUY price=1.420000 amount=0.148000 lock=0
+book 6 BUY price=2.670000 amount=0.102000 lock=0
+book 7 BUY price=2.580000 amount=4.917000 lock=0
+end
+case rand_156
+final ok
+book 1 BUY price=2.070000 amount=0.665000 lock=0
+book 2 BUY price=1.540000 amount=3.379000 lock=0
+book 3 SELL price=2.330000 amount=0.431000 lock=0
+book 4 BUY price=2.280000 amount=4.653000 lock=0
+book 5 BUY price=1.950000 amount=2.818000 lock=0
+book 6 BUY price=1.110000 amount=1.251000 lock=0
+book 100 SELL price=2.550000 amount=0.766000 lock=0
+end
+case rand_157
+final ok
+book 100 BUY price=2.860000 amount=0.890000 lock=0
+end
+case rand_158
+final ok
+book 1 SELL price=2.490000 amount=3.257000 lock=0
+book 100 SELL price=2.630000 amount=4.390000 lock=0
+end
+case rand_159
+final error=Match of the order from the same Account
+book 1 BUY price=1.090000 amount=2.806000 lock=0
+book 2 SELL price=2.610000 amount=3.837000 lock=0
+book 3 BUY price=1.450000 amount=2.856000 lock=0
+book 4 SELL price=2.260000 amount=0.486000 lock=0
+book 5 SELL price=1.470000 amount=0.314000 lock=0
+end
+case rand_160
+final ok
+book 1 SELL price=2.410000 amount=0.444000 lock=1
+book 100 SELL price=1.700000 amount=0.430000 lock=0
+end
+case rand_161
+final skipped
+book 1 BUY price=2.710000 amount=2.638000 lock=0
+book 2 BUY price=1.150000 amount=2.418000 lock=1
+book 3 SELL price=1.430000 amount=2.828000 lock=0
+end
+case rand_162
+final ok
+book 100 SELL price=1.770000 amount=4.454000 lock=0
+end
+case rand_163
+trade type=SPOT buyer=1/A1 seller=2/A2 taker=2 maker=1 desired=1 sale=2 amtD=0.272000 amtS=0.775200 unfilled=100:3.711000
+final error=Match of the order from the same Account
+book 1 SELL price=1.410000 amount=4.864000 lock=0
+book 2 BUY price=1.210000 amount=3.519000 lock=1
+book 3 SELL price=1.530000 amount=3.261000 lock=0
+book 4 SELL price=2.250000 amount=3.950000 lock=0
+book 5 BUY price=1.130000 amount=3.296000 lock=0
+book 7 SELL price=2.600000 amount=3.484000 lock=0
+end
+case rand_164
+final ok
+book 1 SELL price=2.490000 amount=0.620000 lock=0
+book 2 BUY price=1.280000 amount=0.609000 lock=0
+book 3 BUY price=2.710000 amount=3.122000 lock=0
+book 4 BUY price=1.570000 amount=3.907000 lock=0
+book 100 BUY price=1.890000 amount=1.779000 lock=0
+end
+case rand_165
+trade type=SPOT buyer=2/A2 seller=3/A3 taker=3 maker=2 desired=1 sale=2 amtD=1.416000 amtS=3.851520 unfilled=1:2.116000
+final ok
+book 1 BUY price=2.720000 amount=2.116000 lock=0
+book 2 BUY price=1.950000 amount=2.773000 lock=1
+book 3 SELL price=2.710000 amount=0.757000 lock=0
+end
+case rand_166
+final ok
+book 1 BUY price=1.510000 amount=3.702000 lock=0
+book 2 BUY price=2.460000 amount=3.415000 lock=0
+book 3 BUY price=2.840000 amount=1.110000 lock=0
+book 4 BUY price=1.940000 amount=0.162000 lock=0
+book 100 SELL price=2.490000 amount=3.957000 lock=0
+end
+case rand_167
+final skipped
+book 1 BUY price=1.490000 amount=3.677000 lock=0
+book 2 SELL price=2.140000 amount=3.923000 lock=0
+book 3 BUY price=1.460000 amount=0.824000 lock=0
+book 4 BUY price=1.980000 amount=4.290000 lock=0
+book 5 BUY price=2.710000 amount=3.714000 lock=0
+book 6 SELL price=2.340000 amount=1.423000 lock=0
+end
+case rand_168
+final ok
+book 100 SELL price=2.860000 amount=3.516000 lock=0
+end
+case rand_169
+trade type=FUTURES buyer=3/A4 seller=2/A2 taker=2 maker=3 contract=5 amount=0.216000 price=2.910000 lev=1.000000 coll=1 unfilled=100:2.703000
+trade type=FUTURES buyer=3/A3 seller=2/A2 taker=2 maker=3 contract=5 amount=2.703000 price=1.580000 lev=4.000000 coll=1 unfilled=1:0.825000
+final ok
+book 1 BUY price=1.580000 amount=0.825000 lock=0
+book 2 SELL price=2.690000 amount=2.039000 lock=0
+book 4 SELL price=1.420000 amount=4.709000 lock=0
+end
+case rand_170
+final ok
+book 1 BUY price=2.520000 amount=4.817000 lock=0
+book 2 BUY price=2.790000 amount=4.638000 lock=0
+book 3 BUY price=2.720000 amount=4.868000 lock=0
+book 100 BUY price=2.140000 amount=4.104000 lock=0
+end
+case rand_171
+final ok
+book 1 BUY price=2.120000 amount=3.795000 lock=0
+book 2 SELL price=1.950000 amount=2.315000 lock=0
+book 3 BUY price=2.370000 amount=4.548000 lock=0
+book 4 SELL price=1.500000 amount=3.963000 lock=0
+book 5 BUY price=2.150000 amount=1.905000 lock=0
+book 6 SELL price=2.430000 amount=4.786000 lock=0
+book 100 BUY price=1.080000 amount=3.556000 lock=0
+end
+case rand_172
+final error=Match of the order from the same Account
+book 1 BUY price=1.930000 amount=0.907000 lock=0
+book 2 SELL price=1.790000 amount=3.673000 lock=0
+book 3 SELL price=1.680000 amount=1.744000 lock=1
+book 4 SELL price=2.360000 amount=2.742000 lock=0
+end
+case rand_173
+final ok
+book 1 BUY price=1.980000 amount=3.856000 lock=0
+book 2 SELL price=1.460000 amount=2.758000 lock=1
+book 3 SELL price=2.260000 amount=0.336000 lock=0
+book 4 SELL price=2.660000 amount=0.884000 lock=0
+book 5 BUY price=2.100000 amount=3.034000 lock=0
+book 6 BUY price=2.160000 amount=0.375000 lock=0
+book 100 BUY price=1.770000 amount=1.122000 lock=0
+end
+case rand_174
+final ok
+book 100 SELL price=2.700000 amount=4.315000 lock=0
+end
+case rand_175
+final ok
+book 1 BUY price=1.340000 amount=4.685000 lock=0
+book 2 SELL price=2.900000 amount=1.655000 lock=0
+book 3 BUY price=1.920000 amount=0.727000 lock=0
+book 4 BUY price=2.450000 amount=1.629000 lock=0
+book 5 BUY price=2.090000 amount=4.308000 lock=0
+book 6 BUY price=1.120000 amount=4.564000 lock=0
+book 100 BUY price=2.400000 amount=0.249000 lock=0
+end
+case rand_176
+final error=Match of the order from the same Account
+book 1 SELL price=2.630000 amount=4.793000 lock=0
+book 2 BUY price=2.760000 amount=4.984000 lock=0
+book 3 SELL price=1.470000 amount=3.223000 lock=0
+book 4 BUY price=2.850000 amount=3.068000 lock=0
+book 5 BUY price=2.330000 amount=0.755000 lock=0
+book 6 BUY price=2.600000 amount=4.515000 lock=0
+book 7 SELL price=2.190000 amount=1.583000 lock=0
+book 8 BUY price=1.740000 amount=4.936000 lock=0
+end
+case rand_177
+trade type=FUTURES buyer=3/A4 seller=1/A1 taker=3 maker=1 contract=5 amount=2.045000 price=1.440000 lev=6.000000 coll=1 unfilled=100:2.201000
+final error=Match of the order from the same Account
+book 1 SELL price=2.470000 amount=3.188000 lock=1
+book 2 BUY price=2.270000 amount=3.685000 lock=0
+book 3 BUY price=1.870000 amount=2.045000 lock=1
+book 4 BUY price=1.960000 amount=1.124000 lock=0
+book 6 SELL price=2.940000 amount=4.452000 lock=0
+book 7 SELL price=2.160000 amount=4.009000 lock=0
+book 8 BUY price=2.630000 amount=4.019000 lock=0
+end
+case rand_178
+final ok
+book 1 BUY price=1.560000 amount=0.374000 lock=0
+book 2 BUY price=2.770000 amount=4.924000 lock=0
+book 3 SELL price=2.630000 amount=4.855000 lock=0
+book 4 BUY price=1.850000 amount=1.122000 lock=1
+book 5 SELL price=1.410000 amount=0.787000 lock=0
+book 6 SELL price=2.700000 amount=4.482000 lock=0
+book 100 BUY price=1.350000 amount=2.044000 lock=0
+end
+case rand_179
+final ok
+book 100 BUY price=1.000000 amount=3.696000 lock=0
+end
+case rand_180
+final ok
+book 1 BUY price=1.730000 amount=0.770000 lock=0
+book 2 SELL price=2.560000 amount=3.794000 lock=0
+book 100 SELL price=2.780000 amount=3.223000 lock=0
+end
+case rand_181
+final ok
+book 100 SELL price=2.380000 amount=0.070000 lock=0
+end
+case rand_182
+final error=Match of the order from the same Account
+book 1 BUY price=1.470000 amount=3.278000 lock=0
+book 2 SELL price=2.290000 amount=1.563000 lock=0
+book 3 SELL price=2.500000 amount=2.579000 lock=0
+book 4 BUY price=1.850000 amount=3.753000 lock=1
+book 5 SELL price=2.820000 amount=2.787000 lock=0
+book 6 SELL price=2.780000 amount=4.392000 lock=0
+book 7 SELL price=1.880000 amount=3.327000 lock=0
+end
+case rand_183
+final ok
+book 1 BUY price=2.110000 amount=1.104000 lock=0
+book 2 SELL price=2.630000 amount=1.969000 lock=0
+book 3 BUY price=1.590000 amount=3.174000 lock=0
+book 4 SELL price=2.080000 amount=2.441000 lock=0
+book 100 BUY price=2.060000 amount=2.591000 lock=0
+end
+case rand_184
+final ok
+book 1 BUY price=1.020000 amount=3.957000 lock=0
+book 100 BUY price=2.740000 amount=3.291000 lock=0
+end
+case rand_185
+final ok
+book 1 BUY price=2.220000 amount=4.667000 lock=0
+book 2 SELL price=2.440000 amount=0.746000 lock=0
+book 3 BUY price=1.670000 amount=4.149000 lock=0
+book 100 BUY price=1.020000 amount=4.175000 lock=0
+end
+case rand_186
+final ok
+book 1 BUY price=1.420000 amount=1.844000 lock=0
+book 2 SELL price=1.130000 amount=0.577000 lock=0
+book 100 SELL price=2.160000 amount=4.303000 lock=0
+end
+case rand_187
+trade type=SPOT buyer=4/A4 seller=3/A3 taker=4 maker=3 desired=1 sale=2 amtD=2.778000 amtS=3.444720 unfilled=100:0.619000
+final ok
+book 1 BUY price=2.640000 amount=0.780000 lock=0
+book 100 BUY price=2.780000 amount=0.619000 lock=0
+end
+case rand_188
+trade type=FUTURES buyer=4/A4 seller=2/A3 taker=4 maker=2 contract=5 amount=3.700000 price=1.040000 lev=10.000000 coll=1 unfilled=100:1.071000
+final ok
+book 1 SELL price=1.770000 amount=0.333000 lock=0
+book 2 BUY price=2.150000 amount=2.841000 lock=0
+book 3 BUY price=2.080000 amount=4.605000 lock=0
+book 4 BUY price=2.420000 amount=4.555000 lock=0
+book 6 SELL price=2.760000 amount=2.749000 lock=0
+book 7 SELL price=1.900000 amount=1.208000 lock=0
+book 8 SELL price=2.100000 amount=4.338000 lock=0
+book 100 BUY price=1.410000 amount=1.071000 lock=0
+end
+case rand_189
+trade type=FUTURES buyer=2/A2 seller=4/A4 taker=4 maker=2 contract=5 amount=2.286000 price=2.380000 lev=4.000000 coll=1 unfilled=100:0.510000
+final ok
+book 1 BUY price=2.930000 amount=0.503000 lock=1
+book 100 SELL price=1.190000 amount=0.510000 lock=0
+end
+case rand_190
+final error=Match of the order from the same Account
+book 1 BUY price=1.550000 amount=4.401000 lock=0
+book 2 SELL price=1.460000 amount=2.929000 lock=0
+book 3 BUY price=2.420000 amount=2.163000 lock=0
+book 4 BUY price=1.120000 amount=2.787000 lock=0
+book 5 SELL price=2.340000 amount=4.756000 lock=0
+book 6 SELL price=1.310000 amount=1.536000 lock=0
+book 7 BUY price=2.320000 amount=4.333000 lock=0
+end
+case rand_191
+final ok
+book 1 SELL price=2.100000 amount=0.758000 lock=0
+book 2 SELL price=1.950000 amount=3.984000 lock=1
+book 3 BUY price=2.110000 amount=4.202000 lock=0
+book 4 SELL price=1.850000 amount=1.983000 lock=0
+book 5 BUY price=1.650000 amount=4.542000 lock=0
+book 6 BUY price=1.020000 amount=2.955000 lock=0
+book 7 SELL price=2.320000 amount=0.550000 lock=1
+book 8 SELL price=1.660000 amount=1.581000 lock=0
+book 100 BUY price=1.240000 amount=0.840000 lock=0
+end
+case rand_192
+final ok
+book 100 BUY price=1.090000 amount=3.208000 lock=0
+end
+case rand_193
+final ok
+book 1 BUY price=2.810000 amount=0.034000 lock=0
+book 2 SELL price=2.890000 amount=4.786000 lock=1
+book 3 BUY price=2.080000 amount=4.845000 lock=0
+book 4 BUY price=2.990000 amount=4.100000 lock=0
+book 100 BUY price=2.860000 amount=2.500000 lock=0
+end
+case rand_194
+trade type=FUTURES buyer=4/A4 seller=2/A2 taker=2 maker=4 contract=5 amount=1.840000 price=2.250000 lev=8.000000 coll=1 unfilled=100:0.393000
+trade type=FUTURES buyer=4/A4 seller=2/A2 taker=2 maker=4 contract=5 amount=0.393000 price=2.240000 lev=1.000000 coll=1 unfilled=2:1.065000
+final ok
+book 2 BUY price=2.240000 amount=1.065000 lock=0
+book 3 SELL price=1.720000 amount=4.905000 lock=0
+book 4 SELL price=1.750000 amount=0.908000 lock=0
+book 5 SELL price=1.620000 amount=3.578000 lock=0
+book 6 SELL price=1.620000 amount=2.527000 lock=0
+end
+case rand_195
+final ok
+book 1 SELL price=2.560000 amount=1.431000 lock=1
+book 2 BUY price=1.420000 amount=2.809000 lock=1
+book 3 BUY price=2.180000 amount=4.675000 lock=0
+book 4 SELL price=2.090000 amount=2.488000 lock=1
+book 5 BUY price=2.830000 amount=3.182000 lock=0
+book 6 SELL price=1.180000 amount=4.875000 lock=0
+book 100 SELL price=2.880000 amount=0.605000 lock=0
+end
+case rand_196
+final ok
+book 1 SELL price=1.200000 amount=4.121000 lock=1
+book 2 SELL price=2.010000 amount=1.055000 lock=0
+book 3 BUY price=1.640000 amount=2.855000 lock=1
+book 4 SELL price=2.180000 amount=4.468000 lock=0
+book 100 SELL price=2.560000 amount=2.536000 lock=0
+end
+case rand_197
+final ok
+book 100 BUY price=2.330000 amount=1.538000 lock=0
+end
+case rand_198
+final ok
+book 1 SELL price=2.940000 amount=0.001000 lock=0
+book 2 SELL price=1.790000 amount=0.118000 lock=0
+book 3 SELL price=2.460000 amount=2.689000 lock=0
+book 100 SELL price=1.520000 amount=3.960000 lock=0
+end
+case rand_199
+final ok
+book 1 BUY price=1.530000 amount=1.559000 lock=0
+book 2 BUY price=1.800000 amount=2.353000 lock=0
+book 3 BUY price=2.360000 amount=3.027000 lock=0
+book 4 BUY price=1.400000 amount=1.939000 lock=0
+book 5 BUY price=1.870000 amount=3.101000 lock=0
+book 100 BUY price=1.950000 amount=3.846000 lock=0
+end
+case rand_200
+final error=Match of the order from the same Account
+book 1 BUY price=1.190000 amount=3.933000 lock=0
+book 2 BUY price=1.080000 amount=0.672000 lock=0
+book 3 SELL price=1.030000 amount=1.011000 lock=0
+book 4 SELL price=2.830000 amount=1.021000 lock=0
+book 5 BUY price=2.610000 amount=4.993000 lock=0
+end
+case rand_201
+final ok
+book 1 SELL price=2.250000 amount=2.046000 lock=0
+book 100 SELL price=1.000000 amount=2.758000 lock=0
+end
+case rand_202
+trade type=SPOT buyer=1/A1 seller=4/A4 taker=1 maker=4 desired=1 sale=2 amtD=2.900000 amtS=2.958000 unfilled=100:0.387000
+trade type=SPOT buyer=1/A1 seller=3/A3 taker=1 maker=3 desired=1 sale=2 amtD=0.387000 amtS=0.421830 unfilled=1:2.131000
+final ok
+book 1 SELL price=1.090000 amount=2.131000 lock=0
+book 3 BUY price=2.690000 amount=4.223000 lock=0
+end
+case rand_203
+final ok
+book 100 SELL price=2.560000 amount=3.421000 lock=0
+end
+case rand_204
+final ok
+book 1 SELL price=2.400000 amount=0.337000 lock=0
+book 2 BUY price=1.860000 amount=1.920000 lock=0
+book 3 SELL price=2.530000 amount=2.254000 lock=0
+book 4 BUY price=2.890000 amount=0.460000 lock=0
+book 5 BUY price=2.390000 amount=0.646000 lock=0
+book 6 SELL price=2.070000 amount=4.243000 lock=0
+book 7 SELL price=2.270000 amount=4.454000 lock=0
+book 8 BUY price=1.440000 amount=4.485000 lock=0
+book 100 BUY price=1.840000 amount=0.405000 lock=0
+end
+case rand_205
+final ok
+book 100 SELL price=2.670000 amount=0.662000 lock=0
+end
+case rand_206
+final ok
+book 100 SELL price=1.590000 amount=3.604000 lock=0
+end
+case rand_207
+final ok
+book 100 SELL price=1.930000 amount=4.137000 lock=0
+end
+case rand_208
+final ok
+book 1 BUY price=2.180000 amount=3.223000 lock=0
+book 2 SELL price=2.900000 amount=0.354000 lock=0
+book 3 BUY price=1.670000 amount=0.635000 lock=0
+book 4 BUY price=2.200000 amount=2.005000 lock=0
+book 100 BUY price=2.230000 amount=1.367000 lock=0
+end
+case rand_209
+final ok
+book 100 SELL price=2.300000 amount=3.842000 lock=0
+end
+case rand_210
+final error=Match of the order from the same Account
+book 1 SELL price=1.720000 amount=0.435000 lock=0
+book 2 BUY price=1.500000 amount=1.589000 lock=0
+book 3 SELL price=1.930000 amount=4.986000 lock=0
+book 4 BUY price=1.430000 amount=2.513000 lock=0
+book 5 SELL price=2.820000 amount=4.972000 lock=0
+book 6 SELL price=2.970000 amount=3.670000 lock=0
+end
+case rand_211
+trade type=SPOT buyer=3/A3 seller=2/A2 taker=3 maker=2 desired=1 sale=2 amtD=0.874000 amtS=0.891480 unfilled=1:1.793000
+final ok
+book 1 SELL price=1.020000 amount=1.793000 lock=0
+book 2 SELL price=1.710000 amount=1.907000 lock=0
+book 3 SELL price=1.940000 amount=4.239000 lock=0
+book 4 SELL price=2.470000 amount=3.522000 lock=1
+book 5 BUY price=2.340000 amount=0.241000 lock=0
+end
+case rand_212
+final ok
+book 1 BUY price=1.360000 amount=1.825000 lock=0
+book 2 BUY price=1.080000 amount=4.364000 lock=1
+book 3 SELL price=1.180000 amount=2.010000 lock=1
+book 4 BUY price=2.320000 amount=0.102000 lock=0
+book 5 SELL price=2.720000 amount=0.055000 lock=0
+book 6 BUY price=1.510000 amount=3.166000 lock=0
+book 100 BUY price=1.840000 amount=0.073000 lock=0
+end
+case rand_213
+trade type=SPOT buyer=2/A2 seller=3/A3 taker=3 maker=2 desired=1 sale=2 amtD=1.198000 amtS=3.282520 unfilled=2:1.845000
+final ok
+book 1 SELL price=2.010000 amount=3.590000 lock=0
+book 2 BUY price=2.740000 amount=1.845000 lock=0
+end
+case rand_214
+final ok
+book 100 SELL price=1.770000 amount=4.792000 lock=0
+end
+case rand_215
+final ok
+book 1 SELL price=1.180000 amount=2.134000 lock=0
+book 2 BUY price=2.810000 amount=2.109000 lock=0
+book 3 SELL price=2.380000 amount=0.682000 lock=0
+book 4 BUY price=2.410000 amount=2.685000 lock=0
+book 5 BUY price=2.530000 amount=4.089000 lock=0
+book 6 BUY price=1.090000 amount=2.243000 lock=0
+book 7 SELL price=2.250000 amount=4.404000 lock=1
+book 8 SELL price=1.640000 amount=2.492000 lock=0
+book 100 BUY price=1.420000 amount=1.953000 lock=0
+end
+case rand_216
+trade type=SPOT buyer=3/A3 seller=1/A1 taker=1 maker=3 desired=1 sale=2 amtD=0.726000 amtS=2.003760 unfilled=6:0.326000
+final ok
+book 1 SELL price=1.100000 amount=1.295000 lock=0
+book 2 BUY price=1.780000 amount=3.597000 lock=0
+book 3 BUY price=2.350000 amount=0.136000 lock=0
+book 4 BUY price=2.990000 amount=4.752000 lock=1
+book 5 SELL price=1.370000 amount=0.946000 lock=0
+book 6 BUY price=2.760000 amount=0.326000 lock=0
+book 7 SELL price=2.090000 amount=4.348000 lock=0
+book 8 BUY price=2.290000 amount=2.192000 lock=0
+end
+case rand_217
+final ok
+book 1 SELL price=1.230000 amount=4.333000 lock=0
+book 2 SELL price=2.670000 amount=4.253000 lock=0
+book 3 BUY price=1.660000 amount=2.430000 lock=1
+book 4 SELL price=2.610000 amount=4.486000 lock=0
+book 5 SELL price=2.570000 amount=4.927000 lock=0
+book 6 BUY price=1.390000 amount=1.876000 lock=0
+book 100 SELL price=2.700000 amount=1.843000 lock=0
+end
+case rand_218
+trade type=FUTURES buyer=1/A1 seller=4/A4 taker=4 maker=1 contract=5 amount=0.370000 price=2.620000 lev=1.000000 coll=1 unfilled=100:3.923000
+trade type=FUTURES buyer=1/A1 seller=4/A4 taker=4 maker=1 contract=5 amount=1.223000 price=2.500000 lev=3.000000 coll=1 unfilled=100:2.700000
+final error=Match of the order from the same Account
+book 1 BUY price=1.430000 amount=4.526000 lock=0
+book 3 BUY price=2.060000 amount=2.447000 lock=0
+book 4 SELL price=2.780000 amount=2.460000 lock=0
+book 5 BUY price=1.350000 amount=0.857000 lock=0
+end
+case rand_219
+final error=Match of the order from the same address
+book 1 SELL price=1.150000 amount=4.890000 lock=0
+book 2 SELL price=1.250000 amount=4.462000 lock=0
+end
+case rand_220
+final error=Match of the order from the same address
+book 1 SELL price=2.610000 amount=3.724000 lock=0
+book 2 BUY price=1.830000 amount=3.659000 lock=0
+book 3 SELL price=1.880000 amount=1.850000 lock=0
+book 4 SELL price=2.940000 amount=2.202000 lock=0
+book 5 BUY price=1.460000 amount=0.021000 lock=0
+book 6 SELL price=2.660000 amount=0.322000 lock=0
+book 7 BUY price=2.940000 amount=0.064000 lock=0
+book 8 BUY price=1.800000 amount=1.736000 lock=1
+end
+case rand_221
+final ok
+book 100 SELL price=1.690000 amount=4.183000 lock=0
+end
+case rand_222
+final error=Match of the order from the same Account
+book 1 BUY price=2.040000 amount=3.322000 lock=0
+book 2 SELL price=2.250000 amount=1.732000 lock=0
+book 3 BUY price=2.720000 amount=4.590000 lock=0
+book 4 SELL price=2.540000 amount=3.516000 lock=0
+book 5 BUY price=2.950000 amount=1.593000 lock=0
+book 6 SELL price=1.090000 amount=2.823000 lock=0
+book 7 BUY price=1.490000 amount=1.065000 lock=1
+book 8 BUY price=2.410000 amount=2.374000 lock=0
+end
+case rand_223
+final ok
+book 1 BUY price=1.060000 amount=0.518000 lock=0
+book 100 SELL price=2.920000 amount=4.815000 lock=0
+end
+case rand_224
+trade type=SPOT buyer=4/A4 seller=2/A2 taker=4 maker=2 desired=1 sale=2 amtD=0.966000 amtS=1.217160 unfilled=3:0.598000
+final ok
+book 1 SELL price=2.660000 amount=1.777000 lock=0
+book 2 BUY price=1.010000 amount=1.246000 lock=0
+book 3 SELL price=1.260000 amount=0.598000 lock=0
+book 4 BUY price=1.360000 amount=2.978000 lock=1
+end
+case rand_225
+final ok
+book 1 BUY price=2.830000 amount=4.500000 lock=0
+book 2 BUY price=2.350000 amount=1.225000 lock=0
+book 3 BUY price=2.470000 amount=3.735000 lock=1
+book 4 BUY price=2.950000 amount=3.507000 lock=0
+book 100 SELL price=2.950000 amount=0.122000 lock=0
+end
+case rand_226
+final ok
+book 1 SELL price=2.040000 amount=0.235000 lock=0
+book 2 BUY price=1.800000 amount=0.065000 lock=0
+book 100 SELL price=2.830000 amount=2.560000 lock=0
+end
+case rand_227
+trade type=FUTURES buyer=4/A4 seller=3/A3 taker=4 maker=3 contract=5 amount=2.984000 price=1.760000 lev=6.000000 coll=1 unfilled=5:1.265000
+final ok
+book 1 SELL price=1.680000 amount=0.172000 lock=1
+book 2 BUY price=2.660000 amount=0.782000 lock=0
+book 3 BUY price=1.610000 amount=1.441000 lock=1
+book 4 SELL price=2.820000 amount=0.466000 lock=0
+book 5 SELL price=1.760000 amount=1.265000 lock=0
+end
+case rand_228
+final error=Match of the order from the same Account
+book 1 SELL price=2.350000 amount=1.030000 lock=0
+book 2 SELL price=1.730000 amount=4.690000 lock=0
+end
+case rand_229
+final ok
+book 1 SELL price=1.560000 amount=3.500000 lock=0
+book 2 BUY price=2.010000 amount=2.064000 lock=1
+book 3 BUY price=1.050000 amount=3.591000 lock=0
+book 4 SELL price=2.210000 amount=1.340000 lock=0
+book 5 SELL price=1.980000 amount=4.061000 lock=0
+book 100 BUY price=1.240000 amount=1.503000 lock=0
+end
+case rand_230
+final ok
+book 1 SELL price=2.350000 amount=3.201000 lock=0
+book 2 SELL price=2.760000 amount=3.213000 lock=0
+book 3 BUY price=2.840000 amount=1.399000 lock=1
+book 4 BUY price=2.610000 amount=2.927000 lock=0
+book 5 SELL price=2.090000 amount=3.408000 lock=0
+book 6 BUY price=2.640000 amount=2.964000 lock=0
+book 100 BUY price=1.860000 amount=3.289000 lock=0
+end
+case rand_231
+final ok
+book 1 SELL price=2.640000 amount=2.430000 lock=0
+book 2 BUY price=2.360000 amount=4.608000 lock=0
+book 100 SELL price=2.660000 amount=4.894000 lock=0
+end
+case rand_232
+final ok
+book 1 SELL price=2.820000 amount=2.302000 lock=0
+book 2 BUY price=2.390000 amount=0.826000 lock=1
+book 3 SELL price=2.620000 amount=1.957000 lock=0
+book 4 SELL price=2.300000 amount=3.414000 lock=0
+book 5 SELL price=2.790000 amount=2.466000 lock=0
+book 6 SELL price=2.940000 amount=3.182000 lock=0
+book 7 SELL price=1.090000 amount=1.550000 lock=0
+book 100 SELL price=2.620000 amount=2.643000 lock=0
+end
+case rand_233
+final ok
+book 1 SELL price=2.030000 amount=4.633000 lock=1
+book 100 SELL price=2.700000 amount=3.500000 lock=0
+end
+case rand_234
+final ok
+book 100 BUY price=2.040000 amount=0.467000 lock=0
+end
+case rand_235
+final ok
+book 100 BUY price=1.420000 amount=2.302000 lock=0
+end
+case rand_236
+trade type=SPOT buyer=4/A4 seller=3/A3 taker=3 maker=4 desired=1 sale=2 amtD=0.043000 amtS=0.107070 unfilled=100:2.222000
+trade type=SPOT buyer=1/A2 seller=3/A3 taker=3 maker=1 desired=1 sale=2 amtD=2.222000 amtS=5.132820 unfilled=1:2.041000
+final ok
+book 1 BUY price=2.310000 amount=2.041000 lock=0
+book 2 BUY price=1.620000 amount=2.404000 lock=0
+end
+case rand_237
+final ok
+book 1 BUY price=1.210000 amount=2.673000 lock=0
+book 2 BUY price=1.450000 amount=2.595000 lock=0
+book 3 BUY price=1.340000 amount=4.246000 lock=0
+book 4 SELL price=1.340000 amount=4.431000 lock=1
+book 100 SELL price=2.090000 amount=3.898000 lock=0
+end
+case rand_238
+final ok
+book 1 SELL price=2.960000 amount=4.189000 lock=0
+book 2 BUY price=1.670000 amount=0.338000 lock=0
+book 100 SELL price=2.690000 amount=0.854000 lock=0
+end
+case rand_239
+final error=Match of the order from the same Account
+book 1 SELL price=1.270000 amount=2.603000 lock=0
+book 2 SELL price=1.960000 amount=2.840000 lock=0
+book 3 BUY price=1.530000 amount=2.544000 lock=0
+book 4 BUY price=2.150000 amount=2.975000 lock=0
+book 5 BUY price=2.740000 amount=3.397000 lock=0
+book 6 SELL price=1.580000 amount=3.515000 lock=1
+end
+case rand_240
+final ok
+book 1 BUY price=1.670000 amount=4.535000 lock=0
+book 2 BUY price=1.610000 amount=4.560000 lock=0
+book 3 SELL price=2.490000 amount=4.167000 lock=0
+book 4 BUY price=1.620000 amount=4.322000 lock=0
+book 100 SELL price=1.920000 amount=0.103000 lock=0
+end
+case rand_241
+trade type=SPOT buyer=3/A3 seller=4/A4 taker=4 maker=3 desired=1 sale=2 amtD=1.118000 amtS=3.197480 unfilled=2:2.875000
+final ok
+book 1 BUY price=1.330000 amount=3.441000 lock=0
+book 2 BUY price=2.860000 amount=2.875000 lock=0
+book 3 BUY price=1.950000 amount=0.045000 lock=0
+book 4 SELL price=2.780000 amount=0.980000 lock=1
+book 5 SELL price=2.090000 amount=2.429000 lock=0
+end
+case rand_242
+final ok
+book 100 BUY price=2.850000 amount=2.507000 lock=0
+end
+case rand_243
+final ok
+book 1 SELL price=2.180000 amount=1.967000 lock=0
+book 2 SELL price=1.780000 amount=4.213000 lock=0
+book 3 SELL price=2.390000 amount=4.106000 lock=0
+book 4 SELL price=2.010000 amount=4.177000 lock=0
+book 5 BUY price=2.380000 amount=2.102000 lock=1
+book 100 SELL price=2.370000 amount=2.920000 lock=0
+end
+case rand_244
+final error=Match of the order from the same Account
+book 1 SELL price=2.040000 amount=0.661000 lock=0
+book 2 BUY price=1.950000 amount=2.942000 lock=1
+book 3 BUY price=2.400000 amount=0.256000 lock=0
+book 4 SELL price=3.000000 amount=1.198000 lock=0
+book 5 BUY price=1.700000 amount=2.487000 lock=0
+end
+case rand_245
+trade type=FUTURES buyer=2/A4 seller=1/A1 taker=1 maker=2 contract=5 amount=1.118000 price=2.840000 lev=9.000000 coll=1 unfilled=100:3.611000
+trade type=FUTURES buyer=3/A3 seller=1/A1 taker=1 maker=3 contract=5 amount=3.611000 price=2.550000 lev=5.000000 coll=1 unfilled=2:0.147000
+final ok
+book 2 BUY price=2.550000 amount=0.147000 lock=0
+book 3 BUY price=2.500000 amount=2.700000 lock=0
+book 4 SELL price=2.950000 amount=0.930000 lock=0
+end
+case rand_246
+final ok
+book 1 BUY price=1.050000 amount=0.264000 lock=0
+book 2 SELL price=1.330000 amount=2.697000 lock=1
+book 100 SELL price=2.460000 amount=4.081000 lock=0
+end
+case rand_247
+final ok
+book 1 BUY price=2.120000 amount=4.058000 lock=1
+book 2 SELL price=2.640000 amount=3.429000 lock=0
+book 3 BUY price=1.330000 amount=2.993000 lock=1
+book 4 BUY price=2.170000 amount=1.533000 lock=0
+book 5 SELL price=2.280000 amount=4.720000 lock=0
+book 6 SELL price=2.510000 amount=1.074000 lock=0
+book 7 SELL price=2.660000 amount=1.107000 lock=1
+book 100 BUY price=2.050000 amount=0.568000 lock=0
+end
+case rand_248
+trade type=SPOT buyer=2/A2 seller=3/A3 taker=3 maker=2 desired=1 sale=2 amtD=0.408000 amtS=1.028160 unfilled=100:4.383000
+final ok
+book 100 SELL price=1.930000 amount=4.383000 lock=0
+end
+case rand_249
+final ok
+book 1 SELL price=2.500000 amount=1.969000 lock=1
+book 2 BUY price=1.870000 amount=1.599000 lock=0
+book 100 BUY price=1.750000 amount=3.009000 lock=0
+end
+case rand_250
+final ok
+book 1 BUY price=2.810000 amount=2.557000 lock=0
+book 2 SELL price=2.600000 amount=3.455000 lock=0
+book 3 BUY price=1.710000 amount=0.907000 lock=0
+book 4 BUY price=2.240000 amount=4.050000 lock=0
+book 5 SELL price=2.720000 amount=0.578000 lock=0
+book 6 BUY price=1.570000 amount=3.042000 lock=0
+book 100 SELL price=3.000000 amount=2.762000 lock=0
+end
+case rand_251
+final ok
+book 100 BUY price=1.230000 amount=1.319000 lock=0
+end
+case rand_252
+final ok
+book 1 SELL price=1.340000 amount=3.028000 lock=0
+book 100 SELL price=2.260000 amount=2.389000 lock=0
+end
+case rand_253
+final ok
+book 1 SELL price=1.780000 amount=4.942000 lock=0
+book 2 BUY price=1.070000 amount=3.643000 lock=0
+book 3 BUY price=2.280000 amount=2.786000 lock=0
+book 4 SELL price=2.530000 amount=3.940000 lock=0
+book 100 SELL price=1.620000 amount=4.478000 lock=0
+end
+case rand_254
+trade type=SPOT buyer=1/A1 seller=3/A3 taker=1 maker=3 desired=1 sale=2 amtD=0.118000 amtS=0.149860 unfilled=100:1.973000
+final ok
+book 1 SELL price=2.300000 amount=0.946000 lock=0
+book 3 BUY price=2.930000 amount=2.280000 lock=0
+book 4 BUY price=1.980000 amount=4.159000 lock=0
+book 100 BUY price=2.050000 amount=1.973000 lock=0
+end
+case rand_255
+final ok
+book 1 BUY price=1.420000 amount=3.477000 lock=0
+book 2 SELL price=2.640000 amount=3.899000 lock=0
+book 3 BUY price=1.580000 amount=2.225000 lock=0
+book 4 BUY price=1.720000 amount=1.029000 lock=0
+book 5 SELL price=2.350000 amount=2.112000 lock=0
+book 6 BUY price=1.030000 amount=2.225000 lock=0
+book 7 BUY price=2.520000 amount=0.108000 lock=0
+book 8 BUY price=1.550000 amount=4.635000 lock=1
+book 100 SELL price=2.960000 amount=2.947000 lock=0
+end
+case rand_256
+trade type=SPOT buyer=1/A1 seller=3/A3 taker=1 maker=3 desired=1 sale=2 amtD=0.779000 amtS=0.856900 unfilled=100:0.201000
+final ok
+book 1 BUY price=2.830000 amount=4.139000 lock=0
+book 2 BUY price=1.040000 amount=2.968000 lock=0
+book 4 SELL price=1.650000 amount=2.390000 lock=1
+book 5 SELL price=2.190000 amount=2.172000 lock=0
+book 6 SELL price=1.900000 amount=0.248000 lock=0
+book 100 BUY price=1.240000 amount=0.201000 lock=0
+end
+case rand_257
+final ok
+book 1 BUY price=1.470000 amount=1.686000 lock=0
+book 2 SELL price=2.160000 amount=3.399000 lock=0
+book 3 BUY price=2.270000 amount=3.694000 lock=1
+book 4 BUY price=2.200000 amount=0.565000 lock=0
+book 100 BUY price=2.400000 amount=0.465000 lock=0
+end
+case rand_258
+final ok
+book 1 SELL price=2.720000 amount=2.447000 lock=0
+book 2 BUY price=2.470000 amount=2.929000 lock=0
+book 3 BUY price=2.030000 amount=2.168000 lock=0
+book 4 BUY price=2.870000 amount=0.421000 lock=0
+book 5 BUY price=1.080000 amount=1.362000 lock=0
+book 6 SELL price=1.800000 amount=0.407000 lock=0
+book 100 SELL price=2.570000 amount=2.136000 lock=0
+end
+case rand_259
+final ok
+book 1 SELL price=2.120000 amount=4.826000 lock=0
+book 100 SELL price=2.210000 amount=0.725000 lock=0
+end
+case rand_260
+trade type=SPOT buyer=3/A3 seller=1/A1 taker=1 maker=3 desired=1 sale=2 amtD=1.235000 amtS=3.445650 unfilled=7:1.921000
+final ok
+book 1 SELL price=2.650000 amount=0.195000 lock=0
+book 2 SELL price=2.700000 amount=4.485000 lock=0
+book 3 BUY price=2.090000 amount=0.460000 lock=0
+book 4 BUY price=1.280000 amount=2.660000 lock=0
+book 5 SELL price=1.360000 amount=0.142000 lock=0
+book 6 SELL price=2.720000 amount=3.765000 lock=0
+book 7 BUY price=2.790000 amount=1.921000 lock=0
+end
+case rand_261
+final error=Match of the order from the same Account
+book 1 BUY price=1.350000 amount=0.246000 lock=0
+book 2 SELL price=2.580000 amount=4.677000 lock=0
+end
+case rand_262
+final ok
+book 1 BUY price=2.340000 amount=3.076000 lock=0
+book 100 BUY price=1.560000 amount=4.765000 lock=0
+end
+case rand_263
+final ok
+book 1 SELL price=2.970000 amount=0.856000 lock=0
+book 2 BUY price=1.080000 amount=1.947000 lock=0
+book 100 BUY price=2.910000 amount=4.750000 lock=0
+end
+case rand_264
+final ok
+book 1 SELL price=1.320000 amount=1.507000 lock=1
+book 2 SELL price=2.250000 amount=0.257000 lock=0
+book 3 BUY price=1.220000 amount=3.677000 lock=0
+book 4 BUY price=2.120000 amount=1.029000 lock=0
+book 100 BUY price=1.720000 amount=0.046000 lock=0
+end
+case rand_265
+final ok
+book 1 BUY price=1.720000 amount=4.627000 lock=0
+book 2 BUY price=2.770000 amount=4.868000 lock=0
+book 100 BUY price=2.890000 amount=2.449000 lock=0
+end
+case rand_266
+final ok
+book 100 BUY price=2.490000 amount=1.845000 lock=0
+end
+case rand_267
+final ok
+book 1 BUY price=2.320000 amount=3.257000 lock=0
+book 2 BUY price=2.070000 amount=3.288000 lock=0
+book 3 SELL price=2.090000 amount=1.783000 lock=0
+book 4 BUY price=2.490000 amount=0.301000 lock=0
+book 100 SELL price=1.620000 amount=2.326000 lock=0
+end
+case rand_268
+trade type=SPOT buyer=4/A4 seller=1/A1 taker=1 maker=4 desired=1 sale=2 amtD=1.535000 amtS=3.085350 unfilled=100:1.485000
+final ok
+book 1 SELL price=2.400000 amount=2.713000 lock=0
+book 2 BUY price=2.950000 amount=2.188000 lock=1
+book 3 SELL price=2.030000 amount=1.302000 lock=0
+book 5 SELL price=2.460000 amount=2.363000 lock=0
+book 100 SELL price=1.510000 amount=1.485000 lock=0
+end
+case rand_269
+final ok
+book 1 SELL price=2.170000 amount=0.326000 lock=0
+book 100 SELL price=2.880000 amount=0.462000 lock=0
+end
+case rand_270
+final ok
+book 1 BUY price=1.420000 amount=2.456000 lock=0
+book 100 BUY price=2.660000 amount=2.798000 lock=0
+end
+case rand_271
+trade type=SPOT buyer=4/A4 seller=2/A2 taker=2 maker=4 desired=1 sale=2 amtD=2.964000 amtS=8.121360 unfilled=6:1.096000
+final ok
+book 1 BUY price=2.670000 amount=1.306000 lock=0
+book 2 BUY price=1.080000 amount=4.821000 lock=0
+book 3 SELL price=1.680000 amount=2.027000 lock=0
+book 4 BUY price=2.330000 amount=1.887000 lock=0
+book 5 SELL price=1.220000 amount=0.814000 lock=0
+book 6 BUY price=2.740000 amount=1.096000 lock=0
+book 7 BUY price=2.040000 amount=4.034000 lock=0
+book 8 SELL price=1.480000 amount=4.082000 lock=0
+end
+case rand_272
+trade type=SPOT buyer=1/A1 seller=2/A2 taker=1 maker=2 desired=1 sale=2 amtD=2.617000 amtS=4.239540 unfilled=5:0.409000
+final ok
+book 1 BUY price=2.070000 amount=0.530000 lock=0
+book 2 SELL price=1.630000 amount=0.881000 lock=0
+book 3 SELL price=1.710000 amount=1.413000 lock=0
+book 4 BUY price=2.630000 amount=4.071000 lock=0
+book 5 SELL price=1.620000 amount=0.409000 lock=0
+book 6 BUY price=2.440000 amount=3.963000 lock=0
+end
+case rand_273
+trade type=SPOT buyer=4/A4 seller=2/A2 taker=4 maker=2 desired=1 sale=2 amtD=1.007000 amtS=1.641410 unfilled=8:1.620000
+final ok
+book 1 BUY price=2.720000 amount=0.457000 lock=0
+book 2 BUY price=1.290000 amount=2.958000 lock=1
+book 3 SELL price=2.190000 amount=1.808000 lock=0
+book 4 SELL price=1.930000 amount=3.608000 lock=0
+book 5 SELL price=2.610000 amount=2.914000 lock=0
+book 6 SELL price=1.740000 amount=3.447000 lock=1
+book 7 SELL price=1.540000 amount=1.001000 lock=0
+book 8 SELL price=1.630000 amount=1.620000 lock=0
+end
+case rand_274
+trade type=FUTURES buyer=3/A3 seller=1/A1 taker=3 maker=1 contract=5 amount=1.577000 price=1.930000 lev=10.000000 coll=1 unfilled=1:1.282000
+final ok
+book 1 SELL price=1.930000 amount=1.282000 lock=0
+book 2 BUY price=1.930000 amount=4.283000 lock=0
+end
+case rand_275
+trade type=FUTURES buyer=4/A4 seller=1/A1 taker=1 maker=4 contract=5 amount=0.131000 price=2.660000 lev=4.000000 coll=1 unfilled=100:3.446000
+final ok
+book 1 SELL price=2.150000 amount=0.673000 lock=0
+book 3 SELL price=1.220000 amount=4.581000 lock=1
+book 100 SELL price=2.100000 amount=3.446000 lock=0
+end
+case rand_276
+trade type=FUTURES buyer=1/A4 seller=2/A2 taker=1 maker=2 contract=5 amount=1.550000 price=1.030000 lev=9.000000 coll=1 unfilled=100:0.384000
+final error=Match of the order from the same Account
+book 1 SELL price=1.300000 amount=0.451000 lock=0
+book 2 SELL price=1.570000 amount=4.389000 lock=0
+book 3 SELL price=2.930000 amount=0.365000 lock=0
+book 4 BUY price=2.840000 amount=4.458000 lock=0
+book 6 BUY price=1.600000 amount=2.929000 lock=0
+book 7 SELL price=2.410000 amount=0.878000 lock=0
+book 8 SELL price=3.000000 amount=0.703000 lock=0
+end
+case rand_277
+final ok
+book 100 BUY price=2.060000 amount=1.248000 lock=0
+end
+case rand_278
+final ok
+book 1 SELL price=2.520000 amount=4.230000 lock=0
+book 2 SELL price=1.620000 amount=3.814000 lock=0
+book 3 BUY price=1.890000 amount=0.801000 lock=0
+book 100 SELL price=2.560000 amount=2.802000 lock=0
+end
+case rand_279
+final ok
+book 1 SELL price=2.250000 amount=1.162000 lock=0
+book 2 SELL price=2.160000 amount=1.312000 lock=0
+book 3 SELL price=1.680000 amount=2.986000 lock=0
+book 100 BUY price=1.570000 amount=2.883000 lock=0
+end
+case rand_280
+trade type=SPOT buyer=4/A4 seller=2/A2 taker=2 maker=4 desired=1 sale=2 amtD=2.140000 amtS=5.970600 unfilled=5:0.728000
+final ok
+book 1 SELL price=2.420000 amount=1.126000 lock=0
+book 2 BUY price=1.230000 amount=2.277000 lock=0
+book 3 BUY price=1.290000 amount=0.452000 lock=0
+book 4 BUY price=1.850000 amount=2.929000 lock=0
+book 5 BUY price=2.790000 amount=0.728000 lock=0
+end
+case rand_281
+final error=Match of the order from the same Account
+book 1 SELL price=1.180000 amount=2.556000 lock=0
+book 2 SELL price=1.610000 amount=1.731000 lock=0
+book 3 SELL price=2.520000 amount=0.643000 lock=0
+book 4 BUY price=2.530000 amount=1.001000 lock=1
+end
+case rand_282
+trade type=SPOT buyer=1/A1 seller=2/A2 taker=2 maker=1 desired=1 sale=2 amtD=0.416000 amtS=1.148160 unfilled=6:0.232000
+final ok
+book 1 SELL price=1.170000 amount=3.337000 lock=0
+book 2 SELL price=2.600000 amount=4.433000 lock=0
+book 3 BUY price=1.470000 amount=1.632000 lock=0
+book 4 SELL price=1.010000 amount=3.338000 lock=0
+book 5 SELL price=2.230000 amount=2.465000 lock=0
+book 6 BUY price=2.760000 amount=0.232000 lock=0
+book 7 BUY price=1.160000 amount=0.531000 lock=0
+end
+case rand_283
+final skipped
+book 1 BUY price=1.270000 amount=4.057000 lock=0
+book 2 BUY price=2.450000 amount=2.518000 lock=0
+book 3 BUY price=1.160000 amount=4.157000 lock=1
+book 4 SELL price=2.450000 amount=2.219000 lock=0
+book 5 BUY price=1.830000 amount=4.016000 lock=0
+end
+case rand_284
+final error=Match of the order from the same Account
+book 1 SELL price=1.680000 amount=0.996000 lock=0
+end
+case rand_285
+final ok
+book 1 BUY price=1.180000 amount=1.253000 lock=1
+book 2 BUY price=2.940000 amount=4.250000 lock=0
+book 3 BUY price=2.510000 amount=1.451000 lock=0
+book 100 BUY price=2.320000 amount=4.761000 lock=0
+end
+case rand_286
+final ok
+book 1 BUY price=1.930000 amount=4.463000 lock=0
+book 2 SELL price=2.020000 amount=1.552000 lock=0
+book 3 SELL price=2.260000 amount=0.904000 lock=0
+book 4 SELL price=1.410000 amount=3.581000 lock=0
+book 5 SELL price=2.370000 amount=1.287000 lock=0
+book 6 BUY price=1.470000 amount=1.861000 lock=0
+book 100 BUY price=1.080000 amount=1.852000 lock=0
+end
+case rand_287
+trade type=FUTURES buyer=1/A1 seller=4/A4 taker=1 maker=4 contract=5 amount=1.188000 price=1.340000 lev=10.000000 coll=1 unfilled=100:2.254000
+final ok
+book 1 BUY price=2.330000 amount=1.049000 lock=0
+book 2 BUY price=2.290000 amount=4.655000 lock=0
+book 3 BUY price=2.470000 amount=0.998000 lock=0
+book 4 BUY price=2.910000 amount=2.697000 lock=0
+book 100 BUY price=1.750000 amount=2.254000 lock=0
+end
+case rand_288
+final error=Match of the order from the same Account
+book 1 SELL price=2.880000 amount=1.637000 lock=1
+book 2 SELL price=1.050000 amount=2.971000 lock=0
+book 3 BUY price=2.380000 amount=4.478000 lock=0
+end
+case rand_289
+final skipped
+book 1 SELL price=1.670000 amount=4.662000 lock=0
+end
+case rand_290
+trade type=SPOT buyer=1/A1 seller=2/A2 taker=2 maker=1 desired=1 sale=2 amtD=1.265000 amtS=3.073950 unfilled=100:3.137000
+final ok
+book 100 SELL price=2.300000 amount=3.137000 lock=0
+end
+case rand_291
+final ok
+book 1 SELL price=1.840000 amount=4.448000 lock=0
+book 100 SELL price=2.610000 amount=0.210000 lock=0
+end
+case rand_292
+final ok
+book 100 SELL price=2.500000 amount=3.604000 lock=0
+end
+case rand_293
+final ok
+book 1 SELL price=2.770000 amount=2.584000 lock=0
+book 2 BUY price=2.100000 amount=3.855000 lock=0
+book 3 BUY price=1.400000 amount=1.055000 lock=0
+book 4 SELL price=1.510000 amount=2.054000 lock=0
+book 5 BUY price=2.260000 amount=1.922000 lock=0
+book 6 SELL price=2.370000 amount=2.378000 lock=0
+book 100 SELL price=2.980000 amount=3.099000 lock=0
+end
+case rand_294
+final ok
+book 1 SELL price=1.920000 amount=0.468000 lock=0
+book 2 BUY price=1.280000 amount=4.251000 lock=0
+book 100 SELL price=2.910000 amount=1.184000 lock=0
+end
+case rand_295
+final ok
+book 1 BUY price=1.080000 amount=4.048000 lock=0
+book 2 SELL price=2.350000 amount=1.681000 lock=0
+book 3 SELL price=2.320000 amount=0.794000 lock=0
+book 100 BUY price=1.490000 amount=3.723000 lock=0
+end
+case rand_296
+trade type=FUTURES buyer=1/A1 seller=3/A3 taker=1 maker=3 contract=5 amount=0.697000 price=1.570000 lev=9.000000 coll=1 unfilled=1:0.143000
+final ok
+book 1 SELL price=1.570000 amount=0.143000 lock=0
+book 2 SELL price=2.550000 amount=1.568000 lock=0
+end
+case rand_297
+final skipped
+book 1 SELL price=2.420000 amount=2.251000 lock=0
+book 2 SELL price=1.030000 amount=3.721000 lock=0
+book 3 BUY price=2.720000 amount=0.127000 lock=0
+book 4 SELL price=2.250000 amount=0.656000 lock=1
+book 5 BUY price=1.440000 amount=3.493000 lock=0
+book 6 BUY price=1.540000 amount=0.151000 lock=0
+book 7 BUY price=2.210000 amount=2.939000 lock=0
+end
+case rand_298
+final ok
+book 100 BUY price=1.440000 amount=4.003000 lock=0
+end
+case rand_299
+final ok
+book 1 BUY price=2.760000 amount=1.040000 lock=0
+book 2 BUY price=2.700000 amount=3.072000 lock=0
+book 3 BUY price=1.730000 amount=0.959000 lock=0
+book 4 BUY price=1.880000 amount=2.484000 lock=0
+book 5 BUY price=1.280000 amount=0.665000 lock=0
+book 6 BUY price=1.640000 amount=0.503000 lock=1
+book 100 SELL price=2.930000 amount=1.320000 lock=0
+end

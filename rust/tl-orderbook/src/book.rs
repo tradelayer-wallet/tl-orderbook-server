@@ -79,7 +79,9 @@ impl MarketKey {
                 (s.id_desired == *id_desired && s.id_for_sale == *id_for_sale)
                     || (s.id_desired == *id_for_sale && s.id_for_sale == *id_desired)
             }
-            (MarketKey::Futures { contract_id }, Props::Futures(f)) => f.contract_id == *contract_id,
+            (MarketKey::Futures { contract_id }, Props::Futures(f)) => {
+                f.contract_id == *contract_id
+            }
             _ => false,
         }
     }
@@ -558,12 +560,7 @@ impl Orderbook {
         } else {
             let m = &mut self.orders[midx];
             m.props.set_amount(built.maker_live);
-            m.transition(
-                OrderState::Open,
-                Reason::PartialFill,
-                now,
-                &mut self.events,
-            )?;
+            m.transition(OrderState::Open, Reason::PartialFill, now, &mut self.events)?;
         }
 
         let mut taker = p.taker;
@@ -577,12 +574,7 @@ impl Orderbook {
             None
         } else {
             taker.props.set_amount(built.taker_live);
-            taker.transition(
-                OrderState::Open,
-                Reason::PartialFill,
-                now,
-                &mut self.events,
-            )?;
+            taker.transition(OrderState::Open, Reason::PartialFill, now, &mut self.events)?;
             Some(taker)
         };
 

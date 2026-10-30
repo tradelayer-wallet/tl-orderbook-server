@@ -210,7 +210,10 @@ mod tests {
             let k = SwapKind::Step(n);
             assert_eq!(SwapKind::from_wire(&k.wire()), Ok(k));
         }
-        assert_eq!(SwapKind::from_wire("TERMINATE_TRADE"), Ok(SwapKind::Terminate));
+        assert_eq!(
+            SwapKind::from_wire("TERMINATE_TRADE"),
+            Ok(SwapKind::Terminate)
+        );
         assert_eq!(SwapKind::wire(&SwapKind::Step(5)), "SELLER:STEP5");
         assert_eq!(SwapKind::wire(&SwapKind::Step(6)), "BUYER:STEP6");
     }
@@ -218,10 +221,23 @@ mod tests {
     #[test]
     fn wire_names_reject_garbage() {
         for bad in [
-            "", "STEP1", "SELLER:STEP0", "SELLER:STEP7", "SELLER:STEP2", "BUYER:STEP1",
-            "BUYER:STEP12", "SELLER:STEP", "buyer:step2", "TERMINATE", "SELLER:STEP1 ",
+            "",
+            "STEP1",
+            "SELLER:STEP0",
+            "SELLER:STEP7",
+            "SELLER:STEP2",
+            "BUYER:STEP1",
+            "BUYER:STEP12",
+            "SELLER:STEP",
+            "buyer:step2",
+            "TERMINATE",
+            "SELLER:STEP1 ",
         ] {
-            assert_eq!(SwapKind::from_wire(bad), Err(Error::BadSwapEvent), "{bad:?}");
+            assert_eq!(
+                SwapKind::from_wire(bad),
+                Err(Error::BadSwapEvent),
+                "{bad:?}"
+            );
         }
     }
 
@@ -230,12 +246,19 @@ mod tests {
         let mut s = state();
         let seq = [(S, 1), (B, 2), (S, 3), (B, 4), (S, 5)];
         for (from, n) in seq {
-            let a = s.on_message(from, &msg(SwapKind::Step(n), "x"), 100).unwrap();
+            let a = s
+                .on_message(from, &msg(SwapKind::Step(n), "x"), 100)
+                .unwrap();
             let to = if from == B { S } else { B };
             assert_eq!(a, SwapAction::Relay { to });
         }
         let a = s.on_message(B, &msg(SwapKind::Step(6), TXID), 100).unwrap();
-        assert_eq!(a, SwapAction::Settle { txid: TXID.to_string() });
+        assert_eq!(
+            a,
+            SwapAction::Settle {
+                txid: TXID.to_string()
+            }
+        );
         assert_eq!(s.last_step, 6);
     }
 
@@ -248,7 +271,10 @@ mod tests {
         // step 4 never happened
         assert_eq!(
             s.on_message(S, &msg(SwapKind::Step(5), "x"), 100),
-            Err(Error::StepOutOfOrder { expected: 4, got: 5 })
+            Err(Error::StepOutOfOrder {
+                expected: 4,
+                got: 5
+            })
         );
         assert_eq!(s.last_step, 3);
     }
@@ -258,7 +284,10 @@ mod tests {
         let mut s = state();
         assert_eq!(
             s.on_message(B, &msg(SwapKind::Step(6), TXID), 100),
-            Err(Error::StepOutOfOrder { expected: 1, got: 6 })
+            Err(Error::StepOutOfOrder {
+                expected: 1,
+                got: 6
+            })
         );
     }
 
@@ -272,7 +301,10 @@ mod tests {
         s.on_message(S, &msg(SwapKind::Step(1), "x"), 100).unwrap();
         assert_eq!(
             s.on_message(S, &msg(SwapKind::Step(1), "x"), 100),
-            Err(Error::StepOutOfOrder { expected: 2, got: 1 })
+            Err(Error::StepOutOfOrder {
+                expected: 2,
+                got: 1
+            })
         );
     }
 
@@ -285,7 +317,10 @@ mod tests {
         );
         let mut m = msg(SwapKind::Step(1), "x");
         m.trade_id = TradeId(8);
-        assert_eq!(s.on_message(S, &m, 100), Err(Error::UnknownTrade(TradeId(8))));
+        assert_eq!(
+            s.on_message(S, &m, 100),
+            Err(Error::UnknownTrade(TradeId(8)))
+        );
     }
 
     #[test]
@@ -297,7 +332,10 @@ mod tests {
             .unwrap();
         assert_eq!(
             a,
-            SwapAction::Terminated { by: B, reason: "socket 2 gave up".into() }
+            SwapAction::Terminated {
+                by: B,
+                reason: "socket 2 gave up".into()
+            }
         );
     }
 
@@ -305,7 +343,8 @@ mod tests {
     fn bad_txid_and_big_payload_are_refused() {
         let mut s = state();
         for (from, n) in [(S, 1), (B, 2), (S, 3), (B, 4), (S, 5)] {
-            s.on_message(from, &msg(SwapKind::Step(n), "x"), 100).unwrap();
+            s.on_message(from, &msg(SwapKind::Step(n), "x"), 100)
+                .unwrap();
         }
         assert_eq!(
             s.on_message(B, &msg(SwapKind::Step(6), "not-a-txid"), 100),

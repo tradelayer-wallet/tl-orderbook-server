@@ -37,8 +37,7 @@ fn parse6(s: &str) -> Result<u64, Error> {
         Some((i, f)) => (i, f),
         None => (s, ""),
     };
-    if int_part.is_empty() || int_part.len() > 10 || !int_part.bytes().all(|b| b.is_ascii_digit())
-    {
+    if int_part.is_empty() || int_part.len() > 10 || !int_part.bytes().all(|b| b.is_ascii_digit()) {
         return Err(Error::BadDecimal);
     }
     if s.contains('.') && frac_part.is_empty() {
@@ -177,7 +176,9 @@ mod tests {
 
     #[test]
     fn parse_rejects_malformed() {
-        for s in ["", ".", "1.", ".5", "-1", "+1", "1e3", "1.2.3", " 1", "1 ", "0x10", "\u{ff11}"] {
+        for s in [
+            "", ".", "1.", ".5", "-1", "+1", "1e3", "1.2.3", " 1", "1 ", "0x10", "\u{ff11}",
+        ] {
             assert_eq!(Amount::parse(s), Err(Error::BadDecimal), "{s:?}");
         }
         assert_eq!(Amount::parse("0.1234567"), Err(Error::TooManyDecimals));
@@ -213,10 +214,19 @@ mod tests {
     fn f64_exact_conversion() {
         assert_eq!(Amount::from_f64_exact(0.1).unwrap().raw(), 100_000);
         assert_eq!(Amount::from_f64_exact(2.675).unwrap().raw(), 2_675_000);
-        assert_eq!(Amount::from_f64_exact(0.0000005), Err(Error::NotRepresentable));
-        assert_eq!(Amount::from_f64_exact(f64::NAN), Err(Error::NotRepresentable));
+        assert_eq!(
+            Amount::from_f64_exact(0.0000005),
+            Err(Error::NotRepresentable)
+        );
+        assert_eq!(
+            Amount::from_f64_exact(f64::NAN),
+            Err(Error::NotRepresentable)
+        );
         assert_eq!(Amount::from_f64_exact(-1.0), Err(Error::NotRepresentable));
-        assert_eq!(Amount::from_f64_exact(f64::INFINITY), Err(Error::NotRepresentable));
+        assert_eq!(
+            Amount::from_f64_exact(f64::INFINITY),
+            Err(Error::NotRepresentable)
+        );
         assert_eq!(Amount::from_f64_exact(2e9), Err(Error::NotRepresentable));
     }
 

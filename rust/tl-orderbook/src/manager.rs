@@ -7,7 +7,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::book::{Aborted, Completion, Orderbook, MarketKey, SubmitOutcome};
+use crate::book::{Aborted, Completion, MarketKey, Orderbook, SubmitOutcome};
 use crate::error::Error;
 use crate::lifecycle::{LifecycleEvent, Reason};
 use crate::types::{Filter, Order, OrderId, OrderState, SessionId, TradeId};

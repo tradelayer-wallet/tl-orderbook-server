@@ -1,0 +1,2387 @@
+case empty_book_places
+market spot 1 2
+take id=9 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.50 amount=1.500
+end
+case exact_fill
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.50 amount=1.500
+take id=9 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.50 amount=1.500
+end
+case taker_partial_then_rests
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.50 amount=1.000
+take id=9 sock=2 addr=A2 act=BUY desired=1 sale=2 price=3.00 amount=2.500
+end
+case maker_partial
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.50 amount=4.000
+take id=9 sock=2 addr=A2 act=BUY desired=1 sale=2 price=3.00 amount=1.250
+end
+case price_priority_buy
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.80 amount=1.000
+rest id=2 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.40 amount=1.000
+rest id=3 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.60 amount=1.000
+take id=9 sock=2 addr=A2 act=BUY desired=1 sale=2 price=3.00 amount=1.000
+end
+case price_priority_sell
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.80 amount=1.000
+rest id=2 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.40 amount=1.000
+rest id=3 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.90 amount=1.000
+take id=9 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.00 amount=1.000
+end
+case time_priority_tie
+market spot 1 2
+rest id=1 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.50 amount=1.000
+rest id=2 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.50 amount=1.000
+take id=9 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.50 amount=1.000
+end
+case sweeps_three_levels
+market spot 1 2
+rest id=1 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.40 amount=1.000
+rest id=2 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.50 amount=1.000
+rest id=3 sock=5 addr=A5 act=SELL desired=2 sale=1 price=2.60 amount=1.000
+take id=9 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.60 amount=2.500
+end
+case price_not_crossing
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=SELL desired=2 sale=1 price=3.50 amount=1.000
+take id=9 sock=2 addr=A2 act=BUY desired=1 sale=2 price=3.00 amount=1.000
+end
+case locked_skipped
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.40 amount=1.000 lock=1
+rest id=2 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.60 amount=1.000
+take id=9 sock=2 addr=A2 act=BUY desired=1 sale=2 price=3.00 amount=1.000
+end
+case same_session_errors
+market spot 1 2
+rest id=1 sock=2 addr=A1 act=SELL desired=2 sale=1 price=2.40 amount=1.000
+rest id=2 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.60 amount=1.000
+take id=9 sock=2 addr=A2 act=BUY desired=1 sale=2 price=3.00 amount=1.000
+end
+case same_address_errors
+market spot 1 2
+rest id=1 sock=1 addr=AX act=SELL desired=2 sale=1 price=2.40 amount=1.000
+take id=9 sock=2 addr=AX act=BUY desired=1 sale=2 price=3.00 amount=1.000
+end
+case wrong_direction_ids_do_not_cross
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=SELL desired=1 sale=2 price=2.40 amount=1.000
+take id=9 sock=2 addr=A2 act=BUY desired=1 sale=2 price=3.00 amount=1.000
+end
+case batch_crossing_skipped
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.40 amount=1.000
+take id=9 sock=2 addr=A2 act=BUY desired=1 sale=2 price=3.00 amount=1.000 notrades=1
+end
+case batch_non_crossing_placed
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=SELL desired=2 sale=1 price=3.40 amount=1.000
+take id=9 sock=2 addr=A2 act=BUY desired=1 sale=2 price=3.00 amount=1.000 notrades=1
+end
+case rounding_small_notional
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=SELL desired=2 sale=1 price=0.01 amount=0.001
+take id=9 sock=2 addr=A2 act=BUY desired=1 sale=2 price=0.01 amount=0.001
+end
+case futures_exact
+market futures 5
+rest id=1 sock=1 addr=A1 act=SELL contract=5 lev=5 coll=1 price=100.00 amount=2.000
+take id=9 sock=2 addr=A2 act=BUY contract=5 lev=3 coll=1 price=100.00 amount=2.000
+end
+case futures_partial_maker_price
+market futures 5
+rest id=1 sock=1 addr=A1 act=SELL contract=5 lev=5 coll=1 price=99.00 amount=5.000
+take id=9 sock=2 addr=A2 act=BUY contract=5 lev=3 coll=1 price=101.00 amount=2.000
+end
+case futures_sell_taker_buyer_leverage
+market futures 5
+rest id=1 sock=1 addr=A1 act=BUY contract=5 lev=7 coll=1 price=101.00 amount=1.000
+take id=9 sock=2 addr=A2 act=SELL contract=5 lev=2 coll=1 price=100.00 amount=3.000
+end
+case rand_000
+market spot 1 2
+rest id=1 sock=3 addr=A3 act=BUY desired=2 sale=1 price=2.17 amount=1.417 lock=1
+rest id=2 sock=1 addr=A1 act=SELL desired=2 sale=1 price=1.58 amount=3.544
+rest id=3 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.30 amount=2.485 lock=1
+rest id=4 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.60 amount=0.103
+rest id=5 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.21 amount=3.692
+rest id=6 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.85 amount=4.833 lock=1
+rest id=7 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.65 amount=1.411
+rest id=8 sock=3 addr=A3 act=SELL desired=1 sale=2 price=2.90 amount=3.634
+take id=100 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.92 amount=1.678
+end
+case rand_001
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.72 amount=4.221
+rest id=2 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.28 amount=3.458
+rest id=3 sock=1 addr=A1 act=SELL desired=2 sale=1 price=1.60 amount=0.692 lock=1
+rest id=4 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.25 amount=1.371
+rest id=5 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.42 amount=4.335
+rest id=6 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.81 amount=1.856
+rest id=7 sock=2 addr=A4 act=BUY desired=1 sale=2 price=2.41 amount=0.668
+take id=100 sock=2 addr=A3 act=BUY desired=1 sale=2 price=1.20 amount=0.299
+end
+case rand_002
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.00 amount=4.513
+rest id=2 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.34 amount=1.137
+take id=100 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.59 amount=4.259
+end
+case rand_003
+market spot 1 2
+rest id=1 sock=2 addr=A2 act=SELL desired=1 sale=2 price=1.00 amount=0.658 lock=1
+rest id=2 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.16 amount=4.817 lock=1
+take id=100 sock=2 addr=A2 act=BUY desired=1 sale=2 price=1.97 amount=0.629
+end
+case rand_004
+market spot 1 2
+take id=100 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.55 amount=4.695
+end
+case rand_005
+market futures 5
+rest id=1 sock=1 addr=A1 act=BUY contract=5 lev=2 coll=1 price=1.71 amount=2.177
+rest id=2 sock=3 addr=A3 act=BUY contract=5 lev=7 coll=1 price=1.15 amount=2.653 lock=1
+rest id=3 sock=3 addr=A3 act=SELL contract=5 lev=1 coll=1 price=1.44 amount=0.875
+rest id=4 sock=1 addr=A1 act=SELL contract=5 lev=6 coll=1 price=1.42 amount=1.682
+rest id=5 sock=3 addr=A3 act=BUY contract=5 lev=8 coll=1 price=2.84 amount=0.154
+take id=100 sock=4 addr=A4 act=BUY contract=5 lev=4 coll=1 price=2.48 amount=4.755
+end
+case rand_006
+market spot 1 2
+rest id=1 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.15 amount=3.272
+rest id=2 sock=3 addr=A4 act=BUY desired=2 sale=1 price=1.86 amount=0.207
+rest id=3 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.07 amount=1.760
+rest id=4 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.65 amount=3.736
+rest id=5 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.96 amount=0.157
+take id=100 sock=2 addr=A2 act=BUY desired=1 sale=2 price=1.33 amount=1.705
+end
+case rand_007
+market spot 1 2
+take id=100 sock=1 addr=A1 act=SELL desired=2 sale=1 price=1.68 amount=0.949
+end
+case rand_008
+market spot 1 2
+take id=100 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.92 amount=4.963
+end
+case rand_009
+market spot 1 2
+take id=100 sock=1 addr=A4 act=BUY desired=1 sale=2 price=2.24 amount=3.918
+end
+case rand_010
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.61 amount=1.631
+rest id=2 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.48 amount=0.747 lock=1
+rest id=3 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.22 amount=0.048
+rest id=4 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.70 amount=4.820
+take id=100 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.57 amount=0.222
+end
+case rand_011
+market futures 5
+rest id=1 sock=1 addr=A1 act=SELL contract=5 lev=9 coll=1 price=2.92 amount=2.002
+rest id=2 sock=1 addr=A1 act=SELL contract=5 lev=6 coll=1 price=2.32 amount=1.905
+rest id=3 sock=3 addr=A3 act=BUY contract=5 lev=8 coll=1 price=1.67 amount=3.542
+take id=100 sock=1 addr=A1 act=SELL contract=5 lev=8 coll=1 price=2.72 amount=3.983
+end
+case rand_012
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.10 amount=3.974
+rest id=2 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.71 amount=0.026
+take id=100 sock=1 addr=A1 act=SELL desired=2 sale=1 price=1.98 amount=3.748
+end
+case rand_013
+market spot 1 2
+rest id=1 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.61 amount=1.253
+rest id=2 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.93 amount=1.267
+take id=100 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.90 amount=0.398
+end
+case rand_014
+market spot 1 2
+take id=100 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.54 amount=1.159
+end
+case rand_015
+market futures 5
+rest id=1 sock=4 addr=A4 act=SELL contract=5 lev=10 coll=1 price=1.76 amount=3.446
+rest id=2 sock=4 addr=A4 act=SELL contract=5 lev=6 coll=1 price=1.64 amount=3.084 lock=1
+rest id=3 sock=3 addr=A3 act=BUY contract=5 lev=2 coll=1 price=3.00 amount=3.002
+take id=100 sock=4 addr=A3 act=SELL contract=5 lev=4 coll=1 price=1.66 amount=0.247
+end
+case rand_016
+market spot 1 2
+rest id=1 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.95 amount=4.149
+rest id=2 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.10 amount=2.800
+rest id=3 sock=1 addr=A1 act=SELL desired=2 sale=1 price=1.53 amount=4.360
+rest id=4 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.46 amount=0.391
+rest id=5 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.91 amount=4.156
+rest id=6 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.44 amount=1.453
+rest id=7 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.04 amount=2.692 lock=1
+take id=100 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.96 amount=1.490 notrades=1
+end
+case rand_017
+market futures 5
+rest id=1 sock=4 addr=A4 act=BUY contract=5 lev=9 coll=1 price=2.94 amount=0.697
+rest id=2 sock=3 addr=A3 act=SELL contract=5 lev=9 coll=1 price=2.49 amount=0.107
+rest id=3 sock=2 addr=A2 act=SELL contract=5 lev=9 coll=1 price=1.58 amount=2.520
+rest id=4 sock=3 addr=A3 act=BUY contract=5 lev=9 coll=1 price=1.99 amount=3.660
+rest id=5 sock=2 addr=A2 act=BUY contract=5 lev=5 coll=1 price=1.99 amount=4.387
+rest id=6 sock=4 addr=A4 act=BUY contract=5 lev=6 coll=1 price=2.99 amount=1.912
+rest id=7 sock=1 addr=A1 act=SELL contract=5 lev=9 coll=1 price=1.48 amount=0.664
+take id=100 sock=1 addr=A1 act=SELL contract=5 lev=7 coll=1 price=1.42 amount=2.330
+end
+case rand_018
+market spot 1 2
+take id=100 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.03 amount=3.021
+end
+case rand_019
+market spot 1 2
+rest id=1 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.02 amount=2.600
+rest id=2 sock=2 addr=A2 act=BUY desired=1 sale=2 price=1.33 amount=1.584
+rest id=3 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.39 amount=2.530
+take id=100 sock=3 addr=A5 act=BUY desired=1 sale=2 price=2.49 amount=0.736
+end
+case rand_020
+market spot 1 2
+rest id=1 sock=2 addr=A3 act=BUY desired=1 sale=2 price=2.54 amount=2.136
+rest id=2 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.77 amount=0.764
+rest id=3 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.06 amount=1.843 lock=1
+take id=100 sock=4 addr=A5 act=BUY desired=1 sale=2 price=2.64 amount=3.752
+end
+case rand_021
+market spot 1 2
+take id=100 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.08 amount=1.223
+end
+case rand_022
+market spot 1 2
+rest id=1 sock=3 addr=A3 act=SELL desired=1 sale=2 price=1.80 amount=4.095
+rest id=2 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.26 amount=2.197
+rest id=3 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.85 amount=2.397
+rest id=4 sock=2 addr=A2 act=BUY desired=2 sale=1 price=2.59 amount=1.345
+take id=100 sock=4 addr=A5 act=BUY desired=1 sale=2 price=1.59 amount=3.614
+end
+case rand_023
+market futures 5
+rest id=1 sock=4 addr=A4 act=SELL contract=5 lev=2 coll=1 price=1.55 amount=1.094
+rest id=2 sock=2 addr=A2 act=SELL contract=5 lev=8 coll=1 price=2.52 amount=4.746 lock=1
+rest id=3 sock=1 addr=A4 act=BUY contract=5 lev=10 coll=1 price=1.32 amount=0.993
+rest id=4 sock=4 addr=A4 act=SELL contract=5 lev=8 coll=1 price=1.56 amount=1.791
+rest id=5 sock=4 addr=A4 act=SELL contract=5 lev=3 coll=1 price=2.58 amount=0.193
+rest id=6 sock=1 addr=A1 act=BUY contract=5 lev=1 coll=1 price=1.27 amount=3.824
+take id=100 sock=2 addr=A2 act=BUY contract=5 lev=3 coll=1 price=2.98 amount=1.728
+end
+case rand_024
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.68 amount=0.854 lock=1
+rest id=2 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.73 amount=2.750
+rest id=3 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.02 amount=0.774
+rest id=4 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.80 amount=1.409
+rest id=5 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.21 amount=3.963
+take id=100 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.98 amount=0.187
+end
+case rand_025
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.18 amount=3.514
+rest id=2 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.71 amount=3.728
+rest id=3 sock=3 addr=A3 act=SELL desired=1 sale=2 price=2.52 amount=3.310
+rest id=4 sock=2 addr=A2 act=BUY desired=1 sale=2 price=1.02 amount=2.432
+rest id=5 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.43 amount=2.938
+rest id=6 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.38 amount=3.295
+rest id=7 sock=4 addr=A4 act=SELL desired=1 sale=2 price=1.63 amount=4.273
+take id=100 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.96 amount=2.395
+end
+case rand_026
+market futures 5
+rest id=1 sock=2 addr=A2 act=BUY contract=5 lev=2 coll=1 price=2.86 amount=4.268
+take id=100 sock=1 addr=A1 act=SELL contract=5 lev=2 coll=1 price=1.54 amount=0.778
+end
+case rand_027
+market futures 5
+rest id=1 sock=3 addr=A3 act=BUY contract=5 lev=10 coll=1 price=2.04 amount=1.206 lock=1
+rest id=2 sock=2 addr=A2 act=SELL contract=5 lev=2 coll=1 price=2.91 amount=0.767
+rest id=3 sock=3 addr=A3 act=BUY contract=5 lev=1 coll=1 price=1.92 amount=4.632
+rest id=4 sock=1 addr=A1 act=BUY contract=5 lev=10 coll=1 price=2.89 amount=4.395
+rest id=5 sock=1 addr=A1 act=SELL contract=5 lev=9 coll=1 price=2.35 amount=3.795
+rest id=6 sock=1 addr=A5 act=SELL contract=5 lev=1 coll=1 price=1.15 amount=4.814
+rest id=7 sock=1 addr=A1 act=SELL contract=5 lev=3 coll=1 price=2.88 amount=2.358
+take id=100 sock=4 addr=A4 act=SELL contract=5 lev=2 coll=1 price=1.24 amount=2.198 notrades=1
+end
+case rand_028
+market spot 1 2
+rest id=1 sock=3 addr=A3 act=BUY desired=2 sale=1 price=1.50 amount=3.087
+rest id=2 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.15 amount=3.749
+rest id=3 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.77 amount=0.070
+rest id=4 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.32 amount=4.916
+rest id=5 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.48 amount=4.465
+take id=100 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.11 amount=2.187
+end
+case rand_029
+market spot 1 2
+rest id=1 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.46 amount=0.861
+rest id=2 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.94 amount=4.902
+rest id=3 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.62 amount=2.559
+take id=100 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.52 amount=3.001
+end
+case rand_030
+market futures 5
+take id=100 sock=2 addr=A2 act=BUY contract=5 lev=3 coll=1 price=2.38 amount=3.584
+end
+case rand_031
+market spot 1 2
+rest id=1 sock=1 addr=A5 act=SELL desired=2 sale=1 price=1.39 amount=0.453
+rest id=2 sock=1 addr=A2 act=SELL desired=2 sale=1 price=1.68 amount=4.812
+rest id=3 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.63 amount=4.842
+rest id=4 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.59 amount=2.335
+rest id=5 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.39 amount=1.123
+take id=100 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.08 amount=1.463
+end
+case rand_032
+market spot 1 2
+rest id=1 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.99 amount=2.594
+rest id=2 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.80 amount=1.134
+rest id=3 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.44 amount=3.633
+take id=100 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.64 amount=2.842
+end
+case rand_033
+market futures 5
+rest id=1 sock=1 addr=A1 act=BUY contract=5 lev=2 coll=1 price=1.17 amount=3.863
+rest id=2 sock=4 addr=A4 act=SELL contract=5 lev=5 coll=1 price=1.08 amount=0.162
+rest id=3 sock=4 addr=A4 act=SELL contract=5 lev=10 coll=1 price=1.53 amount=2.438
+rest id=4 sock=1 addr=A1 act=BUY contract=5 lev=1 coll=1 price=2.66 amount=4.560
+take id=100 sock=2 addr=A2 act=BUY contract=5 lev=3 coll=1 price=1.34 amount=0.852
+end
+case rand_034
+market spot 1 2
+rest id=1 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.78 amount=1.130
+rest id=2 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.04 amount=2.038
+rest id=3 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.90 amount=3.314
+take id=100 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.23 amount=3.396
+end
+case rand_035
+market spot 1 2
+rest id=1 sock=1 addr=A3 act=SELL desired=2 sale=1 price=1.60 amount=0.787 lock=1
+rest id=2 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.86 amount=0.925
+take id=100 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.32 amount=4.983
+end
+case rand_036
+market spot 1 2
+rest id=1 sock=2 addr=A5 act=SELL desired=1 sale=2 price=1.25 amount=1.611
+rest id=2 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.94 amount=4.106
+rest id=3 sock=2 addr=A2 act=BUY desired=2 sale=1 price=1.67 amount=3.569
+rest id=4 sock=1 addr=A5 act=BUY desired=1 sale=2 price=1.11 amount=2.501
+rest id=5 sock=4 addr=A5 act=BUY desired=1 sale=2 price=2.33 amount=0.806
+rest id=6 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.84 amount=1.230
+rest id=7 sock=4 addr=A2 act=BUY desired=1 sale=2 price=1.11 amount=2.899
+take id=100 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.58 amount=2.520
+end
+case rand_037
+market futures 5
+rest id=1 sock=1 addr=A1 act=BUY contract=5 lev=7 coll=1 price=1.35 amount=4.192
+rest id=2 sock=3 addr=A3 act=BUY contract=5 lev=10 coll=1 price=1.29 amount=2.633
+rest id=3 sock=4 addr=A4 act=BUY contract=5 lev=9 coll=1 price=1.45 amount=0.438
+rest id=4 sock=1 addr=A1 act=BUY contract=5 lev=9 coll=1 price=1.71 amount=0.990
+rest id=5 sock=1 addr=A1 act=SELL contract=5 lev=8 coll=1 price=2.93 amount=3.432
+rest id=6 sock=3 addr=A3 act=SELL contract=5 lev=7 coll=1 price=1.86 amount=2.202
+rest id=7 sock=2 addr=A2 act=SELL contract=5 lev=9 coll=1 price=2.56 amount=2.203 lock=1
+take id=100 sock=4 addr=A4 act=BUY contract=5 lev=4 coll=1 price=1.82 amount=0.996
+end
+case rand_038
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=SELL desired=1 sale=2 price=1.30 amount=3.093
+take id=100 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.37 amount=1.564
+end
+case rand_039
+market spot 1 2
+rest id=1 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.23 amount=4.062
+rest id=2 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.01 amount=1.184
+rest id=3 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.62 amount=3.985
+rest id=4 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.55 amount=2.113
+rest id=5 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.98 amount=4.131
+rest id=6 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.87 amount=2.194
+take id=100 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.03 amount=1.521
+end
+case rand_040
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=SELL desired=1 sale=2 price=1.61 amount=4.502
+rest id=2 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.91 amount=1.335
+rest id=3 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.71 amount=2.582
+rest id=4 sock=3 addr=A2 act=SELL desired=2 sale=1 price=2.50 amount=0.955
+rest id=5 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.35 amount=2.208
+rest id=6 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.66 amount=2.879
+take id=100 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.80 amount=2.675
+end
+case rand_041
+market spot 1 2
+rest id=1 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.70 amount=2.607
+rest id=2 sock=2 addr=A2 act=BUY desired=1 sale=2 price=1.07 amount=3.147
+take id=100 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.98 amount=3.083
+end
+case rand_042
+market spot 1 2
+rest id=1 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.98 amount=3.519
+rest id=2 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.60 amount=1.294 lock=1
+rest id=3 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.79 amount=3.663
+rest id=4 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.17 amount=4.614 lock=1
+take id=100 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.38 amount=0.889
+end
+case rand_043
+market futures 5
+take id=100 sock=4 addr=A4 act=SELL contract=5 lev=4 coll=1 price=2.69 amount=3.414
+end
+case rand_044
+market spot 1 2
+take id=100 sock=2 addr=A3 act=SELL desired=2 sale=1 price=1.76 amount=3.649
+end
+case rand_045
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.31 amount=2.386
+rest id=2 sock=1 addr=A1 act=BUY desired=2 sale=1 price=1.70 amount=4.179
+rest id=3 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.97 amount=4.344
+rest id=4 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.43 amount=3.797
+rest id=5 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.21 amount=2.783
+rest id=6 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.02 amount=0.559
+take id=100 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.26 amount=2.089
+end
+case rand_046
+market futures 5
+rest id=1 sock=3 addr=A3 act=SELL contract=5 lev=9 coll=1 price=2.60 amount=1.899 lock=1
+rest id=2 sock=1 addr=A1 act=BUY contract=5 lev=5 coll=1 price=1.75 amount=2.669
+rest id=3 sock=1 addr=A1 act=SELL contract=5 lev=3 coll=1 price=2.84 amount=2.218
+rest id=4 sock=3 addr=A3 act=BUY contract=5 lev=9 coll=1 price=1.04 amount=4.305
+rest id=5 sock=2 addr=A2 act=BUY contract=5 lev=9 coll=1 price=1.10 amount=4.178
+take id=100 sock=4 addr=A3 act=SELL contract=5 lev=3 coll=1 price=1.22 amount=4.545
+end
+case rand_047
+market futures 5
+take id=100 sock=2 addr=A2 act=BUY contract=5 lev=8 coll=1 price=1.79 amount=1.939 notrades=1
+end
+case rand_048
+market futures 5
+rest id=1 sock=2 addr=A2 act=BUY contract=5 lev=5 coll=1 price=2.68 amount=2.228
+rest id=2 sock=2 addr=A2 act=SELL contract=5 lev=9 coll=1 price=2.44 amount=2.399
+rest id=3 sock=3 addr=A3 act=BUY contract=5 lev=7 coll=1 price=2.51 amount=4.126
+rest id=4 sock=3 addr=A3 act=BUY contract=5 lev=2 coll=1 price=2.77 amount=3.652
+rest id=5 sock=3 addr=A3 act=BUY contract=5 lev=1 coll=1 price=2.07 amount=0.531
+rest id=6 sock=2 addr=A2 act=BUY contract=5 lev=8 coll=1 price=2.42 amount=0.672
+rest id=7 sock=3 addr=A3 act=BUY contract=5 lev=6 coll=1 price=1.92 amount=3.710
+rest id=8 sock=4 addr=A4 act=SELL contract=5 lev=8 coll=1 price=1.06 amount=0.205
+take id=100 sock=4 addr=A4 act=SELL contract=5 lev=10 coll=1 price=2.17 amount=0.951
+end
+case rand_049
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.37 amount=1.674
+rest id=2 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.24 amount=3.519 lock=1
+rest id=3 sock=2 addr=A2 act=SELL desired=1 sale=2 price=1.26 amount=1.546
+rest id=4 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.77 amount=0.363 lock=1
+rest id=5 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.89 amount=3.816
+rest id=6 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.23 amount=4.918
+take id=100 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.25 amount=2.175
+end
+case rand_050
+market spot 1 2
+take id=100 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.88 amount=4.064
+end
+case rand_051
+market spot 1 2
+rest id=1 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.03 amount=3.742
+rest id=2 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.12 amount=0.876 lock=1
+rest id=3 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.67 amount=1.229
+rest id=4 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.72 amount=0.980
+take id=100 sock=2 addr=A2 act=BUY desired=1 sale=2 price=1.96 amount=3.922
+end
+case rand_052
+market futures 5
+rest id=1 sock=4 addr=A4 act=SELL contract=5 lev=3 coll=1 price=1.50 amount=3.838
+rest id=2 sock=4 addr=A4 act=BUY contract=5 lev=9 coll=1 price=2.54 amount=3.225 lock=1
+rest id=3 sock=1 addr=A1 act=SELL contract=5 lev=8 coll=1 price=1.00 amount=1.279
+rest id=4 sock=2 addr=A2 act=SELL contract=5 lev=2 coll=1 price=1.89 amount=4.063
+take id=100 sock=1 addr=A1 act=SELL contract=5 lev=4 coll=1 price=3.00 amount=4.699
+end
+case rand_053
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.13 amount=2.576
+rest id=2 sock=2 addr=A2 act=BUY desired=1 sale=2 price=1.35 amount=1.682
+rest id=3 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.76 amount=1.853
+rest id=4 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.04 amount=4.036
+rest id=5 sock=1 addr=A1 act=SELL desired=1 sale=2 price=1.22 amount=4.822
+take id=100 sock=1 addr=A1 act=SELL desired=2 sale=1 price=1.45 amount=1.374
+end
+case rand_054
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.35 amount=1.427 lock=1
+rest id=2 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.53 amount=2.552
+rest id=3 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.65 amount=3.133
+rest id=4 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.76 amount=0.252
+take id=100 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.67 amount=3.146
+end
+case rand_055
+market futures 5
+rest id=1 sock=4 addr=A4 act=SELL contract=5 lev=6 coll=1 price=2.08 amount=1.592
+rest id=2 sock=3 addr=A3 act=SELL contract=5 lev=2 coll=1 price=1.83 amount=0.375
+rest id=3 sock=1 addr=A1 act=BUY contract=5 lev=1 coll=1 price=2.90 amount=4.041
+rest id=4 sock=3 addr=A5 act=SELL contract=5 lev=7 coll=1 price=1.78 amount=2.792
+rest id=5 sock=4 addr=A4 act=BUY contract=5 lev=1 coll=1 price=1.67 amount=1.861
+rest id=6 sock=2 addr=A2 act=BUY contract=5 lev=9 coll=1 price=2.16 amount=4.589
+rest id=7 sock=2 addr=A2 act=BUY contract=5 lev=7 coll=1 price=1.31 amount=0.296
+rest id=8 sock=1 addr=A5 act=BUY contract=5 lev=7 coll=1 price=1.22 amount=1.757
+take id=100 sock=4 addr=A4 act=BUY contract=5 lev=1 coll=1 price=1.35 amount=0.598
+end
+case rand_056
+market futures 5
+rest id=1 sock=3 addr=A3 act=BUY contract=5 lev=4 coll=1 price=2.72 amount=4.542
+take id=100 sock=2 addr=A2 act=SELL contract=5 lev=10 coll=1 price=2.04 amount=3.860
+end
+case rand_057
+market spot 1 2
+rest id=1 sock=1 addr=A2 act=SELL desired=2 sale=1 price=1.41 amount=3.438
+rest id=2 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.64 amount=2.967
+rest id=3 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.30 amount=4.281
+rest id=4 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.16 amount=0.928 lock=1
+rest id=5 sock=4 addr=A4 act=BUY desired=2 sale=1 price=2.75 amount=4.856
+rest id=6 sock=2 addr=A2 act=BUY desired=1 sale=2 price=1.91 amount=1.166
+rest id=7 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.07 amount=2.012
+rest id=8 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.74 amount=2.046
+take id=100 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.02 amount=1.892
+end
+case rand_058
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.62 amount=0.086
+rest id=2 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.18 amount=3.729
+rest id=3 sock=4 addr=A2 act=SELL desired=2 sale=1 price=1.25 amount=0.302
+rest id=4 sock=3 addr=A3 act=BUY desired=2 sale=1 price=2.51 amount=1.101
+take id=100 sock=4 addr=A4 act=BUY desired=2 sale=1 price=2.66 amount=0.205
+end
+case rand_059
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.69 amount=1.161
+rest id=2 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.18 amount=2.882
+rest id=3 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.46 amount=0.910
+rest id=4 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.66 amount=0.024
+take id=100 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.78 amount=1.459 notrades=1
+end
+case rand_060
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.44 amount=1.780
+rest id=2 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.80 amount=1.605 lock=1
+rest id=3 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.40 amount=3.391
+rest id=4 sock=1 addr=A3 act=BUY desired=1 sale=2 price=1.18 amount=3.271
+rest id=5 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.64 amount=0.899 lock=1
+take id=100 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.48 amount=4.583
+end
+case rand_061
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.90 amount=1.150
+rest id=2 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.11 amount=4.182
+rest id=3 sock=3 addr=A3 act=BUY desired=2 sale=1 price=2.25 amount=1.000
+take id=100 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.94 amount=1.164
+end
+case rand_062
+market futures 5
+rest id=1 sock=2 addr=A2 act=SELL contract=5 lev=1 coll=1 price=2.87 amount=2.131
+rest id=2 sock=2 addr=A2 act=BUY contract=5 lev=9 coll=1 price=1.15 amount=3.064
+take id=100 sock=4 addr=A4 act=SELL contract=5 lev=7 coll=1 price=2.12 amount=0.625
+end
+case rand_063
+market futures 5
+rest id=1 sock=2 addr=A2 act=SELL contract=5 lev=8 coll=1 price=2.55 amount=0.369
+rest id=2 sock=1 addr=A1 act=BUY contract=5 lev=2 coll=1 price=2.25 amount=2.032
+rest id=3 sock=1 addr=A1 act=SELL contract=5 lev=2 coll=1 price=1.35 amount=1.695 lock=1
+rest id=4 sock=4 addr=A4 act=BUY contract=5 lev=7 coll=1 price=1.08 amount=2.182
+rest id=5 sock=1 addr=A1 act=BUY contract=5 lev=3 coll=1 price=2.07 amount=0.262
+rest id=6 sock=2 addr=A2 act=BUY contract=5 lev=5 coll=1 price=1.48 amount=0.729
+rest id=7 sock=2 addr=A2 act=SELL contract=5 lev=8 coll=1 price=1.12 amount=4.222
+take id=100 sock=2 addr=A2 act=BUY contract=5 lev=7 coll=1 price=2.89 amount=4.504
+end
+case rand_064
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.26 amount=0.193
+rest id=2 sock=1 addr=A1 act=SELL desired=2 sale=1 price=1.69 amount=3.468
+rest id=3 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.57 amount=4.769
+rest id=4 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.40 amount=4.383
+take id=100 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.62 amount=0.421
+end
+case rand_065
+market spot 1 2
+rest id=1 sock=3 addr=A3 act=SELL desired=1 sale=2 price=2.56 amount=1.722
+rest id=2 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.08 amount=1.802
+rest id=3 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.49 amount=3.267
+rest id=4 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.82 amount=2.683
+rest id=5 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.42 amount=4.116
+rest id=6 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.81 amount=2.893
+rest id=7 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.67 amount=1.789
+rest id=8 sock=2 addr=A2 act=BUY desired=1 sale=2 price=1.60 amount=1.334
+take id=100 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.21 amount=4.269
+end
+case rand_066
+market spot 1 2
+rest id=1 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.86 amount=0.880
+rest id=2 sock=1 addr=A1 act=SELL desired=1 sale=2 price=2.22 amount=4.241
+rest id=3 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.72 amount=2.053
+rest id=4 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.02 amount=0.262
+rest id=5 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.83 amount=1.300
+take id=100 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.46 amount=2.603 notrades=1
+end
+case rand_067
+market spot 1 2
+take id=100 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.15 amount=1.252
+end
+case rand_068
+market spot 1 2
+rest id=1 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.99 amount=1.470
+take id=100 sock=2 addr=A5 act=BUY desired=1 sale=2 price=1.33 amount=2.622
+end
+case rand_069
+market spot 1 2
+rest id=1 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.70 amount=2.710
+rest id=2 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.29 amount=1.028
+rest id=3 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.75 amount=1.648
+rest id=4 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.69 amount=4.576 lock=1
+take id=100 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.96 amount=3.499 notrades=1
+end
+case rand_070
+market spot 1 2
+rest id=1 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.53 amount=0.121
+rest id=2 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.77 amount=3.453 lock=1
+rest id=3 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.81 amount=3.570
+rest id=4 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.03 amount=0.196
+rest id=5 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.63 amount=1.509
+rest id=6 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.76 amount=0.914
+rest id=7 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.80 amount=3.988
+take id=100 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.79 amount=2.481
+end
+case rand_071
+market futures 5
+rest id=1 sock=2 addr=A2 act=BUY contract=5 lev=3 coll=1 price=1.10 amount=0.094
+rest id=2 sock=1 addr=A3 act=BUY contract=5 lev=10 coll=1 price=2.80 amount=1.379
+rest id=3 sock=3 addr=A3 act=SELL contract=5 lev=1 coll=1 price=2.80 amount=4.608
+rest id=4 sock=1 addr=A1 act=BUY contract=5 lev=7 coll=1 price=2.04 amount=0.265
+rest id=5 sock=3 addr=A3 act=SELL contract=5 lev=10 coll=1 price=1.74 amount=1.054
+rest id=6 sock=2 addr=A2 act=SELL contract=5 lev=3 coll=1 price=2.25 amount=1.376 lock=1
+rest id=7 sock=3 addr=A3 act=SELL contract=5 lev=5 coll=1 price=1.10 amount=3.291
+take id=100 sock=1 addr=A1 act=SELL contract=5 lev=6 coll=1 price=1.07 amount=4.786
+end
+case rand_072
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.46 amount=3.343
+rest id=2 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.21 amount=2.459
+rest id=3 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.80 amount=2.032
+rest id=4 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.86 amount=4.099
+rest id=5 sock=4 addr=A4 act=SELL desired=1 sale=2 price=2.07 amount=4.683
+rest id=6 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.94 amount=0.037 lock=1
+take id=100 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.16 amount=0.348
+end
+case rand_073
+market spot 1 2
+rest id=1 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.35 amount=3.387
+rest id=2 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.19 amount=4.735
+rest id=3 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.12 amount=1.691
+take id=100 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.31 amount=4.571
+end
+case rand_074
+market futures 5
+rest id=1 sock=2 addr=A2 act=SELL contract=5 lev=8 coll=1 price=1.08 amount=4.405
+rest id=2 sock=1 addr=A1 act=SELL contract=5 lev=9 coll=1 price=1.49 amount=0.271
+rest id=3 sock=2 addr=A2 act=BUY contract=5 lev=6 coll=1 price=2.54 amount=4.038
+rest id=4 sock=2 addr=A2 act=SELL contract=5 lev=3 coll=1 price=2.20 amount=3.173
+rest id=5 sock=3 addr=A3 act=BUY contract=5 lev=7 coll=1 price=2.10 amount=1.396
+rest id=6 sock=3 addr=A1 act=BUY contract=5 lev=1 coll=1 price=1.47 amount=3.339
+rest id=7 sock=4 addr=A4 act=SELL contract=5 lev=4 coll=1 price=1.47 amount=1.281
+rest id=8 sock=3 addr=A3 act=BUY contract=5 lev=4 coll=1 price=1.55 amount=4.642
+take id=100 sock=4 addr=A4 act=BUY contract=5 lev=3 coll=1 price=2.82 amount=1.593
+end
+case rand_075
+market spot 1 2
+rest id=1 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.71 amount=4.392
+rest id=2 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.62 amount=1.777 lock=1
+rest id=3 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.96 amount=0.427 lock=1
+rest id=4 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.18 amount=1.962
+take id=100 sock=2 addr=A2 act=BUY desired=2 sale=1 price=1.37 amount=0.857
+end
+case rand_076
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=SELL desired=2 sale=1 price=1.00 amount=0.040
+take id=100 sock=2 addr=A2 act=BUY desired=1 sale=2 price=1.20 amount=4.838
+end
+case rand_077
+market spot 1 2
+take id=100 sock=1 addr=A4 act=SELL desired=2 sale=1 price=2.56 amount=2.193
+end
+case rand_078
+market futures 5
+rest id=1 sock=1 addr=A1 act=SELL contract=5 lev=9 coll=1 price=2.31 amount=3.770
+rest id=2 sock=3 addr=A5 act=SELL contract=5 lev=4 coll=1 price=2.75 amount=2.310
+take id=100 sock=2 addr=A2 act=BUY contract=5 lev=8 coll=1 price=1.95 amount=1.494
+end
+case rand_079
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.61 amount=2.540
+rest id=2 sock=2 addr=A1 act=BUY desired=1 sale=2 price=2.99 amount=3.569 lock=1
+rest id=3 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.78 amount=1.847
+rest id=4 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.89 amount=2.530
+take id=100 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.07 amount=1.706
+end
+case rand_080
+market futures 5
+rest id=1 sock=3 addr=A4 act=SELL contract=5 lev=4 coll=1 price=1.59 amount=4.594
+rest id=2 sock=3 addr=A3 act=BUY contract=5 lev=7 coll=1 price=2.04 amount=2.770
+rest id=3 sock=3 addr=A3 act=BUY contract=5 lev=8 coll=1 price=1.99 amount=4.913
+rest id=4 sock=2 addr=A2 act=SELL contract=5 lev=7 coll=1 price=1.34 amount=1.809
+rest id=5 sock=1 addr=A1 act=BUY contract=5 lev=7 coll=1 price=1.60 amount=3.553
+take id=100 sock=3 addr=A1 act=BUY contract=5 lev=1 coll=1 price=1.14 amount=3.657
+end
+case rand_081
+market spot 1 2
+rest id=1 sock=3 addr=A2 act=SELL desired=2 sale=1 price=2.08 amount=2.423
+take id=100 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.66 amount=4.925
+end
+case rand_082
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.85 amount=3.024
+rest id=2 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.10 amount=4.062
+take id=100 sock=2 addr=A2 act=BUY desired=1 sale=2 price=1.54 amount=0.648
+end
+case rand_083
+market spot 1 2
+rest id=1 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.65 amount=1.479
+rest id=2 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.88 amount=3.168
+rest id=3 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.49 amount=0.925
+rest id=4 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.22 amount=2.543
+rest id=5 sock=1 addr=A1 act=SELL desired=2 sale=1 price=1.75 amount=0.188
+rest id=6 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.98 amount=4.765
+rest id=7 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.29 amount=4.080
+rest id=8 sock=2 addr=A2 act=BUY desired=1 sale=2 price=1.83 amount=2.881
+take id=100 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.90 amount=4.789 notrades=1
+end
+case rand_084
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.05 amount=4.095
+rest id=2 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.94 amount=4.685 lock=1
+rest id=3 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.49 amount=2.670
+rest id=4 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.49 amount=3.655
+rest id=5 sock=2 addr=A2 act=BUY desired=1 sale=2 price=1.64 amount=3.630
+rest id=6 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.76 amount=0.180
+rest id=7 sock=1 addr=A1 act=SELL desired=2 sale=1 price=1.06 amount=4.155
+rest id=8 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.60 amount=4.296
+take id=100 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.65 amount=4.875
+end
+case rand_085
+market spot 1 2
+rest id=1 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.45 amount=4.286 lock=1
+rest id=2 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.68 amount=1.302
+rest id=3 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.16 amount=2.942
+take id=100 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.15 amount=2.399
+end
+case rand_086
+market spot 1 2
+rest id=1 sock=2 addr=A2 act=BUY desired=1 sale=2 price=1.56 amount=2.554
+rest id=2 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.83 amount=2.046
+rest id=3 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.60 amount=0.460
+rest id=4 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.85 amount=0.992
+rest id=5 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.88 amount=0.762
+take id=100 sock=4 addr=A3 act=BUY desired=1 sale=2 price=2.10 amount=4.937
+end
+case rand_087
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.33 amount=1.754
+take id=100 sock=4 addr=A1 act=SELL desired=2 sale=1 price=1.18 amount=4.692
+end
+case rand_088
+market futures 5
+rest id=1 sock=1 addr=A1 act=BUY contract=5 lev=2 coll=1 price=1.74 amount=1.092
+take id=100 sock=1 addr=A1 act=SELL contract=5 lev=9 coll=1 price=1.86 amount=4.336
+end
+case rand_089
+market futures 5
+take id=100 sock=4 addr=A4 act=SELL contract=5 lev=5 coll=1 price=2.73 amount=3.182
+end
+case rand_090
+market spot 1 2
+take id=100 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.80 amount=2.067 notrades=1
+end
+case rand_091
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=SELL desired=2 sale=1 price=1.87 amount=2.621
+rest id=2 sock=4 addr=A4 act=SELL desired=1 sale=2 price=1.59 amount=3.834
+take id=100 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.17 amount=0.915 notrades=1
+end
+case rand_092
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.08 amount=1.921
+rest id=2 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.55 amount=2.908
+rest id=3 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.34 amount=4.216
+rest id=4 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.42 amount=4.200
+rest id=5 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.73 amount=4.325
+take id=100 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.44 amount=0.655
+end
+case rand_093
+market spot 1 2
+take id=100 sock=4 addr=A3 act=SELL desired=2 sale=1 price=2.66 amount=4.084
+end
+case rand_094
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.08 amount=4.134
+rest id=2 sock=2 addr=A4 act=BUY desired=1 sale=2 price=2.19 amount=2.415
+rest id=3 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.66 amount=0.008
+rest id=4 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.11 amount=0.259
+rest id=5 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.04 amount=3.982
+rest id=6 sock=2 addr=A2 act=BUY desired=2 sale=1 price=2.65 amount=0.620
+rest id=7 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.35 amount=2.448
+take id=100 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.40 amount=0.818 notrades=1
+end
+case rand_095
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.69 amount=1.329
+rest id=2 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.43 amount=0.022
+rest id=3 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.98 amount=0.032
+rest id=4 sock=2 addr=A2 act=BUY desired=1 sale=2 price=1.47 amount=3.475
+rest id=5 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.01 amount=2.724
+rest id=6 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.31 amount=2.644
+take id=100 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.55 amount=1.900
+end
+case rand_096
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.47 amount=1.439
+rest id=2 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.83 amount=1.650
+rest id=3 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.55 amount=0.292 lock=1
+rest id=4 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.25 amount=2.110
+rest id=5 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.23 amount=3.304 lock=1
+rest id=6 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.76 amount=2.674
+rest id=7 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.33 amount=2.712
+rest id=8 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.25 amount=1.193
+take id=100 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.01 amount=0.211
+end
+case rand_097
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.00 amount=4.044
+rest id=2 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.41 amount=3.295
+rest id=3 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.36 amount=1.402
+rest id=4 sock=2 addr=A2 act=BUY desired=1 sale=2 price=1.70 amount=0.902
+rest id=5 sock=3 addr=A3 act=SELL desired=1 sale=2 price=2.63 amount=2.696 lock=1
+rest id=6 sock=1 addr=A1 act=SELL desired=2 sale=1 price=1.51 amount=3.050 lock=1
+take id=100 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.95 amount=4.286
+end
+case rand_098
+market spot 1 2
+rest id=1 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.99 amount=0.812
+take id=100 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.10 amount=1.338
+end
+case rand_099
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.86 amount=2.874
+rest id=2 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.98 amount=0.671
+rest id=3 sock=2 addr=A2 act=BUY desired=1 sale=2 price=1.36 amount=0.283
+rest id=4 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.77 amount=1.685
+rest id=5 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.41 amount=1.612
+rest id=6 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.14 amount=3.263
+take id=100 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.57 amount=0.279
+end
+case rand_100
+market spot 1 2
+rest id=1 sock=2 addr=A5 act=SELL desired=2 sale=1 price=2.74 amount=1.305
+rest id=2 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.68 amount=1.276
+rest id=3 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.30 amount=0.296
+rest id=4 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.35 amount=3.000
+rest id=5 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.26 amount=2.251
+rest id=6 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.34 amount=4.937
+rest id=7 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.95 amount=2.544
+take id=100 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.06 amount=1.554
+end
+case rand_101
+market spot 1 2
+rest id=1 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.50 amount=3.064
+rest id=2 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.78 amount=2.968
+rest id=3 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.18 amount=1.531
+rest id=4 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.00 amount=1.954
+rest id=5 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.22 amount=0.921
+rest id=6 sock=1 addr=A1 act=BUY desired=2 sale=1 price=1.03 amount=3.027
+rest id=7 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.50 amount=1.356
+take id=100 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.73 amount=0.975
+end
+case rand_102
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.10 amount=2.276
+rest id=2 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.20 amount=1.693 lock=1
+rest id=3 sock=3 addr=A4 act=BUY desired=1 sale=2 price=1.98 amount=0.237
+rest id=4 sock=4 addr=A4 act=BUY desired=2 sale=1 price=1.24 amount=3.499
+take id=100 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.57 amount=0.086
+end
+case rand_103
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=SELL desired=2 sale=1 price=1.06 amount=2.113
+rest id=2 sock=3 addr=A1 act=SELL desired=2 sale=1 price=2.88 amount=2.262
+rest id=3 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.40 amount=1.025
+rest id=4 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.07 amount=3.335
+rest id=5 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.98 amount=3.595
+take id=100 sock=2 addr=A2 act=BUY desired=1 sale=2 price=1.69 amount=1.697
+end
+case rand_104
+market futures 5
+rest id=1 sock=1 addr=A1 act=SELL contract=5 lev=1 coll=1 price=2.91 amount=4.476
+rest id=2 sock=2 addr=A2 act=BUY contract=5 lev=8 coll=1 price=1.63 amount=1.476
+rest id=3 sock=2 addr=A2 act=BUY contract=5 lev=1 coll=1 price=2.28 amount=4.700
+rest id=4 sock=2 addr=A2 act=BUY contract=5 lev=8 coll=1 price=1.50 amount=3.347
+rest id=5 sock=3 addr=A3 act=BUY contract=5 lev=3 coll=1 price=1.07 amount=4.074
+take id=100 sock=1 addr=A1 act=BUY contract=5 lev=4 coll=1 price=2.24 amount=1.150
+end
+case rand_105
+market spot 1 2
+rest id=1 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.81 amount=4.490
+take id=100 sock=2 addr=A2 act=BUY desired=1 sale=2 price=1.01 amount=1.243
+end
+case rand_106
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=SELL desired=2 sale=1 price=3.00 amount=2.627
+rest id=2 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.02 amount=1.715
+rest id=3 sock=1 addr=A1 act=SELL desired=1 sale=2 price=1.39 amount=1.967
+rest id=4 sock=2 addr=A5 act=BUY desired=1 sale=2 price=2.08 amount=4.770
+rest id=5 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.83 amount=4.942
+rest id=6 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.78 amount=3.028
+rest id=7 sock=2 addr=A2 act=BUY desired=1 sale=2 price=1.96 amount=1.092
+take id=100 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.95 amount=3.622
+end
+case rand_107
+market spot 1 2
+rest id=1 sock=3 addr=A3 act=SELL desired=1 sale=2 price=2.81 amount=0.290
+rest id=2 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.04 amount=4.639
+rest id=3 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.00 amount=1.735
+rest id=4 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.03 amount=4.508
+take id=100 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.07 amount=2.158
+end
+case rand_108
+market spot 1 2
+take id=100 sock=1 addr=A2 act=BUY desired=1 sale=2 price=2.01 amount=3.323
+end
+case rand_109
+market spot 1 2
+rest id=1 sock=4 addr=A5 act=BUY desired=1 sale=2 price=2.89 amount=2.024
+rest id=2 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.60 amount=2.909
+rest id=3 sock=4 addr=A3 act=BUY desired=1 sale=2 price=2.00 amount=1.681
+rest id=4 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.09 amount=3.743
+rest id=5 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.01 amount=3.458
+rest id=6 sock=1 addr=A4 act=SELL desired=2 sale=1 price=1.09 amount=4.407
+rest id=7 sock=2 addr=A2 act=BUY desired=1 sale=2 price=1.38 amount=2.411
+take id=100 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.80 amount=1.308 notrades=1
+end
+case rand_110
+market futures 5
+take id=100 sock=1 addr=A1 act=SELL contract=5 lev=6 coll=1 price=1.32 amount=0.564
+end
+case rand_111
+market spot 1 2
+rest id=1 sock=3 addr=A3 act=SELL desired=1 sale=2 price=2.40 amount=3.848
+take id=100 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.77 amount=4.452
+end
+case rand_112
+market futures 5
+rest id=1 sock=2 addr=A2 act=SELL contract=5 lev=10 coll=1 price=2.69 amount=3.388
+rest id=2 sock=3 addr=A3 act=SELL contract=5 lev=6 coll=1 price=2.11 amount=3.240
+rest id=3 sock=4 addr=A4 act=SELL contract=5 lev=10 coll=1 price=1.09 amount=1.866
+take id=100 sock=1 addr=A1 act=SELL contract=5 lev=6 coll=1 price=2.11 amount=3.665
+end
+case rand_113
+market spot 1 2
+take id=100 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.60 amount=1.324 notrades=1
+end
+case rand_114
+market futures 5
+rest id=1 sock=2 addr=A2 act=SELL contract=5 lev=5 coll=1 price=1.05 amount=4.517
+rest id=2 sock=2 addr=A4 act=BUY contract=5 lev=10 coll=1 price=1.07 amount=3.714
+rest id=3 sock=1 addr=A1 act=SELL contract=5 lev=6 coll=1 price=2.27 amount=0.759
+rest id=4 sock=3 addr=A3 act=SELL contract=5 lev=7 coll=1 price=1.11 amount=2.908
+rest id=5 sock=1 addr=A1 act=SELL contract=5 lev=5 coll=1 price=1.95 amount=4.059
+rest id=6 sock=2 addr=A4 act=BUY contract=5 lev=4 coll=1 price=2.26 amount=3.938
+rest id=7 sock=3 addr=A5 act=SELL contract=5 lev=1 coll=1 price=2.50 amount=1.820
+take id=100 sock=1 addr=A1 act=SELL contract=5 lev=7 coll=1 price=2.32 amount=1.209 notrades=1
+end
+case rand_115
+market futures 5
+rest id=1 sock=3 addr=A3 act=SELL contract=5 lev=2 coll=1 price=2.22 amount=4.786 lock=1
+rest id=2 sock=3 addr=A3 act=BUY contract=5 lev=2 coll=1 price=1.99 amount=2.510
+rest id=3 sock=4 addr=A4 act=BUY contract=5 lev=4 coll=1 price=1.69 amount=1.933
+rest id=4 sock=4 addr=A4 act=BUY contract=5 lev=1 coll=1 price=1.49 amount=2.441
+rest id=5 sock=3 addr=A3 act=BUY contract=5 lev=9 coll=1 price=1.89 amount=0.257
+rest id=6 sock=3 addr=A3 act=SELL contract=5 lev=3 coll=1 price=2.21 amount=1.789
+rest id=7 sock=4 addr=A4 act=SELL contract=5 lev=3 coll=1 price=1.70 amount=0.286
+take id=100 sock=2 addr=A4 act=BUY contract=5 lev=4 coll=1 price=1.93 amount=2.503
+end
+case rand_116
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.63 amount=0.094
+rest id=2 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.19 amount=0.318 lock=1
+take id=100 sock=2 addr=A1 act=BUY desired=1 sale=2 price=2.05 amount=1.098
+end
+case rand_117
+market spot 1 2
+rest id=1 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.01 amount=1.004
+rest id=2 sock=1 addr=A3 act=BUY desired=1 sale=2 price=2.03 amount=3.395
+rest id=3 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.06 amount=4.889
+rest id=4 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.96 amount=2.740 lock=1
+rest id=5 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.55 amount=2.847
+take id=100 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.39 amount=4.699
+end
+case rand_118
+market futures 5
+rest id=1 sock=1 addr=A1 act=BUY contract=5 lev=1 coll=1 price=2.82 amount=0.141 lock=1
+rest id=2 sock=4 addr=A4 act=SELL contract=5 lev=8 coll=1 price=1.88 amount=3.231
+take id=100 sock=1 addr=A5 act=SELL contract=5 lev=3 coll=1 price=1.43 amount=2.702
+end
+case rand_119
+market spot 1 2
+rest id=1 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.20 amount=0.310
+rest id=2 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.18 amount=0.553
+rest id=3 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.59 amount=2.840
+rest id=4 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.63 amount=0.776
+take id=100 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.56 amount=3.249 notrades=1
+end
+case rand_120
+market futures 5
+take id=100 sock=4 addr=A4 act=SELL contract=5 lev=9 coll=1 price=2.34 amount=0.752
+end
+case rand_121
+market spot 1 2
+rest id=1 sock=2 addr=A2 act=BUY desired=1 sale=2 price=1.31 amount=3.756
+rest id=2 sock=4 addr=A3 act=BUY desired=1 sale=2 price=2.09 amount=0.609
+rest id=3 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.66 amount=4.009
+rest id=4 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.18 amount=4.689
+rest id=5 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.43 amount=0.097
+rest id=6 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.25 amount=4.134
+rest id=7 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.17 amount=0.931
+take id=100 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.51 amount=4.580
+end
+case rand_122
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.61 amount=2.183
+rest id=2 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.11 amount=0.819
+rest id=3 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.12 amount=3.175
+rest id=4 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.24 amount=2.318
+rest id=5 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.51 amount=3.152
+rest id=6 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.26 amount=3.679
+rest id=7 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.03 amount=0.918
+take id=100 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.97 amount=0.646
+end
+case rand_123
+market futures 5
+rest id=1 sock=1 addr=A1 act=SELL contract=5 lev=7 coll=1 price=1.49 amount=0.025 lock=1
+rest id=2 sock=3 addr=A3 act=BUY contract=5 lev=10 coll=1 price=1.15 amount=3.788
+rest id=3 sock=4 addr=A4 act=BUY contract=5 lev=5 coll=1 price=1.65 amount=3.196
+rest id=4 sock=2 addr=A2 act=BUY contract=5 lev=9 coll=1 price=1.22 amount=3.718
+rest id=5 sock=2 addr=A2 act=SELL contract=5 lev=1 coll=1 price=2.97 amount=2.985
+rest id=6 sock=2 addr=A2 act=BUY contract=5 lev=4 coll=1 price=1.87 amount=3.346
+take id=100 sock=3 addr=A3 act=SELL contract=5 lev=5 coll=1 price=1.55 amount=4.322 notrades=1
+end
+case rand_124
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.74 amount=0.427
+rest id=2 sock=1 addr=A1 act=SELL desired=2 sale=1 price=1.85 amount=0.192
+rest id=3 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.46 amount=2.012
+rest id=4 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.92 amount=4.913
+rest id=5 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.32 amount=2.314 lock=1
+rest id=6 sock=1 addr=A1 act=BUY desired=2 sale=1 price=1.20 amount=3.112
+rest id=7 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.15 amount=3.655
+take id=100 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.53 amount=3.523
+end
+case rand_125
+market spot 1 2
+take id=100 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.72 amount=1.861
+end
+case rand_126
+market spot 1 2
+rest id=1 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.10 amount=2.678
+rest id=2 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.77 amount=1.634
+rest id=3 sock=1 addr=A1 act=SELL desired=2 sale=1 price=1.25 amount=4.006
+rest id=4 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.19 amount=3.310
+rest id=5 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.44 amount=2.486
+take id=100 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.86 amount=2.638
+end
+case rand_127
+market futures 5
+rest id=1 sock=4 addr=A4 act=BUY contract=5 lev=7 coll=1 price=2.11 amount=4.656
+rest id=2 sock=2 addr=A2 act=SELL contract=5 lev=4 coll=1 price=2.54 amount=2.428
+rest id=3 sock=2 addr=A2 act=SELL contract=5 lev=5 coll=1 price=1.47 amount=3.332
+rest id=4 sock=2 addr=A2 act=SELL contract=5 lev=5 coll=1 price=1.82 amount=3.638
+take id=100 sock=3 addr=A3 act=SELL contract=5 lev=8 coll=1 price=1.00 amount=0.067
+end
+case rand_128
+market spot 1 2
+rest id=1 sock=2 addr=A2 act=SELL desired=1 sale=2 price=1.21 amount=2.538
+take id=100 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.88 amount=1.137
+end
+case rand_129
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.04 amount=3.538
+rest id=2 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.14 amount=4.892
+rest id=3 sock=3 addr=A3 act=BUY desired=2 sale=1 price=1.60 amount=1.682
+take id=100 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.68 amount=2.434
+end
+case rand_130
+market spot 1 2
+take id=100 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.42 amount=4.272
+end
+case rand_131
+market spot 1 2
+take id=100 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.23 amount=4.513
+end
+case rand_132
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.68 amount=1.712 lock=1
+rest id=2 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.35 amount=4.623
+rest id=3 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.44 amount=0.442
+take id=100 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.07 amount=0.322 notrades=1
+end
+case rand_133
+market spot 1 2
+rest id=1 sock=2 addr=A2 act=BUY desired=1 sale=2 price=1.67 amount=4.502
+rest id=2 sock=1 addr=A1 act=BUY desired=2 sale=1 price=1.26 amount=2.038
+rest id=3 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.94 amount=4.134
+rest id=4 sock=1 addr=A2 act=BUY desired=1 sale=2 price=2.30 amount=4.237
+take id=100 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.40 amount=1.899
+end
+case rand_134
+market spot 1 2
+rest id=1 sock=3 addr=A1 act=BUY desired=1 sale=2 price=1.59 amount=3.353
+rest id=2 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.49 amount=0.578
+rest id=3 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.51 amount=1.852
+rest id=4 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.28 amount=0.850
+take id=100 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.54 amount=1.758
+end
+case rand_135
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.85 amount=4.782
+take id=100 sock=2 addr=A2 act=BUY desired=2 sale=1 price=1.78 amount=2.768 notrades=1
+end
+case rand_136
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=SELL desired=2 sale=1 price=1.62 amount=4.638
+rest id=2 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.27 amount=1.378
+rest id=3 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.83 amount=1.004
+take id=100 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.23 amount=4.071 notrades=1
+end
+case rand_137
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.72 amount=2.631
+rest id=2 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.21 amount=2.684
+rest id=3 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.55 amount=2.601
+take id=100 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.15 amount=3.286
+end
+case rand_138
+market futures 5
+rest id=1 sock=2 addr=A2 act=SELL contract=5 lev=9 coll=1 price=1.80 amount=2.421
+rest id=2 sock=4 addr=A4 act=SELL contract=5 lev=6 coll=1 price=1.61 amount=2.492
+rest id=3 sock=2 addr=A2 act=SELL contract=5 lev=9 coll=1 price=2.05 amount=2.277
+rest id=4 sock=1 addr=A1 act=SELL contract=5 lev=2 coll=1 price=1.29 amount=4.159
+rest id=5 sock=3 addr=A3 act=BUY contract=5 lev=8 coll=1 price=2.06 amount=2.187
+rest id=6 sock=3 addr=A3 act=SELL contract=5 lev=10 coll=1 price=2.45 amount=0.724
+take id=100 sock=1 addr=A1 act=SELL contract=5 lev=2 coll=1 price=2.22 amount=4.706
+end
+case rand_139
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.44 amount=2.949
+rest id=2 sock=1 addr=A1 act=SELL desired=2 sale=1 price=1.11 amount=3.776
+take id=100 sock=1 addr=A3 act=SELL desired=1 sale=2 price=1.04 amount=0.456
+end
+case rand_140
+market spot 1 2
+rest id=1 sock=2 addr=A2 act=BUY desired=1 sale=2 price=1.13 amount=1.809
+rest id=2 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.31 amount=2.727
+rest id=3 sock=2 addr=A5 act=BUY desired=1 sale=2 price=1.28 amount=4.979
+take id=100 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.52 amount=1.398
+end
+case rand_141
+market spot 1 2
+take id=100 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.56 amount=3.969
+end
+case rand_142
+market futures 5
+rest id=1 sock=1 addr=A1 act=BUY contract=5 lev=10 coll=1 price=1.35 amount=1.979
+rest id=2 sock=1 addr=A1 act=SELL contract=5 lev=7 coll=1 price=2.92 amount=0.547
+rest id=3 sock=3 addr=A3 act=BUY contract=5 lev=7 coll=1 price=1.23 amount=2.193
+rest id=4 sock=3 addr=A3 act=BUY contract=5 lev=1 coll=1 price=2.78 amount=1.794 lock=1
+rest id=5 sock=4 addr=A4 act=SELL contract=5 lev=6 coll=1 price=1.94 amount=1.023
+rest id=6 sock=1 addr=A1 act=BUY contract=5 lev=8 coll=1 price=1.32 amount=4.771
+rest id=7 sock=1 addr=A1 act=BUY contract=5 lev=7 coll=1 price=1.32 amount=2.363
+rest id=8 sock=2 addr=A2 act=BUY contract=5 lev=8 coll=1 price=2.46 amount=4.202
+take id=100 sock=2 addr=A2 act=BUY contract=5 lev=2 coll=1 price=2.65 amount=3.450
+end
+case rand_143
+market spot 1 2
+rest id=1 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.75 amount=4.060
+rest id=2 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.42 amount=4.768
+rest id=3 sock=1 addr=A1 act=SELL desired=2 sale=1 price=1.66 amount=1.425
+rest id=4 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.86 amount=2.013
+take id=100 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.73 amount=0.979
+end
+case rand_144
+market spot 1 2
+take id=100 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.43 amount=1.132
+end
+case rand_145
+market spot 1 2
+take id=100 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.84 amount=1.227
+end
+case rand_146
+market futures 5
+rest id=1 sock=3 addr=A3 act=SELL contract=5 lev=7 coll=1 price=1.63 amount=1.883
+rest id=2 sock=4 addr=A4 act=BUY contract=5 lev=1 coll=1 price=1.81 amount=4.367
+rest id=3 sock=1 addr=A1 act=SELL contract=5 lev=7 coll=1 price=1.18 amount=0.120
+rest id=4 sock=1 addr=A1 act=BUY contract=5 lev=1 coll=1 price=1.75 amount=0.551
+take id=100 sock=3 addr=A3 act=SELL contract=5 lev=8 coll=1 price=2.37 amount=4.586
+end
+case rand_147
+market spot 1 2
+rest id=1 sock=2 addr=A2 act=BUY desired=2 sale=1 price=1.74 amount=4.504
+rest id=2 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.63 amount=1.610
+rest id=3 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.13 amount=2.046
+rest id=4 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.96 amount=1.602 lock=1
+rest id=5 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.94 amount=3.298
+rest id=6 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.80 amount=0.945
+rest id=7 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.00 amount=0.599
+rest id=8 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.37 amount=2.186
+take id=100 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.78 amount=0.839
+end
+case rand_148
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=BUY desired=2 sale=1 price=2.14 amount=1.793
+rest id=2 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.69 amount=1.584
+rest id=3 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.68 amount=1.271
+take id=100 sock=2 addr=A2 act=BUY desired=2 sale=1 price=1.73 amount=4.436
+end
+case rand_149
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.73 amount=0.683
+rest id=2 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.37 amount=1.368
+take id=100 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.40 amount=0.744
+end
+case rand_150
+market spot 1 2
+take id=100 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.91 amount=4.267
+end
+case rand_151
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.36 amount=4.285
+take id=100 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.03 amount=3.016 notrades=1
+end
+case rand_152
+market spot 1 2
+take id=100 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.74 amount=2.922
+end
+case rand_153
+market spot 1 2
+rest id=1 sock=3 addr=A3 act=BUY desired=2 sale=1 price=2.69 amount=2.911
+rest id=2 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.15 amount=4.154
+rest id=3 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.76 amount=2.907
+rest id=4 sock=1 addr=A1 act=SELL desired=2 sale=1 price=1.21 amount=1.808 lock=1
+rest id=5 sock=4 addr=A5 act=SELL desired=2 sale=1 price=2.23 amount=2.827
+rest id=6 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.01 amount=3.462
+rest id=7 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.60 amount=1.424
+rest id=8 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.09 amount=1.800
+take id=100 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.61 amount=3.953
+end
+case rand_154
+market spot 1 2
+take id=100 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.07 amount=4.878 notrades=1
+end
+case rand_155
+market spot 1 2
+rest id=1 sock=1 addr=A4 act=SELL desired=2 sale=1 price=2.32 amount=0.054
+rest id=2 sock=2 addr=A2 act=BUY desired=1 sale=2 price=1.94 amount=1.098
+rest id=3 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.11 amount=3.494
+rest id=4 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.87 amount=1.843
+rest id=5 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.42 amount=0.148
+rest id=6 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.67 amount=2.417
+rest id=7 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.58 amount=4.917
+take id=100 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.88 amount=2.315
+end
+case rand_156
+market spot 1 2
+rest id=1 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.07 amount=0.665
+rest id=2 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.54 amount=3.379
+rest id=3 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.33 amount=0.431
+rest id=4 sock=3 addr=A1 act=BUY desired=2 sale=1 price=2.28 amount=4.653
+rest id=5 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.95 amount=2.818
+rest id=6 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.11 amount=1.251
+take id=100 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.55 amount=0.766
+end
+case rand_157
+market spot 1 2
+take id=100 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.86 amount=0.890
+end
+case rand_158
+market futures 5
+rest id=1 sock=2 addr=A2 act=SELL contract=5 lev=1 coll=1 price=2.49 amount=3.257
+take id=100 sock=1 addr=A1 act=SELL contract=5 lev=6 coll=1 price=2.63 amount=4.390
+end
+case rand_159
+market futures 5
+rest id=1 sock=4 addr=A1 act=BUY contract=5 lev=3 coll=1 price=1.09 amount=2.806
+rest id=2 sock=3 addr=A3 act=SELL contract=5 lev=10 coll=1 price=2.61 amount=3.837
+rest id=3 sock=3 addr=A3 act=BUY contract=5 lev=7 coll=1 price=1.45 amount=2.856
+rest id=4 sock=3 addr=A3 act=SELL contract=5 lev=6 coll=1 price=2.26 amount=0.486
+rest id=5 sock=2 addr=A2 act=SELL contract=5 lev=3 coll=1 price=1.47 amount=0.314
+take id=100 sock=2 addr=A2 act=BUY contract=5 lev=6 coll=1 price=2.70 amount=3.636
+end
+case rand_160
+market futures 5
+rest id=1 sock=2 addr=A1 act=SELL contract=5 lev=2 coll=1 price=2.41 amount=0.444 lock=1
+take id=100 sock=3 addr=A3 act=SELL contract=5 lev=6 coll=1 price=1.70 amount=0.430
+end
+case rand_161
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=BUY desired=2 sale=1 price=2.71 amount=2.638
+rest id=2 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.15 amount=2.418 lock=1
+rest id=3 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.43 amount=2.828
+take id=100 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.54 amount=1.343 notrades=1
+end
+case rand_162
+market futures 5
+take id=100 sock=3 addr=A3 act=SELL contract=5 lev=3 coll=1 price=1.77 amount=4.454 notrades=1
+end
+case rand_163
+market spot 1 2
+rest id=1 sock=3 addr=A4 act=SELL desired=1 sale=2 price=1.41 amount=4.864
+rest id=2 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.21 amount=3.519 lock=1
+rest id=3 sock=3 addr=A3 act=SELL desired=1 sale=2 price=1.53 amount=3.261
+rest id=4 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.25 amount=3.950
+rest id=5 sock=2 addr=A2 act=BUY desired=1 sale=2 price=1.13 amount=3.296
+rest id=6 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.85 amount=0.272
+rest id=7 sock=1 addr=A1 act=SELL desired=1 sale=2 price=2.60 amount=3.484
+take id=100 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.04 amount=3.983
+end
+case rand_164
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.49 amount=0.620
+rest id=2 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.28 amount=0.609
+rest id=3 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.71 amount=3.122
+rest id=4 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.57 amount=3.907
+take id=100 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.89 amount=1.779
+end
+case rand_165
+market spot 1 2
+rest id=1 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.72 amount=3.532
+rest id=2 sock=2 addr=A2 act=BUY desired=2 sale=1 price=1.95 amount=2.773 lock=1
+rest id=3 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.71 amount=0.757
+take id=100 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.91 amount=1.416
+end
+case rand_166
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.51 amount=3.702
+rest id=2 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.46 amount=3.415
+rest id=3 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.84 amount=1.110
+rest id=4 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.94 amount=0.162
+take id=100 sock=1 addr=A1 act=SELL desired=1 sale=2 price=2.49 amount=3.957
+end
+case rand_167
+market spot 1 2
+rest id=1 sock=2 addr=A2 act=BUY desired=1 sale=2 price=1.49 amount=3.677
+rest id=2 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.14 amount=3.923
+rest id=3 sock=3 addr=A3 act=BUY desired=2 sale=1 price=1.46 amount=0.824
+rest id=4 sock=2 addr=A2 act=BUY desired=1 sale=2 price=1.98 amount=4.290
+rest id=5 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.71 amount=3.714
+rest id=6 sock=1 addr=A1 act=SELL desired=1 sale=2 price=2.34 amount=1.423
+take id=100 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.13 amount=0.805 notrades=1
+end
+case rand_168
+market spot 1 2
+take id=100 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.86 amount=3.516 notrades=1
+end
+case rand_169
+market futures 5
+rest id=1 sock=3 addr=A3 act=BUY contract=5 lev=4 coll=1 price=1.58 amount=3.528
+rest id=2 sock=4 addr=A4 act=SELL contract=5 lev=3 coll=1 price=2.69 amount=2.039
+rest id=3 sock=3 addr=A4 act=BUY contract=5 lev=1 coll=1 price=2.91 amount=0.216
+rest id=4 sock=1 addr=A1 act=SELL contract=5 lev=2 coll=1 price=1.42 amount=4.709
+take id=100 sock=2 addr=A2 act=SELL contract=5 lev=4 coll=1 price=1.34 amount=2.919
+end
+case rand_170
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.52 amount=4.817
+rest id=2 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.79 amount=4.638
+rest id=3 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.72 amount=4.868
+take id=100 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.14 amount=4.104
+end
+case rand_171
+market spot 1 2
+rest id=1 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.12 amount=3.795
+rest id=2 sock=1 addr=A1 act=SELL desired=2 sale=1 price=1.95 amount=2.315
+rest id=3 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.37 amount=4.548
+rest id=4 sock=1 addr=A1 act=SELL desired=2 sale=1 price=1.50 amount=3.963
+rest id=5 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.15 amount=1.905
+rest id=6 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.43 amount=4.786
+take id=100 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.08 amount=3.556
+end
+case rand_172
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.93 amount=0.907
+rest id=2 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.79 amount=3.673
+rest id=3 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.68 amount=1.744 lock=1
+rest id=4 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.36 amount=2.742
+take id=100 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.14 amount=1.640
+end
+case rand_173
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.98 amount=3.856
+rest id=2 sock=4 addr=A4 act=SELL desired=1 sale=2 price=1.46 amount=2.758 lock=1
+rest id=3 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.26 amount=0.336
+rest id=4 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.66 amount=0.884
+rest id=5 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.10 amount=3.034
+rest id=6 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.16 amount=0.375
+take id=100 sock=2 addr=A2 act=BUY desired=1 sale=2 price=1.77 amount=1.122
+end
+case rand_174
+market futures 5
+take id=100 sock=2 addr=A5 act=SELL contract=5 lev=10 coll=1 price=2.70 amount=4.315
+end
+case rand_175
+market spot 1 2
+rest id=1 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.34 amount=4.685
+rest id=2 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.90 amount=1.655
+rest id=3 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.92 amount=0.727
+rest id=4 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.45 amount=1.629
+rest id=5 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.09 amount=4.308
+rest id=6 sock=2 addr=A2 act=BUY desired=1 sale=2 price=1.12 amount=4.564
+take id=100 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.40 amount=0.249
+end
+case rand_176
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.63 amount=4.793
+rest id=2 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.76 amount=4.984
+rest id=3 sock=4 addr=A4 act=SELL desired=1 sale=2 price=1.47 amount=3.223
+rest id=4 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.85 amount=3.068
+rest id=5 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.33 amount=0.755
+rest id=6 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.60 amount=4.515
+rest id=7 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.19 amount=1.583
+rest id=8 sock=1 addr=A3 act=BUY desired=1 sale=2 price=1.74 amount=4.936
+take id=100 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.33 amount=4.298
+end
+case rand_177
+market futures 5
+rest id=1 sock=2 addr=A2 act=SELL contract=5 lev=6 coll=1 price=2.47 amount=3.188 lock=1
+rest id=2 sock=4 addr=A4 act=BUY contract=5 lev=3 coll=1 price=2.27 amount=3.685
+rest id=3 sock=1 addr=A1 act=BUY contract=5 lev=5 coll=1 price=1.87 amount=2.045 lock=1
+rest id=4 sock=3 addr=A3 act=BUY contract=5 lev=4 coll=1 price=1.96 amount=1.124
+rest id=5 sock=1 addr=A1 act=SELL contract=5 lev=8 coll=1 price=1.44 amount=2.045
+rest id=6 sock=2 addr=A2 act=SELL contract=5 lev=6 coll=1 price=2.94 amount=4.452
+rest id=7 sock=3 addr=A3 act=SELL contract=5 lev=2 coll=1 price=2.16 amount=4.009
+rest id=8 sock=3 addr=A3 act=BUY contract=5 lev=10 coll=1 price=2.63 amount=4.019
+take id=100 sock=3 addr=A4 act=BUY contract=5 lev=6 coll=1 price=2.18 amount=4.246
+end
+case rand_178
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.56 amount=0.374
+rest id=2 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.77 amount=4.924
+rest id=3 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.63 amount=4.855
+rest id=4 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.85 amount=1.122 lock=1
+rest id=5 sock=1 addr=A1 act=SELL desired=2 sale=1 price=1.41 amount=0.787
+rest id=6 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.70 amount=4.482
+take id=100 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.35 amount=2.044
+end
+case rand_179
+market spot 1 2
+take id=100 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.00 amount=3.696
+end
+case rand_180
+market futures 5
+rest id=1 sock=1 addr=A1 act=BUY contract=5 lev=4 coll=1 price=1.73 amount=0.770
+rest id=2 sock=2 addr=A2 act=SELL contract=5 lev=5 coll=1 price=2.56 amount=3.794
+take id=100 sock=4 addr=A4 act=SELL contract=5 lev=2 coll=1 price=2.78 amount=3.223
+end
+case rand_181
+market futures 5
+take id=100 sock=2 addr=A2 act=SELL contract=5 lev=4 coll=1 price=2.38 amount=0.070
+end
+case rand_182
+market spot 1 2
+rest id=1 sock=1 addr=A5 act=BUY desired=1 sale=2 price=1.47 amount=3.278
+rest id=2 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.29 amount=1.563
+rest id=3 sock=2 addr=A1 act=SELL desired=2 sale=1 price=2.50 amount=2.579
+rest id=4 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.85 amount=3.753 lock=1
+rest id=5 sock=1 addr=A5 act=SELL desired=2 sale=1 price=2.82 amount=2.787
+rest id=6 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.78 amount=4.392
+rest id=7 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.88 amount=3.327
+take id=100 sock=1 addr=A1 act=SELL desired=2 sale=1 price=1.46 amount=1.738
+end
+case rand_183
+market spot 1 2
+rest id=1 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.11 amount=1.104
+rest id=2 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.63 amount=1.969
+rest id=3 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.59 amount=3.174
+rest id=4 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.08 amount=2.441
+take id=100 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.06 amount=2.591
+end
+case rand_184
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.02 amount=3.957
+take id=100 sock=1 addr=A2 act=BUY desired=1 sale=2 price=2.74 amount=3.291
+end
+case rand_185
+market futures 5
+rest id=1 sock=3 addr=A3 act=BUY contract=5 lev=5 coll=1 price=2.22 amount=4.667
+rest id=2 sock=4 addr=A4 act=SELL contract=5 lev=3 coll=1 price=2.44 amount=0.746
+rest id=3 sock=2 addr=A2 act=BUY contract=5 lev=4 coll=1 price=1.67 amount=4.149
+take id=100 sock=3 addr=A3 act=BUY contract=5 lev=8 coll=1 price=1.02 amount=4.175
+end
+case rand_186
+market futures 5
+rest id=1 sock=3 addr=A3 act=BUY contract=5 lev=4 coll=1 price=1.42 amount=1.844
+rest id=2 sock=4 addr=A3 act=SELL contract=5 lev=6 coll=1 price=1.13 amount=0.577
+take id=100 sock=3 addr=A3 act=SELL contract=5 lev=5 coll=1 price=2.16 amount=4.303
+end
+case rand_187
+market spot 1 2
+rest id=1 sock=4 addr=A5 act=BUY desired=1 sale=2 price=2.64 amount=0.780
+rest id=2 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.24 amount=2.778
+take id=100 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.78 amount=3.397
+end
+case rand_188
+market futures 5
+rest id=1 sock=4 addr=A4 act=SELL contract=5 lev=3 coll=1 price=1.77 amount=0.333
+rest id=2 sock=3 addr=A3 act=BUY contract=5 lev=9 coll=1 price=2.15 amount=2.841
+rest id=3 sock=2 addr=A2 act=BUY contract=5 lev=4 coll=1 price=2.08 amount=4.605
+rest id=4 sock=4 addr=A4 act=BUY contract=5 lev=6 coll=1 price=2.42 amount=4.555
+rest id=5 sock=2 addr=A3 act=SELL contract=5 lev=8 coll=1 price=1.04 amount=3.700
+rest id=6 sock=4 addr=A4 act=SELL contract=5 lev=3 coll=1 price=2.76 amount=2.749
+rest id=7 sock=2 addr=A2 act=SELL contract=5 lev=8 coll=1 price=1.90 amount=1.208
+rest id=8 sock=2 addr=A2 act=SELL contract=5 lev=1 coll=1 price=2.10 amount=4.338
+take id=100 sock=4 addr=A4 act=BUY contract=5 lev=10 coll=1 price=1.41 amount=4.771
+end
+case rand_189
+market futures 5
+rest id=1 sock=2 addr=A2 act=BUY contract=5 lev=5 coll=1 price=2.93 amount=0.503 lock=1
+rest id=2 sock=2 addr=A2 act=BUY contract=5 lev=4 coll=1 price=2.38 amount=2.286
+take id=100 sock=4 addr=A4 act=SELL contract=5 lev=10 coll=1 price=1.19 amount=2.796
+end
+case rand_190
+market futures 5
+rest id=1 sock=2 addr=A2 act=BUY contract=5 lev=2 coll=1 price=1.55 amount=4.401
+rest id=2 sock=2 addr=A2 act=SELL contract=5 lev=8 coll=1 price=1.46 amount=2.929
+rest id=3 sock=1 addr=A1 act=BUY contract=5 lev=9 coll=1 price=2.42 amount=2.163
+rest id=4 sock=3 addr=A3 act=BUY contract=5 lev=2 coll=1 price=1.12 amount=2.787
+rest id=5 sock=1 addr=A1 act=SELL contract=5 lev=3 coll=1 price=2.34 amount=4.756
+rest id=6 sock=2 addr=A2 act=SELL contract=5 lev=5 coll=1 price=1.31 amount=1.536
+rest id=7 sock=3 addr=A3 act=BUY contract=5 lev=6 coll=1 price=2.32 amount=4.333
+take id=100 sock=2 addr=A2 act=BUY contract=5 lev=5 coll=1 price=1.34 amount=3.232
+end
+case rand_191
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.10 amount=0.758
+rest id=2 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.95 amount=3.984 lock=1
+rest id=3 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.11 amount=4.202
+rest id=4 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.85 amount=1.983
+rest id=5 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.65 amount=4.542
+rest id=6 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.02 amount=2.955
+rest id=7 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.32 amount=0.550 lock=1
+rest id=8 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.66 amount=1.581
+take id=100 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.24 amount=0.840
+end
+case rand_192
+market futures 5
+take id=100 sock=4 addr=A4 act=BUY contract=5 lev=10 coll=1 price=1.09 amount=3.208
+end
+case rand_193
+market spot 1 2
+rest id=1 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.81 amount=0.034
+rest id=2 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.89 amount=4.786 lock=1
+rest id=3 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.08 amount=4.845
+rest id=4 sock=1 addr=A1 act=BUY desired=2 sale=1 price=2.99 amount=4.100
+take id=100 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.86 amount=2.500
+end
+case rand_194
+market futures 5
+rest id=1 sock=4 addr=A4 act=BUY contract=5 lev=8 coll=1 price=2.25 amount=1.840
+rest id=2 sock=4 addr=A4 act=BUY contract=5 lev=1 coll=1 price=2.24 amount=1.458
+rest id=3 sock=4 addr=A4 act=SELL contract=5 lev=2 coll=1 price=1.72 amount=4.905
+rest id=4 sock=2 addr=A2 act=SELL contract=5 lev=1 coll=1 price=1.75 amount=0.908
+rest id=5 sock=3 addr=A3 act=SELL contract=5 lev=4 coll=1 price=1.62 amount=3.578
+rest id=6 sock=3 addr=A3 act=SELL contract=5 lev=5 coll=1 price=1.62 amount=2.527
+take id=100 sock=2 addr=A2 act=SELL contract=5 lev=4 coll=1 price=1.91 amount=2.233
+end
+case rand_195
+market spot 1 2
+rest id=1 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.56 amount=1.431 lock=1
+rest id=2 sock=2 addr=A2 act=BUY desired=1 sale=2 price=1.42 amount=2.809 lock=1
+rest id=3 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.18 amount=4.675
+rest id=4 sock=3 addr=A3 act=SELL desired=1 sale=2 price=2.09 amount=2.488 lock=1
+rest id=5 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.83 amount=3.182
+rest id=6 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.18 amount=4.875
+take id=100 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.88 amount=0.605
+end
+case rand_196
+market spot 1 2
+rest id=1 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.20 amount=4.121 lock=1
+rest id=2 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.01 amount=1.055
+rest id=3 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.64 amount=2.855 lock=1
+rest id=4 sock=1 addr=A2 act=SELL desired=2 sale=1 price=2.18 amount=4.468
+take id=100 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.56 amount=2.536
+end
+case rand_197
+market spot 1 2
+take id=100 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.33 amount=1.538
+end
+case rand_198
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.94 amount=0.001
+rest id=2 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.79 amount=0.118
+rest id=3 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.46 amount=2.689
+take id=100 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.52 amount=3.960
+end
+case rand_199
+market spot 1 2
+rest id=1 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.53 amount=1.559
+rest id=2 sock=4 addr=A4 act=BUY desired=2 sale=1 price=1.80 amount=2.353
+rest id=3 sock=3 addr=A1 act=BUY desired=1 sale=2 price=2.36 amount=3.027
+rest id=4 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.40 amount=1.939
+rest id=5 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.87 amount=3.101
+take id=100 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.95 amount=3.846
+end
+case rand_200
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=BUY desired=2 sale=1 price=1.19 amount=3.933
+rest id=2 sock=2 addr=A2 act=BUY desired=1 sale=2 price=1.08 amount=0.672
+rest id=3 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.03 amount=1.011
+rest id=4 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.83 amount=1.021
+rest id=5 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.61 amount=4.993
+take id=100 sock=2 addr=A5 act=BUY desired=1 sale=2 price=2.92 amount=2.172
+end
+case rand_201
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.25 amount=2.046
+take id=100 sock=1 addr=A1 act=SELL desired=2 sale=1 price=1.00 amount=2.758
+end
+case rand_202
+market spot 1 2
+rest id=1 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.09 amount=2.518
+rest id=2 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.02 amount=2.900
+rest id=3 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.69 amount=4.223
+take id=100 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.52 amount=3.287
+end
+case rand_203
+market spot 1 2
+take id=100 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.56 amount=3.421
+end
+case rand_204
+market futures 5
+rest id=1 sock=3 addr=A3 act=SELL contract=5 lev=1 coll=1 price=2.40 amount=0.337
+rest id=2 sock=2 addr=A2 act=BUY contract=5 lev=6 coll=1 price=1.86 amount=1.920
+rest id=3 sock=3 addr=A3 act=SELL contract=5 lev=1 coll=1 price=2.53 amount=2.254
+rest id=4 sock=3 addr=A3 act=BUY contract=5 lev=4 coll=1 price=2.89 amount=0.460
+rest id=5 sock=3 addr=A3 act=BUY contract=5 lev=2 coll=1 price=2.39 amount=0.646
+rest id=6 sock=4 addr=A4 act=SELL contract=5 lev=7 coll=1 price=2.07 amount=4.243
+rest id=7 sock=2 addr=A2 act=SELL contract=5 lev=8 coll=1 price=2.27 amount=4.454
+rest id=8 sock=4 addr=A4 act=BUY contract=5 lev=1 coll=1 price=1.44 amount=4.485
+take id=100 sock=1 addr=A1 act=BUY contract=5 lev=10 coll=1 price=1.84 amount=0.405
+end
+case rand_205
+market futures 5
+take id=100 sock=3 addr=A3 act=SELL contract=5 lev=3 coll=1 price=2.67 amount=0.662
+end
+case rand_206
+market futures 5
+take id=100 sock=2 addr=A1 act=SELL contract=5 lev=7 coll=1 price=1.59 amount=3.604
+end
+case rand_207
+market spot 1 2
+take id=100 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.93 amount=4.137
+end
+case rand_208
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.18 amount=3.223
+rest id=2 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.90 amount=0.354
+rest id=3 sock=2 addr=A2 act=BUY desired=1 sale=2 price=1.67 amount=0.635
+rest id=4 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.20 amount=2.005
+take id=100 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.23 amount=1.367
+end
+case rand_209
+market futures 5
+take id=100 sock=1 addr=A1 act=SELL contract=5 lev=4 coll=1 price=2.30 amount=3.842
+end
+case rand_210
+market futures 5
+rest id=1 sock=3 addr=A3 act=SELL contract=5 lev=4 coll=1 price=1.72 amount=0.435
+rest id=2 sock=1 addr=A1 act=BUY contract=5 lev=5 coll=1 price=1.50 amount=1.589
+rest id=3 sock=4 addr=A4 act=SELL contract=5 lev=2 coll=1 price=1.93 amount=4.986
+rest id=4 sock=4 addr=A4 act=BUY contract=5 lev=10 coll=1 price=1.43 amount=2.513
+rest id=5 sock=1 addr=A1 act=SELL contract=5 lev=1 coll=1 price=2.82 amount=4.972
+rest id=6 sock=3 addr=A3 act=SELL contract=5 lev=9 coll=1 price=2.97 amount=3.670
+take id=100 sock=3 addr=A3 act=BUY contract=5 lev=6 coll=1 price=2.32 amount=4.263
+end
+case rand_211
+market spot 1 2
+rest id=1 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.02 amount=2.667
+rest id=2 sock=1 addr=A1 act=SELL desired=2 sale=1 price=1.71 amount=1.907
+rest id=3 sock=1 addr=A5 act=SELL desired=2 sale=1 price=1.94 amount=4.239
+rest id=4 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.47 amount=3.522 lock=1
+rest id=5 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.34 amount=0.241
+take id=100 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.06 amount=0.874
+end
+case rand_212
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.36 amount=1.825
+rest id=2 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.08 amount=4.364 lock=1
+rest id=3 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.18 amount=2.010 lock=1
+rest id=4 sock=2 addr=A2 act=BUY desired=2 sale=1 price=2.32 amount=0.102
+rest id=5 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.72 amount=0.055
+rest id=6 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.51 amount=3.166
+take id=100 sock=2 addr=A2 act=BUY desired=1 sale=2 price=1.84 amount=0.073
+end
+case rand_213
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.01 amount=3.590
+rest id=2 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.74 amount=3.043
+take id=100 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.82 amount=1.198
+end
+case rand_214
+market futures 5
+take id=100 sock=3 addr=A3 act=SELL contract=5 lev=10 coll=1 price=1.77 amount=4.792
+end
+case rand_215
+market spot 1 2
+rest id=1 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.18 amount=2.134
+rest id=2 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.81 amount=2.109
+rest id=3 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.38 amount=0.682
+rest id=4 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.41 amount=2.685
+rest id=5 sock=4 addr=A4 act=BUY desired=2 sale=1 price=2.53 amount=4.089
+rest id=6 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.09 amount=2.243
+rest id=7 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.25 amount=4.404 lock=1
+rest id=8 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.64 amount=2.492
+take id=100 sock=1 addr=A1 act=BUY desired=2 sale=1 price=1.42 amount=1.953
+end
+case rand_216
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=SELL desired=2 sale=1 price=1.10 amount=1.295
+rest id=2 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.78 amount=3.597
+rest id=3 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.35 amount=0.136
+rest id=4 sock=2 addr=A2 act=BUY desired=2 sale=1 price=2.99 amount=4.752 lock=1
+rest id=5 sock=1 addr=A1 act=SELL desired=2 sale=1 price=1.37 amount=0.946
+rest id=6 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.76 amount=1.052
+rest id=7 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.09 amount=4.348
+rest id=8 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.29 amount=2.192
+take id=100 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.02 amount=0.726
+end
+case rand_217
+market futures 5
+rest id=1 sock=3 addr=A3 act=SELL contract=5 lev=10 coll=1 price=1.23 amount=4.333
+rest id=2 sock=3 addr=A3 act=SELL contract=5 lev=5 coll=1 price=2.67 amount=4.253
+rest id=3 sock=1 addr=A1 act=BUY contract=5 lev=5 coll=1 price=1.66 amount=2.430 lock=1
+rest id=4 sock=1 addr=A1 act=SELL contract=5 lev=7 coll=1 price=2.61 amount=4.486
+rest id=5 sock=4 addr=A4 act=SELL contract=5 lev=9 coll=1 price=2.57 amount=4.927
+rest id=6 sock=3 addr=A3 act=BUY contract=5 lev=3 coll=1 price=1.39 amount=1.876
+take id=100 sock=4 addr=A4 act=SELL contract=5 lev=8 coll=1 price=2.70 amount=1.843
+end
+case rand_218
+market futures 5
+rest id=1 sock=3 addr=A3 act=BUY contract=5 lev=2 coll=1 price=1.43 amount=4.526
+rest id=2 sock=1 addr=A1 act=BUY contract=5 lev=1 coll=1 price=2.62 amount=0.370
+rest id=3 sock=4 addr=A4 act=BUY contract=5 lev=9 coll=1 price=2.06 amount=2.447
+rest id=4 sock=3 addr=A3 act=SELL contract=5 lev=5 coll=1 price=2.78 amount=2.460
+rest id=5 sock=1 addr=A1 act=BUY contract=5 lev=1 coll=1 price=1.35 amount=0.857
+rest id=6 sock=1 addr=A1 act=BUY contract=5 lev=3 coll=1 price=2.50 amount=1.223
+take id=100 sock=4 addr=A4 act=SELL contract=5 lev=9 coll=1 price=1.65 amount=4.293
+end
+case rand_219
+market spot 1 2
+rest id=1 sock=3 addr=A1 act=SELL desired=2 sale=1 price=1.15 amount=4.890
+rest id=2 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.25 amount=4.462
+take id=100 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.48 amount=2.011
+end
+case rand_220
+market futures 5
+rest id=1 sock=4 addr=A4 act=SELL contract=5 lev=6 coll=1 price=2.61 amount=3.724
+rest id=2 sock=1 addr=A1 act=BUY contract=5 lev=6 coll=1 price=1.83 amount=3.659
+rest id=3 sock=1 addr=A3 act=SELL contract=5 lev=5 coll=1 price=1.88 amount=1.850
+rest id=4 sock=4 addr=A4 act=SELL contract=5 lev=8 coll=1 price=2.94 amount=2.202
+rest id=5 sock=4 addr=A4 act=BUY contract=5 lev=9 coll=1 price=1.46 amount=0.021
+rest id=6 sock=3 addr=A3 act=SELL contract=5 lev=5 coll=1 price=2.66 amount=0.322
+rest id=7 sock=2 addr=A2 act=BUY contract=5 lev=9 coll=1 price=2.94 amount=0.064
+rest id=8 sock=1 addr=A1 act=BUY contract=5 lev=10 coll=1 price=1.80 amount=1.736 lock=1
+take id=100 sock=1 addr=A2 act=SELL contract=5 lev=2 coll=1 price=2.70 amount=4.870
+end
+case rand_221
+market spot 1 2
+take id=100 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.69 amount=4.183
+end
+case rand_222
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.04 amount=3.322
+rest id=2 sock=2 addr=A5 act=SELL desired=2 sale=1 price=2.25 amount=1.732
+rest id=3 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.72 amount=4.590
+rest id=4 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.54 amount=3.516
+rest id=5 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.95 amount=1.593
+rest id=6 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.09 amount=2.823
+rest id=7 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.49 amount=1.065 lock=1
+rest id=8 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.41 amount=2.374
+take id=100 sock=1 addr=A1 act=SELL desired=2 sale=1 price=1.75 amount=2.450
+end
+case rand_223
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.06 amount=0.518
+take id=100 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.92 amount=4.815
+end
+case rand_224
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.66 amount=1.777
+rest id=2 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.01 amount=1.246
+rest id=3 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.26 amount=1.564
+rest id=4 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.36 amount=2.978 lock=1
+take id=100 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.24 amount=0.966
+end
+case rand_225
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.83 amount=4.500
+rest id=2 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.35 amount=1.225
+rest id=3 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.47 amount=3.735 lock=1
+rest id=4 sock=2 addr=A2 act=BUY desired=2 sale=1 price=2.95 amount=3.507
+take id=100 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.95 amount=0.122
+end
+case rand_226
+market spot 1 2
+rest id=1 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.04 amount=0.235
+rest id=2 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.80 amount=0.065
+take id=100 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.83 amount=2.560
+end
+case rand_227
+market futures 5
+rest id=1 sock=4 addr=A4 act=SELL contract=5 lev=9 coll=1 price=1.68 amount=0.172 lock=1
+rest id=2 sock=1 addr=A1 act=BUY contract=5 lev=9 coll=1 price=2.66 amount=0.782
+rest id=3 sock=4 addr=A3 act=BUY contract=5 lev=4 coll=1 price=1.61 amount=1.441 lock=1
+rest id=4 sock=2 addr=A4 act=SELL contract=5 lev=8 coll=1 price=2.82 amount=0.466
+rest id=5 sock=3 addr=A3 act=SELL contract=5 lev=6 coll=1 price=1.76 amount=4.249
+take id=100 sock=4 addr=A4 act=BUY contract=5 lev=6 coll=1 price=1.81 amount=2.984
+end
+case rand_228
+market futures 5
+rest id=1 sock=4 addr=A4 act=SELL contract=5 lev=5 coll=1 price=2.35 amount=1.030
+rest id=2 sock=4 addr=A4 act=SELL contract=5 lev=5 coll=1 price=1.73 amount=4.690
+take id=100 sock=4 addr=A4 act=BUY contract=5 lev=2 coll=1 price=2.92 amount=1.442
+end
+case rand_229
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=SELL desired=2 sale=1 price=1.56 amount=3.500
+rest id=2 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.01 amount=2.064 lock=1
+rest id=3 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.05 amount=3.591
+rest id=4 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.21 amount=1.340
+rest id=5 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.98 amount=4.061
+take id=100 sock=3 addr=A5 act=BUY desired=1 sale=2 price=1.24 amount=1.503
+end
+case rand_230
+market spot 1 2
+rest id=1 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.35 amount=3.201
+rest id=2 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.76 amount=3.213
+rest id=3 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.84 amount=1.399 lock=1
+rest id=4 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.61 amount=2.927
+rest id=5 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.09 amount=3.408
+rest id=6 sock=2 addr=A3 act=BUY desired=1 sale=2 price=2.64 amount=2.964
+take id=100 sock=2 addr=A2 act=BUY desired=1 sale=2 price=1.86 amount=3.289
+end
+case rand_231
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=SELL desired=1 sale=2 price=2.64 amount=2.430
+rest id=2 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.36 amount=4.608
+take id=100 sock=4 addr=A4 act=SELL desired=1 sale=2 price=2.66 amount=4.894
+end
+case rand_232
+market futures 5
+rest id=1 sock=4 addr=A4 act=SELL contract=5 lev=9 coll=1 price=2.82 amount=2.302
+rest id=2 sock=1 addr=A1 act=BUY contract=5 lev=9 coll=1 price=2.39 amount=0.826 lock=1
+rest id=3 sock=3 addr=A3 act=SELL contract=5 lev=6 coll=1 price=2.62 amount=1.957
+rest id=4 sock=4 addr=A4 act=SELL contract=5 lev=4 coll=1 price=2.30 amount=3.414
+rest id=5 sock=2 addr=A2 act=SELL contract=5 lev=9 coll=1 price=2.79 amount=2.466
+rest id=6 sock=4 addr=A4 act=SELL contract=5 lev=7 coll=1 price=2.94 amount=3.182
+rest id=7 sock=4 addr=A4 act=SELL contract=5 lev=1 coll=1 price=1.09 amount=1.550
+take id=100 sock=4 addr=A4 act=SELL contract=5 lev=5 coll=1 price=2.62 amount=2.643
+end
+case rand_233
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.03 amount=4.633 lock=1
+take id=100 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.70 amount=3.500
+end
+case rand_234
+market spot 1 2
+take id=100 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.04 amount=0.467
+end
+case rand_235
+market futures 5
+take id=100 sock=2 addr=A2 act=BUY contract=5 lev=10 coll=1 price=1.42 amount=2.302
+end
+case rand_236
+market spot 1 2
+rest id=1 sock=1 addr=A2 act=BUY desired=1 sale=2 price=2.31 amount=4.263
+rest id=2 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.62 amount=2.404
+rest id=3 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.49 amount=0.043
+take id=100 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.14 amount=2.265
+end
+case rand_237
+market futures 5
+rest id=1 sock=2 addr=A2 act=BUY contract=5 lev=10 coll=1 price=1.21 amount=2.673
+rest id=2 sock=1 addr=A1 act=BUY contract=5 lev=4 coll=1 price=1.45 amount=2.595
+rest id=3 sock=3 addr=A3 act=BUY contract=5 lev=5 coll=1 price=1.34 amount=4.246
+rest id=4 sock=2 addr=A2 act=SELL contract=5 lev=10 coll=1 price=1.34 amount=4.431 lock=1
+take id=100 sock=4 addr=A4 act=SELL contract=5 lev=4 coll=1 price=2.09 amount=3.898
+end
+case rand_238
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.96 amount=4.189
+rest id=2 sock=2 addr=A2 act=BUY desired=1 sale=2 price=1.67 amount=0.338
+take id=100 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.69 amount=0.854
+end
+case rand_239
+market futures 5
+rest id=1 sock=1 addr=A1 act=SELL contract=5 lev=3 coll=1 price=1.27 amount=2.603
+rest id=2 sock=1 addr=A1 act=SELL contract=5 lev=8 coll=1 price=1.96 amount=2.840
+rest id=3 sock=3 addr=A3 act=BUY contract=5 lev=9 coll=1 price=1.53 amount=2.544
+rest id=4 sock=4 addr=A4 act=BUY contract=5 lev=6 coll=1 price=2.15 amount=2.975
+rest id=5 sock=1 addr=A1 act=BUY contract=5 lev=3 coll=1 price=2.74 amount=3.397
+rest id=6 sock=2 addr=A2 act=SELL contract=5 lev=7 coll=1 price=1.58 amount=3.515 lock=1
+take id=100 sock=1 addr=A1 act=BUY contract=5 lev=9 coll=1 price=2.58 amount=1.533
+end
+case rand_240
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.67 amount=4.535
+rest id=2 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.61 amount=4.560
+rest id=3 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.49 amount=4.167
+rest id=4 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.62 amount=4.322
+take id=100 sock=1 addr=A1 act=SELL desired=2 sale=1 price=1.92 amount=0.103
+end
+case rand_241
+market spot 1 2
+rest id=1 sock=2 addr=A2 act=BUY desired=1 sale=2 price=1.33 amount=3.441
+rest id=2 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.86 amount=3.993
+rest id=3 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.95 amount=0.045
+rest id=4 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.78 amount=0.980 lock=1
+rest id=5 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.09 amount=2.429
+take id=100 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.78 amount=1.118
+end
+case rand_242
+market spot 1 2
+take id=100 sock=3 addr=A3 act=BUY desired=2 sale=1 price=2.85 amount=2.507
+end
+case rand_243
+market futures 5
+rest id=1 sock=2 addr=A2 act=SELL contract=5 lev=4 coll=1 price=2.18 amount=1.967
+rest id=2 sock=1 addr=A1 act=SELL contract=5 lev=4 coll=1 price=1.78 amount=4.213
+rest id=3 sock=1 addr=A1 act=SELL contract=5 lev=10 coll=1 price=2.39 amount=4.106
+rest id=4 sock=2 addr=A3 act=SELL contract=5 lev=7 coll=1 price=2.01 amount=4.177
+rest id=5 sock=4 addr=A4 act=BUY contract=5 lev=3 coll=1 price=2.38 amount=2.102 lock=1
+take id=100 sock=2 addr=A2 act=SELL contract=5 lev=5 coll=1 price=2.37 amount=2.920
+end
+case rand_244
+market spot 1 2
+rest id=1 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.04 amount=0.661
+rest id=2 sock=2 addr=A2 act=BUY desired=2 sale=1 price=1.95 amount=2.942 lock=1
+rest id=3 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.40 amount=0.256
+rest id=4 sock=3 addr=A5 act=SELL desired=2 sale=1 price=3.00 amount=1.198
+rest id=5 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.70 amount=2.487
+take id=100 sock=3 addr=A1 act=BUY desired=1 sale=2 price=2.85 amount=4.863
+end
+case rand_245
+market futures 5
+rest id=1 sock=2 addr=A4 act=BUY contract=5 lev=9 coll=1 price=2.84 amount=1.118
+rest id=2 sock=3 addr=A3 act=BUY contract=5 lev=5 coll=1 price=2.55 amount=3.758
+rest id=3 sock=2 addr=A2 act=BUY contract=5 lev=7 coll=1 price=2.50 amount=2.700
+rest id=4 sock=3 addr=A3 act=SELL contract=5 lev=3 coll=1 price=2.95 amount=0.930
+take id=100 sock=1 addr=A1 act=SELL contract=5 lev=6 coll=1 price=2.01 amount=4.729
+end
+case rand_246
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.05 amount=0.264
+rest id=2 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.33 amount=2.697 lock=1
+take id=100 sock=1 addr=A3 act=SELL desired=2 sale=1 price=2.46 amount=4.081
+end
+case rand_247
+market futures 5
+rest id=1 sock=3 addr=A3 act=BUY contract=5 lev=2 coll=1 price=2.12 amount=4.058 lock=1
+rest id=2 sock=3 addr=A3 act=SELL contract=5 lev=1 coll=1 price=2.64 amount=3.429
+rest id=3 sock=1 addr=A5 act=BUY contract=5 lev=1 coll=1 price=1.33 amount=2.993 lock=1
+rest id=4 sock=1 addr=A1 act=BUY contract=5 lev=2 coll=1 price=2.17 amount=1.533
+rest id=5 sock=1 addr=A1 act=SELL contract=5 lev=9 coll=1 price=2.28 amount=4.720
+rest id=6 sock=4 addr=A4 act=SELL contract=5 lev=10 coll=1 price=2.51 amount=1.074
+rest id=7 sock=3 addr=A3 act=SELL contract=5 lev=2 coll=1 price=2.66 amount=1.107 lock=1
+take id=100 sock=1 addr=A1 act=BUY contract=5 lev=6 coll=1 price=2.05 amount=0.568
+end
+case rand_248
+market spot 1 2
+rest id=1 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.52 amount=0.408
+take id=100 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.93 amount=4.791
+end
+case rand_249
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.50 amount=1.969 lock=1
+rest id=2 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.87 amount=1.599
+take id=100 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.75 amount=3.009
+end
+case rand_250
+market spot 1 2
+rest id=1 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.81 amount=2.557
+rest id=2 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.60 amount=3.455
+rest id=3 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.71 amount=0.907
+rest id=4 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.24 amount=4.050
+rest id=5 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.72 amount=0.578
+rest id=6 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.57 amount=3.042
+take id=100 sock=2 addr=A2 act=SELL desired=2 sale=1 price=3.00 amount=2.762
+end
+case rand_251
+market spot 1 2
+take id=100 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.23 amount=1.319
+end
+case rand_252
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=SELL desired=2 sale=1 price=1.34 amount=3.028
+take id=100 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.26 amount=2.389
+end
+case rand_253
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=SELL desired=2 sale=1 price=1.78 amount=4.942
+rest id=2 sock=4 addr=A1 act=BUY desired=1 sale=2 price=1.07 amount=3.643
+rest id=3 sock=3 addr=A3 act=BUY desired=2 sale=1 price=2.28 amount=2.786
+rest id=4 sock=4 addr=A1 act=SELL desired=1 sale=2 price=2.53 amount=3.940
+take id=100 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.62 amount=4.478
+end
+case rand_254
+market spot 1 2
+rest id=1 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.30 amount=0.946
+rest id=2 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.27 amount=0.118
+rest id=3 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.93 amount=2.280
+rest id=4 sock=4 addr=A4 act=BUY desired=2 sale=1 price=1.98 amount=4.159
+take id=100 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.05 amount=2.091
+end
+case rand_255
+market spot 1 2
+rest id=1 sock=2 addr=A2 act=BUY desired=1 sale=2 price=1.42 amount=3.477
+rest id=2 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.64 amount=3.899
+rest id=3 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.58 amount=2.225
+rest id=4 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.72 amount=1.029
+rest id=5 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.35 amount=2.112
+rest id=6 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.03 amount=2.225
+rest id=7 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.52 amount=0.108
+rest id=8 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.55 amount=4.635 lock=1
+take id=100 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.96 amount=2.947
+end
+case rand_256
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.83 amount=4.139
+rest id=2 sock=2 addr=A2 act=BUY desired=1 sale=2 price=1.04 amount=2.968
+rest id=3 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.10 amount=0.779
+rest id=4 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.65 amount=2.390 lock=1
+rest id=5 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.19 amount=2.172
+rest id=6 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.90 amount=0.248
+take id=100 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.24 amount=0.980
+end
+case rand_257
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=BUY desired=2 sale=1 price=1.47 amount=1.686
+rest id=2 sock=2 addr=A2 act=SELL desired=1 sale=2 price=2.16 amount=3.399
+rest id=3 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.27 amount=3.694 lock=1
+rest id=4 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.20 amount=0.565
+take id=100 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.40 amount=0.465
+end
+case rand_258
+market spot 1 2
+rest id=1 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.72 amount=2.447
+rest id=2 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.47 amount=2.929
+rest id=3 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.03 amount=2.168
+rest id=4 sock=4 addr=A4 act=BUY desired=2 sale=1 price=2.87 amount=0.421
+rest id=5 sock=2 addr=A2 act=BUY desired=1 sale=2 price=1.08 amount=1.362
+rest id=6 sock=1 addr=A1 act=SELL desired=2 sale=1 price=1.80 amount=0.407
+take id=100 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.57 amount=2.136 notrades=1
+end
+case rand_259
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.12 amount=4.826
+take id=100 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.21 amount=0.725
+end
+case rand_260
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.65 amount=0.195
+rest id=2 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.70 amount=4.485
+rest id=3 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.09 amount=0.460
+rest id=4 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.28 amount=2.660
+rest id=5 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.36 amount=0.142
+rest id=6 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.72 amount=3.765
+rest id=7 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.79 amount=3.156
+take id=100 sock=1 addr=A1 act=SELL desired=2 sale=1 price=1.30 amount=1.235
+end
+case rand_261
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.35 amount=0.246
+rest id=2 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.58 amount=4.677
+take id=100 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.34 amount=2.909
+end
+case rand_262
+market spot 1 2
+rest id=1 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.34 amount=3.076
+take id=100 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.56 amount=4.765
+end
+case rand_263
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.97 amount=0.856
+rest id=2 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.08 amount=1.947
+take id=100 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.91 amount=4.750
+end
+case rand_264
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=SELL desired=2 sale=1 price=1.32 amount=1.507 lock=1
+rest id=2 sock=3 addr=A1 act=SELL desired=2 sale=1 price=2.25 amount=0.257
+rest id=3 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.22 amount=3.677
+rest id=4 sock=4 addr=A3 act=BUY desired=1 sale=2 price=2.12 amount=1.029
+take id=100 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.72 amount=0.046 notrades=1
+end
+case rand_265
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=BUY desired=2 sale=1 price=1.72 amount=4.627
+rest id=2 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.77 amount=4.868
+take id=100 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.89 amount=2.449 notrades=1
+end
+case rand_266
+market futures 5
+take id=100 sock=4 addr=A4 act=BUY contract=5 lev=4 coll=1 price=2.49 amount=1.845
+end
+case rand_267
+market spot 1 2
+rest id=1 sock=2 addr=A1 act=BUY desired=1 sale=2 price=2.32 amount=3.257
+rest id=2 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.07 amount=3.288
+rest id=3 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.09 amount=1.783
+rest id=4 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.49 amount=0.301
+take id=100 sock=2 addr=A2 act=SELL desired=1 sale=2 price=1.62 amount=2.326
+end
+case rand_268
+market spot 1 2
+rest id=1 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.40 amount=2.713
+rest id=2 sock=3 addr=A1 act=BUY desired=1 sale=2 price=2.95 amount=2.188 lock=1
+rest id=3 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.03 amount=1.302
+rest id=4 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.01 amount=1.535
+rest id=5 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.46 amount=2.363
+take id=100 sock=1 addr=A1 act=SELL desired=2 sale=1 price=1.51 amount=3.020
+end
+case rand_269
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.17 amount=0.326
+take id=100 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.88 amount=0.462
+end
+case rand_270
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.42 amount=2.456
+take id=100 sock=1 addr=A4 act=BUY desired=1 sale=2 price=2.66 amount=2.798
+end
+case rand_271
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.67 amount=1.306
+rest id=2 sock=2 addr=A2 act=BUY desired=2 sale=1 price=1.08 amount=4.821
+rest id=3 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.68 amount=2.027
+rest id=4 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.33 amount=1.887
+rest id=5 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.22 amount=0.814
+rest id=6 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.74 amount=4.060
+rest id=7 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.04 amount=4.034
+rest id=8 sock=1 addr=A4 act=SELL desired=2 sale=1 price=1.48 amount=4.082
+take id=100 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.12 amount=2.964
+end
+case rand_272
+market spot 1 2
+rest id=1 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.07 amount=0.530
+rest id=2 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.63 amount=0.881
+rest id=3 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.71 amount=1.413
+rest id=4 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.63 amount=4.071
+rest id=5 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.62 amount=3.026
+rest id=6 sock=1 addr=A2 act=BUY desired=2 sale=1 price=2.44 amount=3.963
+take id=100 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.26 amount=2.617
+end
+case rand_273
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.72 amount=0.457
+rest id=2 sock=1 addr=A5 act=BUY desired=1 sale=2 price=1.29 amount=2.958 lock=1
+rest id=3 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.19 amount=1.808
+rest id=4 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.93 amount=3.608
+rest id=5 sock=2 addr=A3 act=SELL desired=2 sale=1 price=2.61 amount=2.914
+rest id=6 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.74 amount=3.447 lock=1
+rest id=7 sock=1 addr=A1 act=SELL desired=1 sale=2 price=1.54 amount=1.001
+rest id=8 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.63 amount=2.627
+take id=100 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.82 amount=1.007
+end
+case rand_274
+market futures 5
+rest id=1 sock=1 addr=A1 act=SELL contract=5 lev=10 coll=1 price=1.93 amount=2.859
+rest id=2 sock=3 addr=A3 act=BUY contract=5 lev=7 coll=1 price=1.93 amount=4.283
+take id=100 sock=3 addr=A3 act=BUY contract=5 lev=10 coll=1 price=2.48 amount=1.577
+end
+case rand_275
+market futures 5
+rest id=1 sock=2 addr=A2 act=SELL contract=5 lev=5 coll=1 price=2.15 amount=0.673
+rest id=2 sock=4 addr=A4 act=BUY contract=5 lev=4 coll=1 price=2.66 amount=0.131
+rest id=3 sock=1 addr=A3 act=SELL contract=5 lev=4 coll=1 price=1.22 amount=4.581 lock=1
+take id=100 sock=1 addr=A1 act=SELL contract=5 lev=3 coll=1 price=2.10 amount=3.577
+end
+case rand_276
+market futures 5
+rest id=1 sock=1 addr=A1 act=SELL contract=5 lev=8 coll=1 price=1.30 amount=0.451
+rest id=2 sock=4 addr=A5 act=SELL contract=5 lev=9 coll=1 price=1.57 amount=4.389
+rest id=3 sock=4 addr=A4 act=SELL contract=5 lev=2 coll=1 price=2.93 amount=0.365
+rest id=4 sock=2 addr=A2 act=BUY contract=5 lev=8 coll=1 price=2.84 amount=4.458
+rest id=5 sock=2 addr=A2 act=SELL contract=5 lev=7 coll=1 price=1.03 amount=1.550
+rest id=6 sock=4 addr=A4 act=BUY contract=5 lev=6 coll=1 price=1.60 amount=2.929
+rest id=7 sock=2 addr=A2 act=SELL contract=5 lev=6 coll=1 price=2.41 amount=0.878
+rest id=8 sock=4 addr=A4 act=SELL contract=5 lev=4 coll=1 price=3.00 amount=0.703
+take id=100 sock=1 addr=A4 act=BUY contract=5 lev=9 coll=1 price=2.71 amount=1.934
+end
+case rand_277
+market spot 1 2
+take id=100 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.06 amount=1.248
+end
+case rand_278
+market spot 1 2
+rest id=1 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.52 amount=4.230
+rest id=2 sock=1 addr=A1 act=SELL desired=2 sale=1 price=1.62 amount=3.814
+rest id=3 sock=3 addr=A3 act=BUY desired=2 sale=1 price=1.89 amount=0.801
+take id=100 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.56 amount=2.802 notrades=1
+end
+case rand_279
+market spot 1 2
+rest id=1 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.25 amount=1.162
+rest id=2 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.16 amount=1.312
+rest id=3 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.68 amount=2.986
+take id=100 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.57 amount=2.883
+end
+case rand_280
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.42 amount=1.126
+rest id=2 sock=2 addr=A1 act=BUY desired=1 sale=2 price=1.23 amount=2.277
+rest id=3 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.29 amount=0.452
+rest id=4 sock=3 addr=A3 act=BUY desired=2 sale=1 price=1.85 amount=2.929
+rest id=5 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.79 amount=2.868
+take id=100 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.67 amount=2.140
+end
+case rand_281
+market spot 1 2
+rest id=1 sock=3 addr=A3 act=SELL desired=1 sale=2 price=1.18 amount=2.556
+rest id=2 sock=4 addr=A4 act=SELL desired=2 sale=1 price=1.61 amount=1.731
+rest id=3 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.52 amount=0.643
+rest id=4 sock=1 addr=A5 act=BUY desired=1 sale=2 price=2.53 amount=1.001 lock=1
+take id=100 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.33 amount=2.591
+end
+case rand_282
+market spot 1 2
+rest id=1 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.17 amount=3.337
+rest id=2 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.60 amount=4.433
+rest id=3 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.47 amount=1.632
+rest id=4 sock=1 addr=A1 act=SELL desired=2 sale=1 price=1.01 amount=3.338
+rest id=5 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.23 amount=2.465
+rest id=6 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.76 amount=0.648
+rest id=7 sock=2 addr=A2 act=BUY desired=1 sale=2 price=1.16 amount=0.531
+take id=100 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.20 amount=0.416
+end
+case rand_283
+market futures 5
+rest id=1 sock=3 addr=A3 act=BUY contract=5 lev=6 coll=1 price=1.27 amount=4.057
+rest id=2 sock=4 addr=A4 act=BUY contract=5 lev=4 coll=1 price=2.45 amount=2.518
+rest id=3 sock=1 addr=A1 act=BUY contract=5 lev=5 coll=1 price=1.16 amount=4.157 lock=1
+rest id=4 sock=1 addr=A1 act=SELL contract=5 lev=3 coll=1 price=2.45 amount=2.219
+rest id=5 sock=2 addr=A2 act=BUY contract=5 lev=9 coll=1 price=1.83 amount=4.016
+take id=100 sock=3 addr=A3 act=BUY contract=5 lev=4 coll=1 price=2.66 amount=2.233 notrades=1
+end
+case rand_284
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=SELL desired=2 sale=1 price=1.68 amount=0.996
+take id=100 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.83 amount=3.974
+end
+case rand_285
+market spot 1 2
+rest id=1 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.18 amount=1.253 lock=1
+rest id=2 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.94 amount=4.250
+rest id=3 sock=1 addr=A1 act=BUY desired=2 sale=1 price=2.51 amount=1.451
+take id=100 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.32 amount=4.761
+end
+case rand_286
+market futures 5
+rest id=1 sock=3 addr=A3 act=BUY contract=5 lev=9 coll=1 price=1.93 amount=4.463
+rest id=2 sock=2 addr=A2 act=SELL contract=5 lev=5 coll=1 price=2.02 amount=1.552
+rest id=3 sock=4 addr=A2 act=SELL contract=5 lev=9 coll=1 price=2.26 amount=0.904
+rest id=4 sock=1 addr=A1 act=SELL contract=5 lev=3 coll=1 price=1.41 amount=3.581
+rest id=5 sock=3 addr=A3 act=SELL contract=5 lev=2 coll=1 price=2.37 amount=1.287
+rest id=6 sock=3 addr=A3 act=BUY contract=5 lev=7 coll=1 price=1.47 amount=1.861
+take id=100 sock=2 addr=A2 act=BUY contract=5 lev=4 coll=1 price=1.08 amount=1.852
+end
+case rand_287
+market futures 5
+rest id=1 sock=4 addr=A4 act=BUY contract=5 lev=4 coll=1 price=2.33 amount=1.049
+rest id=2 sock=2 addr=A2 act=BUY contract=5 lev=6 coll=1 price=2.29 amount=4.655
+rest id=3 sock=2 addr=A2 act=BUY contract=5 lev=6 coll=1 price=2.47 amount=0.998
+rest id=4 sock=1 addr=A1 act=BUY contract=5 lev=9 coll=1 price=2.91 amount=2.697
+rest id=5 sock=4 addr=A4 act=SELL contract=5 lev=5 coll=1 price=1.34 amount=1.188
+take id=100 sock=1 addr=A1 act=BUY contract=5 lev=10 coll=1 price=1.75 amount=3.442
+end
+case rand_288
+market spot 1 2
+rest id=1 sock=4 addr=A4 act=SELL desired=2 sale=1 price=2.88 amount=1.637 lock=1
+rest id=2 sock=3 addr=A3 act=SELL desired=2 sale=1 price=1.05 amount=2.971
+rest id=3 sock=4 addr=A4 act=BUY desired=1 sale=2 price=2.38 amount=4.478
+take id=100 sock=4 addr=A5 act=SELL desired=2 sale=1 price=1.39 amount=0.590
+end
+case rand_289
+market futures 5
+rest id=1 sock=1 addr=A1 act=SELL contract=5 lev=7 coll=1 price=1.67 amount=4.662
+take id=100 sock=3 addr=A3 act=BUY contract=5 lev=4 coll=1 price=2.28 amount=3.151 notrades=1
+end
+case rand_290
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=BUY desired=1 sale=2 price=2.43 amount=1.265
+take id=100 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.30 amount=4.402
+end
+case rand_291
+market futures 5
+rest id=1 sock=2 addr=A2 act=SELL contract=5 lev=2 coll=1 price=1.84 amount=4.448
+take id=100 sock=3 addr=A3 act=SELL contract=5 lev=3 coll=1 price=2.61 amount=0.210
+end
+case rand_292
+market spot 1 2
+take id=100 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.50 amount=3.604
+end
+case rand_293
+market futures 5
+rest id=1 sock=1 addr=A1 act=SELL contract=5 lev=5 coll=1 price=2.77 amount=2.584
+rest id=2 sock=2 addr=A2 act=BUY contract=5 lev=5 coll=1 price=2.10 amount=3.855
+rest id=3 sock=1 addr=A1 act=BUY contract=5 lev=8 coll=1 price=1.40 amount=1.055
+rest id=4 sock=3 addr=A3 act=SELL contract=5 lev=6 coll=1 price=1.51 amount=2.054
+rest id=5 sock=2 addr=A2 act=BUY contract=5 lev=7 coll=1 price=2.26 amount=1.922
+rest id=6 sock=3 addr=A3 act=SELL contract=5 lev=10 coll=1 price=2.37 amount=2.378
+take id=100 sock=1 addr=A1 act=SELL contract=5 lev=3 coll=1 price=2.98 amount=3.099
+end
+case rand_294
+market spot 1 2
+rest id=1 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.92 amount=0.468
+rest id=2 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.28 amount=4.251
+take id=100 sock=1 addr=A3 act=SELL desired=2 sale=1 price=2.91 amount=1.184
+end
+case rand_295
+market spot 1 2
+rest id=1 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.08 amount=4.048
+rest id=2 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.35 amount=1.681
+rest id=3 sock=3 addr=A3 act=SELL desired=2 sale=1 price=2.32 amount=0.794
+take id=100 sock=2 addr=A2 act=BUY desired=2 sale=1 price=1.49 amount=3.723
+end
+case rand_296
+market futures 5
+rest id=1 sock=3 addr=A3 act=SELL contract=5 lev=4 coll=1 price=1.57 amount=0.840
+rest id=2 sock=2 addr=A2 act=SELL contract=5 lev=6 coll=1 price=2.55 amount=1.568
+take id=100 sock=1 addr=A1 act=BUY contract=5 lev=9 coll=1 price=2.97 amount=0.697
+end
+case rand_297
+market spot 1 2
+rest id=1 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.42 amount=2.251
+rest id=2 sock=2 addr=A2 act=SELL desired=2 sale=1 price=1.03 amount=3.721
+rest id=3 sock=3 addr=A3 act=BUY desired=1 sale=2 price=2.72 amount=0.127
+rest id=4 sock=2 addr=A2 act=SELL desired=2 sale=1 price=2.25 amount=0.656 lock=1
+rest id=5 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.44 amount=3.493
+rest id=6 sock=4 addr=A4 act=BUY desired=1 sale=2 price=1.54 amount=0.151
+rest id=7 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.21 amount=2.939
+take id=100 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.29 amount=0.233 notrades=1
+end
+case rand_298
+market futures 5
+take id=100 sock=2 addr=A2 act=BUY contract=5 lev=4 coll=1 price=1.44 amount=4.003
+end
+case rand_299
+market spot 1 2
+rest id=1 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.76 amount=1.040
+rest id=2 sock=2 addr=A2 act=BUY desired=1 sale=2 price=2.70 amount=3.072
+rest id=3 sock=3 addr=A3 act=BUY desired=1 sale=2 price=1.73 amount=0.959
+rest id=4 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.88 amount=2.484
+rest id=5 sock=2 addr=A2 act=BUY desired=1 sale=2 price=1.28 amount=0.665
+rest id=6 sock=1 addr=A1 act=BUY desired=1 sale=2 price=1.64 amount=0.503 lock=1
+take id=100 sock=1 addr=A1 act=SELL desired=2 sale=1 price=2.93 amount=1.320
+end

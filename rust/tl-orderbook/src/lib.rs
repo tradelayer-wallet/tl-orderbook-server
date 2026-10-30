@@ -24,8 +24,8 @@ pub mod validate;
 
 pub use amount::{notional, Amount, Price, MAX_RAW, SCALE};
 pub use book::{
-    build_trade, Aborted, BuiltTrade, Completion, HistoryTrade, MarketKey, Orderbook, SubmitOutcome,
-    SwapRequest, TradeInfo, TradeParty, TradeProps,
+    build_trade, Aborted, BuiltTrade, Completion, HistoryTrade, MarketKey, Orderbook,
+    SubmitOutcome, SwapRequest, TradeInfo, TradeParty, TradeProps,
 };
 pub use error::Error;
 pub use lifecycle::{edge_allowed, is_terminal, LifecycleEvent, Reason};
@@ -33,7 +33,7 @@ pub use manager::OrderbookManager;
 pub use socket::{ClientEvent, Dest, Outbound, Server, ServerEvent, SessionInfo, SessionManager};
 pub use swap::{SwapAction, SwapKind, SwapMsg, SwapState};
 pub use types::{
-    Action, Filter, FuturesProps, Keypair, MarketKind, Order, OrderId, OrderState, Props,
-    RawOrder, SessionId, SpotProps, TradeId,
+    Action, Filter, FuturesProps, Keypair, MarketKind, Order, OrderId, OrderState, Props, RawOrder,
+    SessionId, SpotProps, TradeId,
 };
 pub use validate::{validate, Limits};

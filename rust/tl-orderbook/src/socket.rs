@@ -61,7 +61,9 @@ impl ClientEvent {
     }
 }
 
-/// Events the server sends.
+/// Events the server sends. (Short-lived values moved straight into an
+/// outbox, so the size spread between variants is not worth a `Box`.)
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ServerEvent {
     OrderError(String),
@@ -285,7 +287,12 @@ impl Server {
     /// Dispatch one client event. Protocol-level refusals are reported to
     /// the sender as `order:error`; the `Err` return is only for an unknown
     /// session.
-    pub fn handle(&mut self, session: SessionId, event: ClientEvent, now: u64) -> Result<(), Error> {
+    pub fn handle(
+        &mut self,
+        session: SessionId,
+        event: ClientEvent,
+        now: u64,
+    ) -> Result<(), Error> {
         if !self.sessions.contains(session) {
             return Err(Error::UnknownSession);
         }
@@ -300,7 +307,12 @@ impl Server {
         Ok(())
     }
 
-    fn build_order(&mut self, session: SessionId, raw: &RawOrder, now: u64) -> Result<Order, Error> {
+    fn build_order(
+        &mut self,
+        session: SessionId,
+        raw: &RawOrder,
+        now: u64,
+    ) -> Result<Order, Error> {
         validate(raw, &self.limits)?;
         let id = OrderId(self.next_order);
         self.next_order = self.next_order.saturating_add(1);
@@ -363,8 +375,10 @@ impl Server {
         {
             return Err(Error::SessionSwapLimit);
         }
-        self.swaps
-            .insert(req.trade_id, SwapState::new(req.trade_id, buyer, seller, now));
+        self.swaps.insert(
+            req.trade_id,
+            SwapState::new(req.trade_id, buyer, seller, now),
+        );
         for (sess, is_buyer) in [(buyer, true), (seller, false)] {
             self.push(
                 Dest::Session(sess),
@@ -403,7 +417,11 @@ impl Server {
     fn on_update_orderbook(&mut self, s: SessionId, filter: &Filter) {
         let (orders, history) = match self.books.find_by_filter(filter) {
             Some(b) => (
-                b.orders().iter().filter(|o| !o.is_locked()).cloned().collect(),
+                b.orders()
+                    .iter()
+                    .filter(|o| !o.is_locked())
+                    .cloned()
+                    .collect(),
                 b.history().iter().cloned().collect(),
             ),
             None => (Vec::new(), Vec::new()),
@@ -535,7 +553,11 @@ impl Server {
             .map(|w| {
                 (
                     w.trade_id,
-                    if w.buyer == session { w.seller } else { w.buyer },
+                    if w.buyer == session {
+                        w.seller
+                    } else {
+                        w.buyer
+                    },
                 )
             })
             .collect();
