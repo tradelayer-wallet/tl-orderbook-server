@@ -1,0 +1,61 @@
+name: Rust tl-orderbook
+on:
+  pull_request:
+    paths: ['rust/tl-orderbook/**', '.github/workflows/rust-tl-orderbook.yml']
+  push:
+    branches: [master]
+    paths: ['rust/tl-orderbook/**', '.github/workflows/rust-tl-orderbook.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  rust:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.90.0 --profile minimal --component rustfmt --component clippy
+      - name: Fetch pinned crates
+        working-directory: rust/tl-orderbook
+        run: cargo fetch --locked
+      - name: Unit, integration, regression and parity tests
+        working-directory: rust/tl-orderbook
+        run: cargo test --locked --offline
+      - name: Legacy parity (re-run the compiled legacy matcher, no npm install)
+        working-directory: rust/tl-orderbook
+        run: node scripts/compare-legacy.cjs --check
+      - name: Clippy
+        working-directory: rust/tl-orderbook
+        run: cargo clippy --locked --offline --all-targets -- -D warnings
+      - name: Format
+        working-directory: rust/tl-orderbook
+        run: cargo fmt --all -- --check
+  lean:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Install elan (no default toolchain)
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - name: Build Lean library
+        working-directory: rust/tl-orderbook/lean
+        run: lake build
+      - name: Reject sorry and admit
+        working-directory: rust/tl-orderbook/lean
+        run: |
+          if grep -rnwE 'sorry|admit' --include=*.lean . ; then
+            echo "sorry/admit found"; exit 1
+          fi
+      - name: Axiom check
+        working-directory: rust/tl-orderbook/lean
+        run: |
+          out=$(lake env lean AxiomCheck.lean)
+          echo "$out"
+          if echo "$out" | grep -q sorryAx; then echo "sorryAx found"; exit 1; fi

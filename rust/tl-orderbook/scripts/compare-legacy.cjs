@@ -15,9 +15,10 @@
 // arithmetic rounded with toFixed(6) equals exact decimal arithmetic. Fixtures contain no dust
 // (every amount >= 0.001) and no session/book limits are exercised.
 //
-// Pinned legacy blobs (git rev-parse HEAD:<path> at base 909332c):
-//   src/services/orderbook/orderbook.class.js  449b450cf8e87a6ec5b8a85be8a7d49f0689402d is the last
-//   commit touching it; blob SHAs are printed by --blobs.
+// Pinned legacy blobs at base 909332c (`--blobs` prints the current ones):
+//   src/services/orderbook/orderbook.class.js  d54962232f6664e0f67e3d814366d51c22aea120
+//   src/services/orderbook/orderbook.class.ts  9f4b839ad52a1bd0e801f80c28454374db6c7af9
+//   src/utils/pure/mix.pure.js                 0225b083852f297d2aa2d4efd37ab5e145ff21d0
 
 const Module = require('module');
 const path = require('path');

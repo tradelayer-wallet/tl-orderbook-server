@@ -1,4 +1,4 @@
-//! Regression tests for the repaired legacy defects (see README table D1-D8).
+//! Regression tests for the repaired legacy defects (see the README difference table, D1-D8).
 
 mod common;
 use common::*;
@@ -489,7 +489,7 @@ fn d4_unknown_event_names_are_refused() {
 }
 
 // ---------------------------------------------------------------------------
-// D5-D8: validation the legacy server never did.
+// D5-D8: validation, swap timeout, cancel-while-locked, error propagation.
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -557,7 +557,7 @@ fn d5_validation_rejects_malformed_orders() {
 }
 
 #[test]
-fn d6_matching_errors_keep_their_legacy_text() {
+fn preserved_matching_errors_keep_their_legacy_text() {
     assert_eq!(
         Error::SameAccount.to_string(),
         "Match of the order from the same Account"
@@ -573,7 +573,7 @@ fn d6_matching_errors_keep_their_legacy_text() {
 }
 
 #[test]
-fn d7_failed_first_order_leaves_no_empty_book() {
+fn sanity_failed_first_order_leaves_no_empty_book() {
     let mut srv = server();
     let a = conn(&mut srv);
     let out = place(&mut srv, a, sell(1, "2", "0.0001"), 1);
@@ -601,4 +601,41 @@ fn d8_failed_remainder_is_cancelled_not_leaked() {
         .order_log()
         .iter()
         .any(|e| e.order == OrderId(2) && e.to == OrderState::Cancelled));
+}
+
+#[test]
+fn d6_a_stalled_swap_cannot_lock_a_maker_order_forever() {
+    // Legacy: the channel promise only resolved on BUYER:STEP6 / TERMINATE_TRADE,
+    // so a taker that went silent kept the maker's order locked until it disconnected.
+    let mut srv = server();
+    let (maker, taker) = (conn(&mut srv), conn(&mut srv));
+    let _t = open_trade(&mut srv, maker, taker, "2", "1", "1");
+    assert_eq!(order_in(&srv, 1).unwrap().state, OrderState::LockedInSwap);
+    let timeout = srv.books().limits().swap_timeout_ms;
+    srv.tick(2 + timeout);
+    assert_eq!(order_in(&srv, 1).unwrap().state, OrderState::Open);
+    assert_eq!(srv.pending_swaps(), 0);
+    // and the maker can be matched again
+    let again = place(&mut srv, taker, buy(12, "2", "1"), 3 + timeout);
+    assert!(new_channel_trade(&again).is_some());
+}
+
+#[test]
+fn d7_a_locked_order_cannot_be_cancelled_mid_swap() {
+    // Legacy removeOrder had no lock check: the owner could delete the order
+    // during the swap and the later removal silently failed.
+    let mut srv = server();
+    let (maker, taker) = (conn(&mut srv), conn(&mut srv));
+    let t = open_trade(&mut srv, maker, taker, "2", "1", "1");
+    let out = send(&mut srv, maker, ClientEvent::CloseOrder(OrderId(1)), 3);
+    assert_eq!(
+        errors_for(&out, maker),
+        vec![Error::OrderLocked(OrderId(1)).to_string()]
+    );
+    run_all_steps(&mut srv, t, taker, maker, 4);
+    assert_eq!(
+        srv.books().books()[0].history().len(),
+        1,
+        "swap still settled"
+    );
 }

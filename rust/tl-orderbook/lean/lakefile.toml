@@ -1,0 +1,5 @@
+name = "tl_orderbook"
+defaultTargets = ["TlOrderbook"]
+
+[[lean_lib]]
+name = "TlOrderbook"
