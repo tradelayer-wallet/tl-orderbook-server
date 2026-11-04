@@ -214,6 +214,11 @@ export class SocketManager {
   private _sessionSubs = new Map<string, Set<string>>();
 
   private _dirty = new Set<string>();
+  // internalKey -> the client-facing market key (what clients put in orderbook:join / order frames, without the
+  // network suffix). orderbook-data must carry exactly this string as `marketKey`; the FE drops frames whose
+  // marketKey differs from the key it joined with. One internal market has one client-facing key (the internal
+  // key is joinKey + network suffix), so a single topic publish per market serves every subscriber.
+  private _baseKey = new Map<string, string>();
   // close-order snapshots owed to the closing socket: internalKey -> (socketId -> base marketKey)
   private _closePending = new Map<string, Map<string, string>>();
   private _coalesceMs = COALESCE_MS;
@@ -245,6 +250,16 @@ export class SocketManager {
 
   private static topicOf(internalKey: string) {
     return 'mkt:' + internalKey;
+  }
+
+  /** Client-facing market key for an internal key (recorded at join/order time; suffix-strip fallback). */
+  private baseKeyOf(internalKey: string): string {
+    let b = this._baseKey.get(internalKey);
+    if (b === undefined) {
+      b = this.parseInternalKey(internalKey).market;
+      this._baseKey.set(internalKey, b);
+    }
+    return b;
   }
 
   /** Deliver one pre-serialized message to every subscriber of a market. */
@@ -333,7 +348,7 @@ export class SocketManager {
         const l2 = native.snapshotL2(mk, BOOK_BROADCAST_DEPTH, false);
         this.publishToMarket(
           mk,
-          `{"event":"${EmitEvents.ORDERBOOK_DATA}","orders":${l2},"isDelta":false,"history":0}`
+          `{"event":"${EmitEvents.ORDERBOOK_DATA}","marketKey":${JSON.stringify(this.baseKeyOf(mk))},"orders":${l2},"isDelta":false,"history":0}`
         );
       } catch (e) {
         console.warn('[flush snapshot err]', mk, e);
@@ -674,7 +689,7 @@ export class SocketManager {
     
     // Create internal key with network suffix
     const internalKey = this.makeInternalKey(market, network);
-    this.ensureSocketMarketIndex(sid, internalKey);
+    this.ensureSocketMarketIndex(sid, internalKey, market || undefined);
     
     if (!market) {
       ws.send(JSON.stringify({
@@ -738,7 +753,7 @@ export class SocketManager {
     const network = data.network;
     const market = this.resolveMarket(data);
     const internalKey = this.makeInternalKey(market, network);
-    this.ensureSocketMarketIndex(sid, internalKey);
+    this.ensureSocketMarketIndex(sid, internalKey, market || undefined);
     
     if (!market) {
       ws.send(
@@ -783,6 +798,7 @@ export class SocketManager {
 
       this.broadcastToMarket(internalKey, {
         event: EmitEvents.UPDATE_ORDERS_REQUEST,
+        marketKey: market,
       });
     } catch (e: any) {
       ws.send(
@@ -803,7 +819,7 @@ export class SocketManager {
     const market = this.resolveMarket(data);
     const internalKey = this.makeInternalKey(market, network);
     if (DEBUG_LOG) console.log('uuid', uuid, internalKey);
-    this.ensureSocketMarketIndex(sid, internalKey);
+    this.ensureSocketMarketIndex(sid, internalKey, market || undefined);
 
     if (!market) {
       console.warn('[close-order] missing marketKey for uuid', uuid);
@@ -828,6 +844,10 @@ export class SocketManager {
         orderHistory: [],
       }));
     }
+
+    // every other subscriber learns of the cancel from the next coalesced orderbook-data (the engine's snapshot
+    // sink does not fire for cancels)
+    this._dirty.add(internalKey);
 
     // then the fresh book for this socket, from the next coalescer tick (one snapshot per market per tick)
     let owed = this._closePending.get(internalKey);
@@ -1090,6 +1110,7 @@ export class SocketManager {
   private subscribeMarket(socketId: string, marketKey: string, ws: WS, network?: string) {
     // Use internal key for subscription tracking
     const internalKey = this.makeInternalKey(marketKey, network);
+    this._baseKey.set(internalKey, marketKey);
     
     if (!this._marketSubs.has(internalKey))
       this._marketSubs.set(internalKey, new Set());
@@ -1118,7 +1139,8 @@ export class SocketManager {
   }
 
   // ensure socket↔market is indexed even if client never "joined"
-private ensureSocketMarketIndex(socketId: string, internalKey: string) {
+private ensureSocketMarketIndex(socketId: string, internalKey: string, baseKey?: string) {
+  if (baseKey && !this._baseKey.has(internalKey)) this._baseKey.set(internalKey, baseKey);
   if (!this._sessionSubs.has(socketId)) this._sessionSubs.set(socketId, new Set());
   this._sessionSubs.get(socketId)!.add(internalKey);
 
