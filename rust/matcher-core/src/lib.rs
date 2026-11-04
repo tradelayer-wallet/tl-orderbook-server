@@ -23,13 +23,32 @@ use std::sync::Mutex;
 // ---------- logging ----------
 use std::fs::OpenOptions;
 use std::io::Write;
+use std::sync::OnceLock;
 use chrono::Local;
+use sha2::{Digest, Sha256};
 
-const LOG_PATH: &str = "/mnt/c/Users/patri/Downloads/tl_ob.log";
+// Opt-in file log: set TL_OB_LOG=/path/to/file before the addon is first used.
+// Unset (default) = no file is opened and log_line() is a branch on a cached flag.
+static LOG_FILE: OnceLock<Option<Mutex<std::fs::File>>> = OnceLock::new();
+
+fn log_sink() -> Option<&'static Mutex<std::fs::File>> {
+    LOG_FILE
+        .get_or_init(|| {
+            let path = std::env::var("TL_OB_LOG").ok().filter(|p| !p.is_empty())?;
+            OpenOptions::new().create(true).append(true).open(path).ok().map(Mutex::new)
+        })
+        .as_ref()
+}
+
+#[inline]
+fn log_enabled() -> bool { log_sink().is_some() }
+
 fn log_line<S: AsRef<str>>(s: S) {
-    let now = Local::now().format("%Y-%m-%d %H:%M:%S");
-    if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(LOG_PATH) {
-        let _ = writeln!(f, "[{}] {}", now, s.as_ref());
+    if let Some(m) = log_sink() {
+        if let Ok(mut f) = m.lock() {
+            let now = Local::now().format("%Y-%m-%d %H:%M:%S");
+            let _ = writeln!(f, "[{}] {}", now, s.as_ref());
+        }
     }
 }
 
@@ -177,26 +196,66 @@ struct State {
     int2ext: HashMap<String, FastMap<String, String>>,
     // NEW: global ext-uuid -> keypair map (engine-private)
     keypair_by_ext: HashMap<String, Keypair>,
+    // symbol -> engine-id (string form) -> resting order record (side/price/remaining qty/timestamp).
+    // Maintained on rest / fill / cancel / edit so open-order reads are O(open orders), not O(level size) each.
+    open: HashMap<String, FastMap<String, OpenRec>>,
     // symbol -> socket -> deque of events (JSON)
-    history: HashMap<String, HashMap<String, VecDeque<serde_json::Value>>>,
+    // (each event is stored as its serialized JSON text: written once, copied on every tray read)
+    history: HashMap<String, HashMap<String, VecDeque<String>>>,
 }
+
+#[derive(Clone, Copy)]
+struct OpenRec { buy: bool, price: u64, qty: u64, ts: u64 }
 
 impl State {
     fn ensure_maps(&mut self, symbol: &str) {
-        self.by_socket.entry(symbol.to_string()).or_default();
-        self.ext2int.entry(symbol.to_string()).or_default();
-        self.int2ext.entry(symbol.to_string()).or_default();
-        self.history.entry(symbol.to_string()).or_default();
+        // contains_key first: entry(symbol.to_string()) would allocate on every call
+        if !self.by_socket.contains_key(symbol) { self.by_socket.insert(symbol.to_string(), Default::default()); }
+        if !self.ext2int.contains_key(symbol)   { self.ext2int.insert(symbol.to_string(), Default::default()); }
+        if !self.int2ext.contains_key(symbol)   { self.int2ext.insert(symbol.to_string(), Default::default()); }
+        if !self.history.contains_key(symbol)   { self.history.insert(symbol.to_string(), Default::default()); }
+        if !self.open.contains_key(symbol)      { self.open.insert(symbol.to_string(), Default::default()); }
+    }
+
+    fn open_remove(&mut self, symbol: &str, eng: &str) {
+        if let Some(m) = self.open.get_mut(symbol) { m.remove(eng); }
+    }
+
+    // Re-read every tracked resting order of a market from the book (drops ids the book no longer holds,
+    // refreshes price/qty). Used after a price edit, whose add_order can match against the opposite side.
+    fn reconcile_open(&mut self, symbol: &str) {
+        let keys: Vec<String> = match self.open.get(symbol) {
+            Some(m) => m.keys().cloned().collect(),
+            None => return,
+        };
+        let mut upd: Vec<(String, Option<OpenRec>)> = Vec::with_capacity(keys.len());
+        if let Some(book) = self.man.get_book(symbol) {
+            for k in keys {
+                let rec = book.get_order(to_order_id(&k)).and_then(|o| match o.as_ref() {
+                    OrderType::Standard { price, quantity, side, timestamp, .. } => Some(OpenRec {
+                        buy: matches!(side, Side::Buy), price: *price, qty: *quantity, ts: *timestamp,
+                    }),
+                    _ => None,
+                });
+                upd.push((k, rec));
+            }
+        }
+        if let Some(m) = self.open.get_mut(symbol) {
+            for (k, r) in upd {
+                match r { Some(r) => { m.insert(k, r); } None => { m.remove(&k); } }
+            }
+        }
     }
 
     fn push_hist(&mut self, symbol: &str, socket: &str, entry: serde_json::Value) {
         const HISTORY_CAP: usize = 500;
-        let per_sym = self.history.entry(symbol.to_string()).or_default();
-        let q = per_sym
-            .entry(socket.to_string())
-            .or_insert_with(|| VecDeque::with_capacity(HISTORY_CAP));
+        let text = entry.to_string();
+        if !self.history.contains_key(symbol) { self.history.insert(symbol.to_string(), Default::default()); }
+        let per_sym = self.history.get_mut(symbol).unwrap();
+        if !per_sym.contains_key(socket) { per_sym.insert(socket.to_string(), VecDeque::with_capacity(32)); }
+        let q = per_sym.get_mut(socket).unwrap();
         if q.len() == HISTORY_CAP { q.pop_front(); }
-        q.push_back(entry);
+        q.push_back(text);
     }
 }
 
@@ -294,6 +353,7 @@ pub fn drop_book(symbol: String) -> bool {
     s.ext2int.remove(&symbol);
     s.int2ext.remove(&symbol);
     s.history.remove(&symbol);
+    s.open.remove(&symbol);
     s.man.remove_book(&symbol).is_some()
 }
 #[napi]
@@ -328,10 +388,12 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
 
     let now     = current_time_millis();
 
-    log_line(format!(
-        "[SUBMIT] {symbol} {:?} px={} qty_int={} ext={} int={}",
-        side, price, qty, ext_id, eng_str
-    ));
+    if log_enabled() {
+        log_line(format!(
+            "[SUBMIT] {symbol} {:?} px={} qty_int={} ext={} int={}",
+            side, price, qty, ext_id, eng_str
+        ));
+    }
 
     // History: SUBMIT_ACK (for taker)
     if let Some(sock) = sock_id.as_ref() {
@@ -344,12 +406,19 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
     // ----------------------------------------------------------------
     // 1 Pre-snapshot FIFO for maker attribution (only opposite side)
     // ----------------------------------------------------------------
+    // One snapshot per submit, and only when the best opposite price crosses the order:
+    // a non-crossing order has no STPF candidates and no maker attribution to compute.
     let maker_side = match side { Side::Buy => Side::Sell, Side::Sell => Side::Buy };
+    let opp_snap = {
+        let book = s.man.get_book(&symbol).expect("book exists");
+        let crosses = match side {
+            Side::Buy  => book.best_ask().map_or(false, |a| a <= price),
+            Side::Sell => book.best_bid().map_or(false, |b| b >= price),
+        };
+        if crosses { Some(book.create_snapshot(256)) } else { None }
+    };
     let mut pre_fifo: HashMap<u64, Vec<(String, u64)>> = HashMap::new();
-    {
-        let depth = 128usize;
-        let book  = s.man.get_book_mut(&symbol).expect("book exists");
-        let snap  = book.create_snapshot(depth);
+    if let Some(snap) = opp_snap.as_ref() {
         let levels = match maker_side { Side::Buy => &snap.bids, Side::Sell => &snap.asks };
         for lvl in levels {
             let mut fifo = Vec::<(String, u64)>::new();
@@ -361,6 +430,8 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
             if !fifo.is_empty() { pre_fifo.insert(lvl.price, fifo); }
         }
     }
+    // opposite-side levels, best first (empty when the order does not cross)
+    let opp_levels = opp_snap.iter().flat_map(|sn| match side { Side::Buy => sn.asks.iter(), Side::Sell => sn.bids.iter() });
 
     // ----------------------------------------------------------------
     // 2) STPF (self-trade prevention) against currently resting makers
@@ -368,14 +439,11 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
     match *STPF_POLICY.lock().unwrap() {
         StpfPolicy::NeutralizeTaker => {
             if let Some(ref taker_sock) = sock_id {
-                let book = s.man.get_book_mut(&symbol).expect("book exists");
-                let snap = book.create_snapshot(256);
-                let levels = match side { Side::Buy => snap.asks, Side::Sell => snap.bids };
                 let mut self_cross = false;
-                'outer: for lvl in levels {
+                'outer: for lvl in opp_levels {
                     let crosses = match side { Side::Buy => lvl.price <= price, Side::Sell => lvl.price >= price };
                     if !crosses { break; }
-                    for ord in lvl.orders {
+                    for ord in lvl.orders.iter() {
                         if let OrderType::Standard { id, .. } = ord.as_ref() {
                             if sock_owns_engine_id(&s, &symbol, taker_sock, id) {
                                 self_cross = true;
@@ -392,15 +460,11 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
         }
         StpfPolicy::MakerBump => {
             if let Some(ref taker_sock) = sock_id {
-                let depth = 256usize;
-                let book  = s.man.get_book_mut(&symbol).expect("book exists");
-                let snap  = book.create_snapshot(depth);
-                let levels = match side { Side::Buy => snap.asks, Side::Sell => snap.bids };
                 let mut to_cancel = Vec::<OrderId>::new();
-                for lvl in levels {
+                for lvl in opp_levels {
                     let crosses = match side { Side::Buy => lvl.price <= price, Side::Sell => lvl.price >= price };
                     if !crosses { break; }
-                    for ord in lvl.orders {
+                    for ord in lvl.orders.iter() {
                         if let OrderType::Standard { id, .. } = ord.as_ref() {
                             if sock_owns_engine_id(&s, &symbol, taker_sock, id) {
                                 to_cancel.push(id.clone());
@@ -411,7 +475,8 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
                 if !to_cancel.is_empty() {
                     let book = s.man.get_book_mut(&symbol).expect("book exists");
                     for oid in &to_cancel { let _ = book.cancel_order(oid.clone()); }
-                    // Remove canceled makers from by_socket + int2ext
+                    // Remove canceled makers from by_socket + int2ext + open records
+                    for oid in &to_cancel { s.open_remove(&symbol, &oid.to_string()); }
                     if let Some(m) = s.by_socket.get_mut(&symbol) {
                         if let Some(ids) = m.get_mut(taker_sock) {
                             for oid in &to_cancel {
@@ -448,17 +513,31 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
             .map_err(|e| napi::Error::from_reason(format!("submit: {e:?}")))?
     };
 
+    // Maker bookkeeping: each transaction reduces the maker's resting quantity; fully filled makers leave the set.
+    if let Some(om) = s.open.get_mut(&symbol) {
+        for tx in mr.transactions.as_vec().iter() {
+            let k = tx.maker_order_id.to_string();
+            let gone = match om.get_mut(&k) {
+                Some(r) => { r.qty = r.qty.saturating_sub(tx.quantity); r.qty == 0 }
+                None => false,
+            };
+            if gone { om.remove(&k); }
+        }
+        for fid in mr.filled_order_ids.iter() { om.remove(&fid.to_string()); }
+    }
+
     // ----------------------------------------------------------------
     // 4) If remainder rests, add order and set ext<->int map; else cleanup on full fill
     // ----------------------------------------------------------------
     if !mr.is_complete && mr.remaining_quantity > 0 {
-        let mut book = s.man.get_book_mut(&symbol).expect("book exists");
+        let rest_ts = current_time_millis();
+        let book = s.man.get_book_mut(&symbol).expect("book exists");
         let order_to_add = OrderType::Standard {
             id: eng_id.clone(),
             price,
             quantity: mr.remaining_quantity,
             side,
-            timestamp: current_time_millis(),
+            timestamp: rest_ts,
             time_in_force: TimeInForce::Gtc,
             extra_fields: (),
         };
@@ -467,6 +546,10 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
         } else {
             s.ext2int.entry(symbol.clone()).or_default().insert(ext_id.clone(), eng_str.clone());
             s.int2ext.entry(symbol.clone()).or_default().insert(eng_str.clone(), ext_id.clone());
+            s.open.entry(symbol.clone()).or_default().insert(
+                eng_str.clone(),
+                OpenRec { buy: matches!(side, Side::Buy), price, qty: mr.remaining_quantity, ts: rest_ts },
+            );
         }
     } else {
         // Full fill: cleanup ownership so "open" list is accurate
@@ -588,8 +671,10 @@ pub fn submit(symbol: String, order: JsOrder) -> napi::Result<String> {
     // ----------------------------------------------------------------
     if !execs.is_empty() {
         // optional: log what's going out
-        if let Ok(json) = serde_json::to_string(&execs) {
-            log_line(format!("[EXECS_JSON_OUT sym={}] {}", symbol, json));
+        if log_enabled() {
+            if let Ok(json) = serde_json::to_string(&execs) {
+                log_line(format!("[EXECS_JSON_OUT sym={}] {}", symbol, json));
+            }
         }
         push_execs(&symbol, &execs);
     }
@@ -749,6 +834,7 @@ pub fn cancel(symbol: String, order_id: String) -> bool {
     if !ok { return false; }
 
     // Clean reverse maps
+    s.open_remove(&symbol, &eng_str);
     if let Some(m) = s.int2ext.get_mut(&symbol) { let _ = m.remove(&eng_str); }
     if let Some(m) = s.ext2int.get_mut(&symbol) { let _ = m.remove(&ext_id); }
 
@@ -853,6 +939,7 @@ pub fn edit(
     }
 
     // Cancel & re-add under a short borrow
+    let edit_ts = current_time_millis();
     let ok: bool = {
         let Some(book) = s.man.get_book_mut(&symbol) else { return Ok(false) };
 
@@ -868,12 +955,24 @@ pub fn edit(
             price: tgt_px,
             quantity: tgt_qty,
             side: snap_side,
-            timestamp: current_time_millis(),
+            timestamp: edit_ts,
             time_in_force: TimeInForce::Gtc,
             extra_fields: (),
         };
         book.add_order(add).is_ok()
     };
+
+    // open records: STPF-canceled makers leave; the edited order carries its new price/qty/timestamp
+    for oid in &stpf_to_cancel { s.open_remove(&symbol, &oid.to_string()); }
+    if ok {
+        s.open.entry(symbol.clone()).or_default().insert(
+            eng_str.clone(),
+            OpenRec { buy: matches!(snap_side, Side::Buy), price: tgt_px, qty: tgt_qty, ts: edit_ts },
+        );
+    } else {
+        s.open_remove(&symbol, &eng_str);
+    }
+    if ok && new_price.is_some() { s.reconcile_open(&symbol); }
 
     // Clean maps for STPF-canceled makers
     if !stpf_to_cancel.is_empty() {
@@ -998,6 +1097,7 @@ pub fn cancel_all_by_socket(symbol: String, socket_id: String) -> u32 {
                 int2ext.remove(eng_str);
            }
     }
+    for eng_str in &canceled { s.open_remove(&symbol, eng_str); }
 
     log_line(format!(
         "[CANCEL_BY_SOCK_OUT] sym='{}' sock='{}' canceled={}",
@@ -1011,6 +1111,9 @@ pub fn cancel_all_by_socket(symbol: String, socket_id: String) -> u32 {
 #[napi]
 pub fn cancel_all_by_socket_global(socket_id: String) -> u32 {
     let mut s = STATE.lock().unwrap();
+
+    // socket ids are unique per connection, so a disconnecting socket's tray history is never read again
+    for per_sym in s.history.values_mut() { per_sym.remove(&socket_id); }
 
     log_line(format!(
         "[CANCEL_BY_SOCK_GLOBAL_IN] sock='{}'",
@@ -1088,6 +1191,7 @@ pub fn cancel_all_by_socket_global(socket_id: String) -> u32 {
                     int2ext.remove(eng_str);
                 }
             }
+            for eng_str in &canceled_here { s.open_remove(&sym, eng_str); }
         }
     }
 
@@ -1127,68 +1231,75 @@ pub fn stats(symbol: String) -> String {
 }
 
 // ---------- FE tray helpers ----------//
-#[napi]
-pub fn get_open_orders_by_socket(socket_id: String, symbol: String) -> String {
-    use serde_json::json;
+#[derive(Serialize)]
+struct OpenOrderOut<'a> {
+    amount: f64,
+    engine_id: &'a str,
+    price: f64,
+    side: &'static str,
+    symbol: &'a str,
+    timestamp: u64,
+    uuid: &'a str,
+}
 
-    let s = STATE.lock().unwrap();
-    let mut out: Vec<serde_json::Value> = Vec::new();
-
-    // quick exits if we don't have the book or indices
-    let Some(book) = s.man.get_book(&symbol) else {
-        return "[]".into();
+fn open_orders_json(s: &State, socket_id: &str, symbol: &str) -> String {
+    let mut out = String::from("[");
+    let (Some(per_sock), Some(open)) = (s.by_socket.get(symbol), s.open.get(symbol)) else {
+        out.push(']');
+        return out;
     };
-
-    let Some(per_sock) = s.by_socket.get(&symbol) else {
-        return "[]".into();
+    let Some(id_set) = per_sock.get(socket_id) else {
+        out.push(']');
+        return out;
     };
-    let Some(id_set) = per_sock.get(&socket_id) else {
-        return "[]".into();
-    };
+    let int2ext = s.int2ext.get(symbol);
+    let mut first = true;
 
-    // for each engine-id string owned by this socket, try to fetch the resting order
+    // ids owned by this socket that are still resting (filled/cancelled ids have no record)
     for eng_str in id_set.iter() {
-        let oid = to_order_id(eng_str);
-        if let Some(arc_ord) = book.get_order(oid.clone()) {
-            match arc_ord.as_ref() {
-                orderbook_rs::OrderType::Standard {
-                    id: _,
-                    price,
-                    quantity,
-                    side,
-                    timestamp,
-                    ..
-                } => {
-                    // map engine-id → external uuid (fallback to engine-id string if missing)
-                    let ext = s.int2ext
-                        .get(&symbol)
-                        .and_then(|m| m.get(eng_str))
-                        .cloned()
-                        .unwrap_or_else(|| eng_str.clone());
+        let Some(rec) = open.get(eng_str.as_str()) else { continue };
+        // map engine-id -> external uuid (fallback to engine-id string if missing)
+        let ext: &str = int2ext
+            .and_then(|m| m.get(eng_str))
+            .map(|x| x.as_str())
+            .unwrap_or(eng_str.as_str());
+        let row = OpenOrderOut {
+            amount: rec.qty as f64 / QTY_SCALE_F64,
+            engine_id: eng_str,                 // internal id string
+            price: (rec.price as f64) / PRICE_SCALE,
+            side: if rec.buy { "BUY" } else { "SELL" },
+            symbol,
+            timestamp: rec.ts,
+            uuid: ext,                          // external id for FE
+        };
+        if !first { out.push(','); }
+        first = false;
+        if let Ok(t) = serde_json::to_string(&row) { out.push_str(&t); }
+    }
+    out.push(']');
+    out
+}
 
-                    let side_str = match side {
-                        orderbook_rs::prelude::Side::Buy  => "BUY",
-                        orderbook_rs::prelude::Side::Sell => "SELL",
-                    };
-
-                    out.push(json!({
-                        "uuid":        ext,                         // external id for FE
-                        "engine_id":   eng_str,                     // internal id string
-                        "symbol":      symbol,
-                        "side":        side_str,
-                        "price":       (*price as f64) / PRICE_SCALE,
-                        "amount":      *quantity as f64 / QTY_SCALE_F64,
-                        "timestamp":   *timestamp,
-                    }));
-                }
-                _ => { /* no-op */ }
+fn history_json(s: &State, market: &str, socket_id: &str, limit: usize) -> String {
+    let mut out = String::from("[");
+    if let Some(per_sock) = s.history.get(market) {
+        if let Some(q) = per_sock.get(socket_id) {
+            let start = q.len().saturating_sub(limit);
+            for (i, ev) in q.iter().skip(start).enumerate() {
+                if i > 0 { out.push(','); }
+                out.push_str(ev);
             }
         }
     }
-    
-    serde_json::to_string(&out).unwrap_or_else(|_| "[]".into())
+    out.push(']');
+    out
 }
 
+#[napi]
+pub fn get_open_orders_by_socket(socket_id: String, symbol: String) -> String {
+    let s = STATE.lock().unwrap();
+    open_orders_json(&s, &socket_id, &symbol)
+}
 
 // JS will see: getOrderHistoryBySocket(market: string, socketId: string, limit?: number): string
 #[napi(js_name = "getOrderHistoryBySocket")]
@@ -1198,18 +1309,78 @@ pub fn get_order_history_by_socket(
     limit: Option<u32>,
 ) -> String {
     let s = STATE.lock().unwrap();
-    let lim = limit.unwrap_or(200) as usize;
+    history_json(&s, &market, &socket_id, limit.unwrap_or(200) as usize)
+}
 
-    let mut out: Vec<serde_json::Value> = Vec::new();
-    if let Some(per_sock) = s.history.get(&market) {
-        if let Some(q) = per_sock.get(&socket_id) {
-            let n = q.len();
-            let start = n.saturating_sub(lim);
-            out.extend(q.iter().skip(start).cloned());
-         }
+// JS: getPlacedOrdersJson(socketId, symbol, historyLimit?) -> the complete `placed-orders` wire message
+//   {"event":"placed-orders","openedOrders":[...],"orderHistory":[...]}   (one lock, one string, no JS re-parse)
+#[napi(js_name = "getPlacedOrdersJson")]
+pub fn get_placed_orders_json(socket_id: String, symbol: String, history_limit: Option<u32>) -> String {
+    let s = STATE.lock().unwrap();
+    let opened = open_orders_json(&s, &socket_id, &symbol);
+    let hist = history_json(&s, &symbol, &socket_id, history_limit.unwrap_or(200) as usize);
+    format!(r#"{{"event":"placed-orders","openedOrders":{},"orderHistory":{}}}"#, opened, hist)
+}
+
+// JS: snapshotL2(symbol, depth?, dropEmpty?) -> the FE L2 object as JSON text:
+//   {"symbol":..,"timestamp":..,"bids":[{"price","amount","count"}],"asks":[..],"checksum":..}
+// price = ticks / PRICE_SCALE, amount = visible_quantity / QTY_SCALE; checksum is a SHA-256 over the returned levels.
+// dropEmpty=true removes levels with non-positive price or amount (what join/update-orderbook/close-order show).
+// Returns "null" when the book does not exist.
+#[derive(Serialize)]
+struct L2Level { price: f64, amount: f64, count: u64 }
+
+#[derive(Serialize)]
+struct L2Out<'a> {
+    symbol: &'a str,
+    timestamp: u64,
+    bids: Vec<L2Level>,
+    asks: Vec<L2Level>,
+    checksum: &'a str,
+}
+
+#[napi(js_name = "snapshotL2")]
+pub fn snapshot_l2(symbol: String, depth: Option<u32>, drop_empty: Option<bool>) -> String {
+    let snap = {
+        let s = STATE.lock().unwrap();
+        let Some(book) = s.man.get_book(&symbol) else { return "null".into(); };
+        book.create_snapshot(depth.unwrap_or(50) as usize)
+    };
+    let drop_empty = drop_empty.unwrap_or(false);
+    macro_rules! conv {
+        ($side:expr) => {
+            $side
+                .iter()
+                .map(|l| L2Level {
+                    price: (l.price as f64) / PRICE_SCALE,
+                    amount: (l.visible_quantity as f64) / QTY_SCALE_F64,
+                    count: l.order_count as u64,
+                })
+                .filter(|l| !drop_empty || (l.price > 0.0 && l.amount > 0.0))
+                .collect::<Vec<L2Level>>()
+        };
     }
-
-    serde_json::to_string(&out).unwrap_or_else(|_| "[]".into())
+    // checksum: SHA-256 over symbol + (price, visible_quantity, order_count) of every returned level, bids then asks.
+    // (Replaces the engine package checksum, which re-serialized every resting order of every level on each call.)
+    let mut hasher = Sha256::new();
+    hasher.update(snap.symbol.as_bytes());
+    for (tag, side) in [(b'B', &snap.bids), (b'A', &snap.asks)] {
+        hasher.update([tag]);
+        for l in side.iter() {
+            hasher.update(l.price.to_le_bytes());
+            hasher.update(l.visible_quantity.to_le_bytes());
+            hasher.update((l.order_count as u64).to_le_bytes());
+        }
+    }
+    let checksum: String = hasher.finalize().iter().map(|b| format!("{:02x}", b)).collect();
+    let out = L2Out {
+        symbol: &snap.symbol,
+        timestamp: snap.timestamp,
+        bids: conv!(snap.bids),
+        asks: conv!(snap.asks),
+        checksum: &checksum,
+    };
+    serde_json::to_string(&out).unwrap_or_else(|_| "null".into())
 }
 
 

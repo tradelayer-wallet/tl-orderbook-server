@@ -23,6 +23,9 @@ export declare function edit(symbol: string, orderId: string, newQty?: number | 
 
 export declare function getOpenOrdersBySocket(socketId: string, symbol: string): string
 
+/** Complete `placed-orders` wire message: {"event","openedOrders","orderHistory"} (history limited to the last `historyLimit` events). */
+export declare function getPlacedOrdersJson(socketId: string, symbol: string, historyLimit?: number | undefined | null): string
+
 export declare function getOrderHistoryBySocket(market: string, socketId: string, limit?: number | undefined | null): string
 
 export interface JsOrder {
@@ -38,6 +41,9 @@ export declare function setExecSink(cb: (arg?: unknown) => unknown): void
 export declare function setStpfPolicy(policy: string): boolean
 
 export declare function snapshot(symbol: string, depth?: number | undefined | null): string
+
+/** FE L2 object as JSON text ({symbol,timestamp,bids,asks,checksum}); "null" when the book does not exist. */
+export declare function snapshotL2(symbol: string, depth?: number | undefined | null, dropEmpty?: boolean | undefined | null): string
 
 export declare function stats(symbol: string): string
 

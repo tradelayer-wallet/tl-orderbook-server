@@ -392,6 +392,7 @@ dependencies = [
  "orderbook-rs",
  "serde",
  "serde_json",
+ "sha2",
  "ulid",
  "uuid",
 ]
