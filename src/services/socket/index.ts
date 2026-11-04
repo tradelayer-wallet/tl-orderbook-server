@@ -1,3 +1,3 @@
 
-import { SocketManager } from './manager.class';
-export const socketManager = new SocketManager();
+// Single shared SocketManager (manager_class.ts constructs it once at module load).
+export { socketManager } from './manager_class';

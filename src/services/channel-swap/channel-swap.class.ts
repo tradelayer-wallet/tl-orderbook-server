@@ -14,6 +14,11 @@ export class SwapEvent {
 
 const swapEventName = 'swap';
 
+// Per-message payload logging is off by default (set OB_DEBUG_LOG=1 to enable).
+const DEBUG_LOG = process.env.OB_DEBUG_LOG === '1';
+// A swap that never reaches BUYER:STEP6 / TERMINATE_TRADE is torn down after this long (default 30 min).
+const SWAP_TTL_MS = Number(process.env.OB_SWAP_TTL_MS) > 0 ? Number(process.env.OB_SWAP_TTL_MS) : 30 * 60 * 1000;
+
 
 // ---- Deduplication singletons ---- //
 const activeSwaps = new Map<string, ChannelSwap>();
@@ -25,7 +30,7 @@ function getTradeUUID(tradeInfo: ITradeInfo): string {
 
 function shouldProcessStep(tradeUUID: string, socketId: string, eventName: string): boolean {
   const key = `${tradeUUID}:${socketId}:${eventName}`;
-  console.log('inside should process step '+key+' '+completedSteps.has(key))
+  if (DEBUG_LOG) console.log('inside should process step '+key+' '+completedSteps.has(key))
   if (completedSteps.has(key)) return false;
   completedSteps.add(key);
   return true;
@@ -43,7 +48,11 @@ export class ChannelSwap {
   private readonly clientMgr: SocketEventManager;
   private readonly dealerMgr: SocketEventManager;
   private closed = false;
+  private duplicate = false;
   private tradeUUID: string;
+  private ttlTimer: NodeJS.Timeout | null = null;
+  private readonly onClientClose = () => this.finish('client disconnected');
+  private readonly onDealerClose = () => this.finish('dealer disconnected');
 
   constructor(
     private client: Websocket,
@@ -53,12 +62,13 @@ export class ChannelSwap {
   ) {
 
     this.tradeUUID = getTradeUUID(tradeInfo);
-    console.log('tradeInfo inside channel swap mgmt '+JSON.stringify(tradeInfo))
-    console.log('checking websocket objects '+JSON.stringify(client)+' '+JSON.stringify(dealer))
+    if (DEBUG_LOG) console.log('tradeInfo inside channel swap mgmt '+JSON.stringify(tradeInfo))
     // --- DEDUPLICATION GUARD ---
     if (activeSwaps.has(this.tradeUUID)) {
-      console.log(`[SwapGuard] Swap already active for ${this.tradeUUID}, skipping duplicate.`);
-      // No-op, or could throw or return early if instantiated directly.
+      if (DEBUG_LOG) console.log(`[SwapGuard] Swap already active for ${this.tradeUUID}, skipping duplicate.`);
+      // Inert instance: owns no listeners, onReady() resolves with an error.
+      this.closed = true;
+      this.duplicate = true;
       return;
     }
     activeSwaps.set(this.tradeUUID, this);
@@ -67,13 +77,23 @@ export class ChannelSwap {
     this.dealerMgr = new SocketEventManager(dealer);
     this.buyerId = tradeInfo.buyer.socketId;
 
+    // Tear the swap down if either peer drops or the swap never completes, so its listeners
+    // and dedupe entries cannot accumulate on long-lived sockets.
+    client.once('close', this.onClientClose);
+    dealer.once('close', this.onDealerClose);
+    this.ttlTimer = setTimeout(() => this.finish('swap timeout'), SWAP_TTL_MS);
+    this.ttlTimer.unref?.();
+
     this.openChannel();
   }
 
 
   /** resolves when BUYER:STEP6 or TERMINATE_TRADE received */
   onReady(): Promise<IResultChannelSwap> {
-    return new Promise<IResultChannelSwap>(res => (this.ready = res));
+    return new Promise<IResultChannelSwap>(res => {
+      this.ready = res;
+      if (this.duplicate) res({ error: 'duplicate swap' });
+    });
   }
 
   /* ------------------------------------------------------------------ */
@@ -85,7 +105,7 @@ export class ChannelSwap {
     this.monitorTerminalEvents();
 
     const trade = { tradeInfo: this.tradeInfo, unfilled: this.unfilled };
-    console.log('channel config '+this.buyerId)
+    if (DEBUG_LOG) console.log('channel config '+this.buyerId)
     // Send 'new-channel' to each side
     this.clientMgr.emit('new-channel', {
       ...trade,
@@ -104,10 +124,10 @@ export class ChannelSwap {
   const dealerSwapEvt = `${(this.dealer as any).id}::${swapEventName}`;
 
   this.clientMgr.on(clientSwapEvt, (raw: any) => {
-    console.log('client pipe swap '+JSON.stringify(raw))
+    if (DEBUG_LOG) console.log('client pipe swap '+JSON.stringify(raw))
     const eventName = raw.eventName ?? 'UNKNOWN_STEP';
      if (!shouldProcessStep(this.tradeUUID, (this.client as any).id, eventName)) {
-        console.log(`[SwapGuard] client step ${eventName} already handled for ${this.tradeUUID}`);
+        if (DEBUG_LOG) console.log(`[SwapGuard] client step ${eventName} already handled for ${this.tradeUUID}`);
         return;
       }
     const socketId = (this.client as any).id;
@@ -115,19 +135,19 @@ export class ChannelSwap {
         ...raw.data,
         tradeUUID: this.tradeUUID
     });
-    console.log('[Relay] client → dealer', clientSwapEvt, JSON.stringify(payload));
+    if (DEBUG_LOG) console.log('[Relay] client → dealer', clientSwapEvt, JSON.stringify(payload));
     this.dealerMgr.emit(clientSwapEvt, payload);
   });
 
   this.dealerMgr.on(dealerSwapEvt, (raw: any) => {
-    console.log('dealer pipe swap '+JSON.stringify(raw))
+    if (DEBUG_LOG) console.log('dealer pipe swap '+JSON.stringify(raw))
     const eventName = raw.eventName ?? 'UNKNOWN_STEP';
     if (!shouldProcessStep(this.tradeUUID, (this.dealer as any).id, eventName)) {
-        console.log(`[SwapGuard] dealer step ${eventName} already handled for ${this.tradeUUID}`);
+        if (DEBUG_LOG) console.log(`[SwapGuard] dealer step ${eventName} already handled for ${this.tradeUUID}`);
         return;
       }
     const payload = new SwapEvent(eventName, (this.dealer as any).id, raw.data ?? raw);
-    console.log('[Relay] dealer → client', dealerSwapEvt, JSON.stringify(payload));
+    if (DEBUG_LOG) console.log('[Relay] dealer → client', dealerSwapEvt, JSON.stringify(payload));
     this.clientMgr.emit(dealerSwapEvt, payload);
   });
 }
@@ -137,11 +157,11 @@ export class ChannelSwap {
   private monitorTerminalEvents() {
     const handler: EventHandler = (swap: SwapEvent) => {
       const { eventName, socketId, data } = swap;
-      console.log('[Monitor] swap event:', JSON.stringify(swap));
+      if (DEBUG_LOG) console.log('[Monitor] swap event:', JSON.stringify(swap));
 
        // Use step guard even here for full deduplication
       if (!shouldProcessStep(this.tradeUUID, socketId, eventName)) {
-        console.log(`[SwapGuard] terminal step ${eventName} already handled for ${this.tradeUUID}`);
+        if (DEBUG_LOG) console.log(`[SwapGuard] terminal step ${eventName} already handled for ${this.tradeUUID}`);
         return;
       }
 
@@ -160,10 +180,20 @@ export class ChannelSwap {
     this.dealerMgr.on(swapEventName, handler);
   }
 
+  /** Abort path (timeout / peer disconnect): resolve the pending result with an error, then clean up. */
+  private finish(reason: string) {
+    if (this.closed) return;
+    this.ready?.({ error: reason });
+    this.close();
+  }
+
   /** Clean up listeners & managers */
   private close() {
     if (this.closed) return;
     this.closed = true;
+    if (this.ttlTimer) { clearTimeout(this.ttlTimer); this.ttlTimer = null; }
+    this.client.removeListener('close', this.onClientClose);
+    this.dealer.removeListener('close', this.onDealerClose);
     this.clientMgr.dispose();
     this.dealerMgr.dispose();
     activeSwaps.delete(this.tradeUUID);

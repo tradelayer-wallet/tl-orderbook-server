@@ -90,6 +90,15 @@ type NormalizedOrder = {
 const PRICE_SCALE = 100;   // engine ticks -> UI price
 const QTY_SCALE   = 1e8;   // engine sats  -> UI amount
 
+// Number of most recent history events sent in `placed-orders.orderHistory` after a new order / cancel.
+const PLACED_ORDERS_HISTORY_LIMIT = 20;
+// Depth of the L2 book sent in orderbook-data broadcasts.
+const BOOK_BROADCAST_DEPTH = 50;
+// Per-market snapshot coalescing window: a burst of orders produces one orderbook-data per window.
+const COALESCE_MS = Number(process.env.OB_COALESCE_MS) > 0 ? Number(process.env.OB_COALESCE_MS) : 50;
+// Per-message payload logging is off by default (set OB_DEBUG_LOG=1 to enable). Errors and warnings always log.
+const DEBUG_LOG = process.env.OB_DEBUG_LOG === '1';
+
 // Polyfill for queueMicrotask if needed
 if (typeof (global as any).queueMicrotask !== 'function') {
   (global as any).queueMicrotask = (fn: () => void) => Promise.resolve().then(fn);
@@ -205,16 +214,16 @@ export class SocketManager {
   private _sessionSubs = new Map<string, Set<string>>();
 
   private _dirty = new Set<string>();
-  private _flushing = false;
-  private _coalesceMs = 50;
-  private _depth = 40;
+  // close-order snapshots owed to the closing socket: internalKey -> (socketId -> base marketKey)
+  private _closePending = new Map<string, Map<string, string>>();
+  private _coalesceMs = COALESCE_MS;
+  private _servers: HyperExpress.Server[] = [];
 
   private _recentClose = new Map<string, Map<string, number>>();
   private _uuidToMarket = new Map<string, string>();
   private _byUuid = new Map<string, { market: string; price?: number; quantity?: number }>();
 
   private _tickHandle: NodeJS.Timeout | null = null;
-  private _lastNativeSnap = new Map<string, any>(); // marketKey -> latest snapshot
 
   constructor() {
     // periodic broadcaster
@@ -223,11 +232,38 @@ export class SocketManager {
     // wire sinks (native preferred, shim fallback)
     wireExecSinksStrict(native as any, registerNativeSinks, {
       onExecs: (symbol, execs) => this._handleExecs(symbol, execs),
-      onSnapshot: (symbol, snapshot) => {
-        this._lastNativeSnap.set(symbol, snapshot);
+      onSnapshot: (symbol) => {
         this._dirty.add(symbol);
       }
     });
+  }
+
+  /** Register a HyperExpress server so market fan-out can use uWS topic publish (one native send per subscriber). */
+  attachServer(srv: HyperExpress.Server) {
+    if (!this._servers.includes(srv)) this._servers.push(srv);
+  }
+
+  private static topicOf(internalKey: string) {
+    return 'mkt:' + internalKey;
+  }
+
+  /** Deliver one pre-serialized message to every subscriber of a market. */
+  private publishToMarket(internalKey: string, str: string) {
+    if (this._servers.length) {
+      const topic = SocketManager.topicOf(internalKey);
+      for (const srv of this._servers) srv.publish(topic, str);
+      return;
+    }
+    const ids = this._marketSubs.get(internalKey);
+    if (!ids) return;
+    for (const id of ids) {
+      const ws = this._liveSessions.get(id);
+      if (!ws) continue;
+      try {
+        if ((ws as any).bufferedAmount && (ws as any).bufferedAmount > 1_000_000) continue;
+        ws.send(str);
+      } catch {}
+    }
   }
 
   /** 
@@ -284,19 +320,46 @@ export class SocketManager {
     return this._liveSessions.size;
   }
 
+  /** Coalesced snapshot broadcast: one engine snapshot + one serialization + one publish per dirty market per tick. */
   private flushOrderbookData() {
-     if (this._dirty.size === 0) return;
-     const markets = Array.from(this._dirty);
-     this._dirty.clear();
-     for (const mk of markets) {
-       const native = this._lastNativeSnap.get(mk);
-       if (!native) continue;
-       this.broadcastToMarket(mk, {
-         event: EmitEvents.ORDERBOOK_DATA,
-         marketKey: mk,
-         native,
-       });
-     }
+    if (this._closePending.size) this.flushCloseSnapshots();
+    if (this._dirty.size === 0) return;
+    const markets = Array.from(this._dirty);
+    this._dirty.clear();
+    for (const mk of markets) {
+      const subs = this._marketSubs.get(mk);
+      if (!subs || subs.size === 0) continue;
+      try {
+        const l2 = native.snapshotL2(mk, BOOK_BROADCAST_DEPTH, false);
+        this.publishToMarket(
+          mk,
+          `{"event":"${EmitEvents.ORDERBOOK_DATA}","orders":${l2},"isDelta":false,"history":0}`
+        );
+      } catch (e) {
+        console.warn('[flush snapshot err]', mk, e);
+      }
+    }
+  }
+
+  /** One snapshot per market per tick, sent to every socket that cancelled an order on it since the last tick. */
+  private flushCloseSnapshots() {
+    const pending = this._closePending;
+    this._closePending = new Map();
+    for (const [internalKey, socks] of pending) {
+      let orders: string | null = null;
+      for (const [sid, marketKey] of socks) {
+        const ws = this._liveSessions.get(sid);
+        if (!ws) continue;
+        try {
+          if (orders === null) orders = this.directBookJson(internalKey, marketKey, 50);
+          ws.send(
+            `{"event":"${EmitEvents.ORDERBOOK_DATA}","marketKey":${JSON.stringify(marketKey)},"orders":${orders},"isDelta":false,"openedOrders":[],"history":[]}`
+          );
+        } catch (e) {
+          console.warn('[close-order] snapshot send error', e);
+        }
+      }
+    }
   }
 
   spotKeyFromIds(a?: any, b?: any): string | null {
@@ -341,7 +404,7 @@ export class SocketManager {
     if (desktopHeader === 'desktop') {
       clientClass = 'desktop';
       authed = true;
-      console.log('[Auth] Desktop client detected - exempt from session auth');
+      if (DEBUG_LOG) console.log('[Auth] Desktop client detected - exempt from session auth');
       return { clientClass, authed };
     }
 
@@ -350,7 +413,7 @@ export class SocketManager {
     if (apiKey) {
       clientClass = 'bot';
       authed = true;
-      console.log('[Auth] Bot client detected - exempt from session auth');
+      if (DEBUG_LOG) console.log('[Auth] Bot client detected - exempt from session auth');
       return { clientClass, authed, apiKey };
     }
 
@@ -401,7 +464,7 @@ export class SocketManager {
       authRequired,
     }));
 
-    console.log(`[SM] OPEN ${id}, clientClass=${clientClass}, authed=${authed}, live=${this._liveSessions.size}`);
+    if (DEBUG_LOG) console.log(`[SM] OPEN ${id}, clientClass=${clientClass}, authed=${authed}, live=${this._liveSessions.size}`);
   };
 
   // === Event handlers ===
@@ -418,7 +481,7 @@ export class SocketManager {
       console.error('[SM] Failed to parse WS message', e, message);
       return;
     }
-    console.log('incoming message '+JSON.stringify(data))
+    if (DEBUG_LOG) console.log('incoming message '+JSON.stringify(data))
 
     // -------------------------------------------------------------------------
     // NEW: AUTH HANDSHAKE
@@ -454,7 +517,7 @@ export class SocketManager {
         expiresAt: session.expiresAt 
       }));
       
-      console.log(`[Auth] Web client ${authWs.id} authenticated as ${session.address}`);
+      if (DEBUG_LOG) console.log(`[Auth] Web client ${authWs.id} authenticated as ${session.address}`);
       return;
     }
 
@@ -553,7 +616,7 @@ export class SocketManager {
         break;
       }
       default: {
-        console.log(`[SM] Unknown event type: ${data.event}`);
+        if (DEBUG_LOG) console.log(`[SM] Unknown event type: ${data.event}`);
       }
     }
   }
@@ -640,87 +703,27 @@ export class SocketManager {
       }
     }
 
-    console.log('order before sub '+JSON.stringify(order)+' and after toJs '+JSON.stringify(this.toJsOrder(order)))
     try {
       ws.send(JSON.stringify({
         event: OrderEmitEvents.SAVED,
         orderUuid: order.uuid
       }));
 
-      // 🔧 4. Submit to native engine with internal key
+      // 4. Submit to native engine with internal key
       native.submit(internalKey, this.toJsOrder(order));
 
-      // 🧩 5. Immediate placed-orders tray
-      console.log('about to call orders ' + sid + ' ' + internalKey);
+      // 5. Immediate placed-orders tray: built by the addon as the final wire message
+      //    (open orders + the most recent PLACED_ORDERS_HISTORY_LIMIT history events).
       try {
-        const openedRaw = (native as any).get_open_orders_by_socket?.(sid, internalKey);
-        console.log('fetched orders ' + JSON.stringify(openedRaw));
-
-        const historyRaw = (native as any).getOrderHistoryBySocket?.(sid, internalKey);
-        console.log('order history ' + JSON.stringify(historyRaw));
-
-        const opened = typeof openedRaw === 'string'
-          ? JSON.parse(openedRaw)
-          : (Array.isArray(openedRaw) ? openedRaw : []);
-
-        const orderHistory = typeof historyRaw === 'string'
-          ? JSON.parse(historyRaw)
-          : (Array.isArray(historyRaw) ? historyRaw : []);
-
-        ws.send(JSON.stringify({
-          event: EmitEvents.PLACED_ORDERS,
-          openedOrders: opened,
-          orderHistory
-        }));
+        ws.send(native.getPlacedOrdersJson(sid, internalKey, PLACED_ORDERS_HISTORY_LIMIT));
       } catch (err) {
         console.warn('[placed-orders err]', err);
       }
 
-      // 📡 6. Broadcast snapshot to all subs
-      
-      const snapRaw = (native as any).snapshot?.(internalKey);
-
-      console.log('market snapshot ' + JSON.stringify(snapRaw));
-
-      const snapObj = typeof snapRaw === 'string'
-        ? JSON.parse(snapRaw)
-        : (snapRaw ?? null);
-
-      // OPTIONAL: price scale normalization (engine ticks -> UI units)
-      // If your engine stores price=100 but UI expects 1.00, set PRICE_SCALE accordingly.
-      // Derive from market metadata if you have it.
-      const normalized =
-          snapObj && snapObj.snapshot
-            ? {
-                symbol: snapObj.snapshot.symbol,
-                timestamp: snapObj.snapshot.timestamp,
-                bids: (snapObj.snapshot.bids ?? []).map((b: any) => ({
-                  price: PRICE_SCALE ? b.price / PRICE_SCALE : b.price,
-                  amount: (b.visible_quantity ?? 0) / QTY_SCALE,  
-                  count: b.order_count,
-                })),
-                asks: (snapObj.snapshot.asks ?? []).map((a: any) => ({
-                  price: PRICE_SCALE ? a.price / PRICE_SCALE : a.price,
-                  amount: (a.visible_quantity ?? 0) / QTY_SCALE,   
-                  count: a.order_count,
-                })),
-                checksum: snapObj.checksum,
-              }
-            : null;
-            this.broadcastToMarket(internalKey,{
-            event: EmitEvents.ORDERBOOK_DATA,
-            orders: normalized,
-            isDelta: false,
-            history: 0,
-          });
-
-      // Send a real object, not a string
-      ws.send(JSON.stringify({
-        event: EmitEvents.ORDERBOOK_DATA,
-        orders: normalized,       // or snapObj if you don't want to reshape/scale
-        isDelta: false,
-        history: 0,
-      }));
+      // 6. Market snapshot: mark the market dirty. The submitter is already indexed as a subscriber
+      //    (ensureSocketMarketIndex above), so the next coalescer tick delivers one orderbook-data to
+      //    every subscriber, the submitter included.
+      this._dirty.add(internalKey);
     } catch (e: any) {
       ws.send(JSON.stringify({
         event: OrderEmitEvents.ERROR,
@@ -799,7 +802,7 @@ export class SocketManager {
     const network = data.network;
     const market = this.resolveMarket(data);
     const internalKey = this.makeInternalKey(market, network);
-    console.log('uuid', uuid, internalKey);
+    if (DEBUG_LOG) console.log('uuid', uuid, internalKey);
     this.ensureSocketMarketIndex(sid, internalKey);
 
     if (!market) {
@@ -814,35 +817,9 @@ export class SocketManager {
       console.warn('[close-order] cancel error', e);
     }
 
-
-    setTimeout(() => {
-      console.log('sending snapshot after cancel')
-      try {
-        this.sendOrderbookSnapshot(ws, market, 50, network);
-      } catch (e) {
-        console.warn('[close-order] snapshot send error', e);
-      }
-    }, 1)
-    // optionally re-broadcast fresh snapshot to this socket
-    
-    // fetch latest opened orders + history for THIS socket & market
+    // fresh opened orders + recent history for THIS socket & market
     try {
-      const openedRaw  = (native as any).get_open_orders_by_socket?.(sid, internalKey);
-      const historyRaw = (native as any).getOrderHistoryBySocket?.(sid, internalKey);
-
-      const opened = typeof openedRaw  === 'string'
-        ? JSON.parse(openedRaw)
-        : (Array.isArray(openedRaw) ? openedRaw : []);
-
-      const orderHistory = typeof historyRaw === 'string'
-        ? JSON.parse(historyRaw)
-        : (Array.isArray(historyRaw) ? historyRaw : []);
-
-      ws.send(JSON.stringify({
-        event: EmitEvents.PLACED_ORDERS,
-        openedOrders: opened,
-        orderHistory,
-      }));
+      ws.send(native.getPlacedOrdersJson(sid, internalKey, PLACED_ORDERS_HISTORY_LIMIT));
     } catch (err) {
       console.warn('[close-order] post-cancel fetch/send err', err);
       ws.send(JSON.stringify({
@@ -851,6 +828,11 @@ export class SocketManager {
         orderHistory: [],
       }));
     }
+
+    // then the fresh book for this socket, from the next coalescer tick (one snapshot per market per tick)
+    let owed = this._closePending.get(internalKey);
+    if (!owed) this._closePending.set(internalKey, (owed = new Map()));
+    owed.set(sid, market);
   }
 
   // === Update snapshot request ===
@@ -894,7 +876,7 @@ export class SocketManager {
     // Depth handling (accept string/number anywhere)
     const rawDepth = filter.depth ?? payload.depth;
     const depth = Number.isFinite(Number(rawDepth)) ? Number(rawDepth) : 50;
-    console.log('inside handle orderbook update '+mk)
+    if (DEBUG_LOG) console.log('inside handle orderbook update '+mk)
     if (!mk) {
       // No way to resolve — reply with an empty snapshot object (FE renders this shape)
       ws.send(JSON.stringify({
@@ -992,7 +974,7 @@ export class SocketManager {
       };
     });
 
-    console.log('[EXEC/IN]', marketKey, normalized.length, normalized[0]);
+    if (DEBUG_LOG) console.log('[EXEC/IN]', marketKey, normalized.length, normalized[0]);
 
     // Process each exec slice
     for (const ex of normalized) {
@@ -1060,7 +1042,7 @@ export class SocketManager {
           props: tradeProps,
         };
 
-        console.log('trade info '+JSON.stringify(tradeInfo))
+        if (DEBUG_LOG) console.log('trade info '+JSON.stringify(tradeInfo))
         const res = this.newChannel(tradeInfo, null);
       } catch (e) {
         console.error('[EXEC] handler threw', e);
@@ -1118,7 +1100,8 @@ export class SocketManager {
     this._sessionSubs.get(socketId)!.add(internalKey);
 
     (ws as any)._markets.add(internalKey);
-    console.log('[sub] add', socketId, internalKey, 'size=', this._sessionSubs.get(socketId)?.size);
+    try { ws.subscribe(SocketManager.topicOf(internalKey)); } catch {}
+    if (DEBUG_LOG) console.log('[sub] add', socketId, internalKey, 'size=', this._sessionSubs.get(socketId)?.size);
 
     // one-shot snapshot
     this.sendOrderbookSnapshot(ws, marketKey, 50, network);
@@ -1130,7 +1113,8 @@ export class SocketManager {
     this._marketSubs.get(internalKey)?.delete(socketId);
     this._sessionSubs.get(socketId)?.delete(internalKey);
     (ws as any)?._markets?.delete(internalKey);
-      console.log('[sub] del', socketId, internalKey, 'size=', this._sessionSubs.get(socketId)?.size);
+    try { ws?.unsubscribe(SocketManager.topicOf(internalKey)); } catch {}
+    if (DEBUG_LOG) console.log('[sub] del', socketId, internalKey, 'size=', this._sessionSubs.get(socketId)?.size);
   }
 
   // ensure socket↔market is indexed even if client never "joined"
@@ -1138,10 +1122,14 @@ private ensureSocketMarketIndex(socketId: string, internalKey: string) {
   if (!this._sessionSubs.has(socketId)) this._sessionSubs.set(socketId, new Set());
   this._sessionSubs.get(socketId)!.add(internalKey);
 
-  if (!this._marketSubs.has(internalKey)) this._marketSubs.set(internalKey, new Set());
-  this._marketSubs.get(internalKey)!.add(socketId);
+  let subs = this._marketSubs.get(internalKey);
+  if (!subs) this._marketSubs.set(internalKey, (subs = new Set()));
 
   const ws = this._liveSessions.get(socketId) as any;
+  if (!subs.has(socketId)) {
+    subs.add(socketId);
+    try { ws?.subscribe?.(SocketManager.topicOf(internalKey)); } catch {}
+  }
   if (ws?._markets instanceof Set) ws._markets.add(internalKey);
 }
 
@@ -1149,15 +1137,7 @@ private ensureSocketMarketIndex(socketId: string, internalKey: string) {
   public broadcastToMarket(marketKey: string, msg: object) {
     const ids = this._marketSubs.get(marketKey);
     if (!ids || ids.size === 0) return;
-    const str = JSON.stringify(msg);
-    for (const id of ids) {
-      const ws = this._liveSessions.get(id);
-      if (!ws) continue;
-      try {
-        if ((ws as any).bufferedAmount && (ws as any).bufferedAmount > 1_000_000){continue};
-        ws.send(str);
-      } catch {}
-    }
+    this.publishToMarket(marketKey, JSON.stringify(msg));
   }
 
   public broadcastToAll(msg: object) {
@@ -1169,93 +1149,34 @@ private ensureSocketMarketIndex(socketId: string, internalKey: string) {
     }
   }
 // === Snapshots/opened tray ===
+private static emptyBookJson(symbol: string) {
+  return JSON.stringify({ symbol, timestamp: Date.now(), bids: [], asks: [], checksum: '' });
+}
+
+/** FE L2 object as JSON text (scaled, empty levels dropped) for join / update-orderbook / close-order replies. */
+private directBookJson(internalKey: string, marketKey: string, depth: number): string {
+  try {
+    // The addon builds the object (scaled prices/amounts, empty levels dropped) and returns it as JSON text.
+    const l2 = native.snapshotL2(internalKey, depth, true);
+    return l2 === 'null' ? SocketManager.emptyBookJson(marketKey) : l2;
+  } catch {
+    return SocketManager.emptyBookJson(marketKey);
+  }
+}
+
 private sendOrderbookSnapshot(ws: WS, marketKey: string, depth = 50, network?: string) {
-  // Scales — tune if your engine uses different scaling
-  const PRICE_SCALE = 100;      // 100 -> price=1.00, 10000 -> 100.00
-  const QTY_SCALE   = 1e8;      // 10_000_000 -> 0.1
-
-  const internalKey = this.makeInternalKey(marketKey, network);
-
-  const levelsFrom = (arr: any[] | undefined) => {
-    return (arr ?? []).map(l => {
-      // prefer visible_quantity; fall back to amount if present
-      const rawQty = l.visible_quantity ?? l.amount ?? 0;
-      return {
-        price: Number(l.price) / PRICE_SCALE,
-        amount: Math.abs(Number(rawQty)) / QTY_SCALE,
-        count: Number(l.order_count ?? l.count ?? 0),
-      };
-    })
-    .filter(x => isFinite(x.price) && isFinite(x.amount) && x.price > 0 && x.amount > 0);
-  };
-
   if (!marketKey) {
-    const payload = {
-      event: EmitEvents.ORDERBOOK_DATA,
-      marketKey: '',
-      orders: { symbol: '', timestamp: Date.now(), bids: [], asks: [], checksum: '' },
-      isDelta: false,
-      openedOrders: [],
-      history: [],
-    };
-    ws.send(JSON.stringify(payload));
+    ws.send(
+      `{"event":"${EmitEvents.ORDERBOOK_DATA}","marketKey":"","orders":${SocketManager.emptyBookJson('')},"isDelta":false,"openedOrders":[],"history":[]}`
+    );
     return;
   }
 
-  try {
-    // 1) Pull engine snapshot with internal key
-    const snapRaw = (native as any).snapshot?.(internalKey, depth);
-    const snapObj = parseMaybeJson<any>(snapRaw, null);
-
-    // 2) Coerce to the FE's L2 shape directly
-    const core = snapObj?.snapshot ?? snapObj ?? {};
-    const symbol    = core?.symbol ?? marketKey;
-    const timestamp = Number(core?.timestamp ?? Date.now());
-    const checksum  = String(snapObj?.checksum ?? core?.checksum ?? '');
-
-    const bids = levelsFrom(core?.bids);
-    const asks = levelsFrom(core?.asks);
-
-    // 3) Opened orders tray (leave exactly as you had it)
-    const socketId = (ws as any).id as string;
-    let opened: any[] = [];
-    try {
-      if (typeof (native as any).get_open_orders_by_socket === 'function') {
-        let openedRaw = (native as any).get_open_orders_by_socket(socketId, internalKey);
-        if (!Array.isArray(openedRaw)) {
-          openedRaw = (native as any).get_open_orders_by_socket(internalKey, socketId);
-        }
-        opened = Array.isArray(openedRaw) ? openedRaw : [];
-      }
-    } catch {}
-
-    const payload = {
-      event: EmitEvents.ORDERBOOK_DATA,
-      marketKey,
-      orders: { symbol, timestamp, bids, asks, checksum }, // <-- L2 object your FE already renders
-      isDelta: false,
-      openedOrders: opened,
-      history: [],
-    };
-
-    // 4) Send exactly once.
-    //    EITHER: send only to this client:
-    ws.send(JSON.stringify(payload));
-
-    //    OR: broadcast to room WITHOUT echoing back to this socket (if your broadcast supports excluding sender).
-    // this.broadcastToMarketExcept(ws, marketKey, payload);
-
-  } catch {
-    const payload = {
-      event: EmitEvents.ORDERBOOK_DATA,
-      marketKey,
-      orders: { symbol: marketKey, timestamp: Date.now(), bids: [], asks: [], checksum: '' },
-      isDelta: false,
-      openedOrders: [],
-      history: [],
-    };
-    ws.send(JSON.stringify(payload));
-  }
+  const internalKey = this.makeInternalKey(marketKey, network);
+  const orders = this.directBookJson(internalKey, marketKey, depth);
+  ws.send(
+    `{"event":"${EmitEvents.ORDERBOOK_DATA}","marketKey":${JSON.stringify(marketKey)},"orders":${orders},"isDelta":false,"openedOrders":[],"history":[]}`
+  );
 }
 
   // === WS lifecycle ===
@@ -1274,8 +1195,10 @@ private sendOrderbookSnapshot(ws: WS, marketKey: string, depth = 50, network?: s
     }
     this._sessionSubs.delete(id);
     this._liveSessions.delete(id);
+    this._recentClose.delete(id);
+    for (const owed of this._closePending.values()) owed.delete(id);
 
-    console.log(`[SM] Connection closed: ${id}`);
+    if (DEBUG_LOG) console.log(`[SM] Connection closed: ${id}`);
   }
 
   private _seenClose(ws: WS, uuid: string, ms = 1500) {
@@ -1288,7 +1211,9 @@ private sendOrderbookSnapshot(ws: WS, marketKey: string, depth = 50, network?: s
     const now  = Date.now();
     const prev = byUuid.get(uuid);   // ← undefined on first sighting
     byUuid.set(uuid, now);
-    console.log('dupe cancel? '+prev+' '+now+' '+prev+' '+Boolean(prev != null && (now - prev) < ms))
+    if (byUuid.size > 512) {
+      for (const [u, t] of byUuid) if (now - t >= ms) byUuid.delete(u);
+    }
     // only treat as dup if we actually saw it before
     return prev != null && (now - prev) < ms;
   }
@@ -1300,12 +1225,12 @@ private sendOrderbookSnapshot(ws: WS, marketKey: string, depth = 50, network?: s
 
   private callPerMarket = (mk: string, id: string) => {
     const f = (native as any).cancel_all_by_socket;
-    console.log('[typeof cancel_all_by_socket]', typeof f);
+    if (DEBUG_LOG) console.log('[typeof cancel_all_by_socket]', typeof f);
     if (typeof f !== 'function') {
       throw new Error('native.cancel_all_by_socket is missing on this object');
     }
     const r = f(mk, id);
-    console.log('[sweep] cancel_all_by_socket(', mk, ',', id, ') ->', r);
+    if (DEBUG_LOG) console.log('[sweep] cancel_all_by_socket(', mk, ',', id, ') ->', r);
     return r;
   };
 
@@ -1317,13 +1242,13 @@ private sendOrderbookSnapshot(ws: WS, marketKey: string, depth = 50, network?: s
 
     if (list.length === 0) list = Array.from(this._marketSubs.keys());
 
-    console.log('sweepOrders markets', list.length, list);
+    if (DEBUG_LOG) console.log('sweepOrders markets', list.length, list);
 
     const global = (native as any).cancel_all_by_socket_global;
   if (typeof global === 'function') {
     try {
       const r = global(id);
-      console.log('[sweep] cancel_all_by_socket_global(', id, ') ->', r);
+      if (DEBUG_LOG) console.log('[sweep] cancel_all_by_socket_global(', id, ') ->', r);
     } catch (e) {
       console.warn('[sweep] global cancel failed', e);
     }
@@ -1331,7 +1256,7 @@ private sendOrderbookSnapshot(ws: WS, marketKey: string, depth = 50, network?: s
     setTimeout(() => {
       try {
         const r2 = (native as any).cancel_all_by_socket_global?.(id);
-        console.log('[sweep] delayed global retry(', id, ') ->', r2);
+        if (DEBUG_LOG) console.log('[sweep] delayed global retry(', id, ') ->', r2);
       } catch (e) {
         console.warn('[sweep] delayed global retry failed', e);
       }
@@ -1340,47 +1265,11 @@ private sendOrderbookSnapshot(ws: WS, marketKey: string, depth = 50, network?: s
     console.warn('[sweep] global cancel not available on native');
   }
 
-    // NEW: broadcast a fresh snapshot to all subs for each market
-    for (const internalKey of list) {
-      try {
-        const snapRaw = (native as any).snapshot?.(internalKey, this._depth);
-        const snapObj = parseMaybeJson<any>(snapRaw, null);
-        // Parse to get base market for broadcast
-        const { market: baseMarket } = this.parseInternalKey(internalKey);
-        
-         const normalized =
-          snapObj && snapObj.snapshot
-            ? {
-                symbol: snapObj.snapshot.symbol,
-                timestamp: snapObj.snapshot.timestamp,
-                bids: (snapObj.snapshot.bids ?? []).map((b: any) => ({
-                  price: PRICE_SCALE ? b.price / PRICE_SCALE : b.price,
-                  amount: (b.visible_quantity ?? 0) / QTY_SCALE,  
-                  count: b.order_count,
-                })),
-                asks: (snapObj.snapshot.asks ?? []).map((a: any) => ({
-                  price: PRICE_SCALE ? a.price / PRICE_SCALE : a.price,
-                  amount: (a.visible_quantity ?? 0) / QTY_SCALE,   
-                  count: a.order_count,
-                })),
-                checksum: snapObj.checksum,
-              }
-            : null;
-  console.log('checking normalized in sweep '+JSON.stringify(normalized))
-        this.broadcastToMarket(internalKey, {
-        event: EmitEvents.ORDERBOOK_DATA,
-        orders: normalized,
-        isDelta: false,
-        history: [],
-      });
-
-      } catch (e) {
-        console.warn('[sweep snapshot err]', internalKey, e);
-      }
-    }
+    // fresh book for every affected market, delivered by the per-market coalescer
+    for (const internalKey of list) this._dirty.add(internalKey);
 
     this._liveSessions.delete(id);
-    console.log(`${id} disconnected (${reason})`);
+    if (DEBUG_LOG) console.log(`${id} disconnected (${reason})`);
   }
 
 
@@ -1391,7 +1280,7 @@ private sendOrderbookSnapshot(ws: WS, marketKey: string, depth = 50, network?: s
 
   private deriveMarketFromOrder(data: any): string | null {
       const o = data?.order ?? data;
-      console.log('data in deriver market '+JSON.stringify(data))
+      if (DEBUG_LOG) console.log('data in deriver market '+JSON.stringify(data))
       // explicit beats inference
       const mk =
         o?.marketKey ??

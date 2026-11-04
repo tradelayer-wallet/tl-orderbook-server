@@ -27,6 +27,7 @@ initMarketsService();
 
 // Attach the same SocketManager to both servers
 [wsServer, wssServer].forEach((srv) => {
+  socketManager.attachServer(srv);  // enables uWS topic publish for market fan-out
   // Attach both / and /ws for legacy/flex clients
   srv.ws('/',  ws => socketManager.handleOpen(ws));
   srv.ws('/ws', ws => socketManager.handleOpen(ws));

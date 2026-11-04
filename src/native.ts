@@ -125,6 +125,43 @@ export const native = {
   getOrderHistoryBySocket: (socketId: string, market: string, limit?: number): string =>
     (nat as any).getOrderHistoryBySocket?.(market, socketId, limit ?? 200) ?? '[]',
 
+  /**
+   * Complete `placed-orders` wire message ({"event","openedOrders","orderHistory"}) for one socket+market,
+   * with at most `historyLimit` most recent history events. Built inside the addon (one lock, one string).
+   */
+  getPlacedOrdersJson: (socketId: string, market: string, historyLimit: number): string => {
+    if (typeof (nat as any).getPlacedOrdersJson === 'function') {
+      return (nat as any).getPlacedOrdersJson(socketId, market, historyLimit);
+    }
+    // older addon build: assemble from the two legacy calls
+    const opened = tryParse(nat.getOpenOrdersBySocket?.(socketId, market));
+    const hist = tryParse((nat as any).getOrderHistoryBySocket?.(market, socketId, historyLimit));
+    return JSON.stringify({
+      event: 'placed-orders',
+      openedOrders: Array.isArray(opened) ? opened : [],
+      orderHistory: Array.isArray(hist) ? hist.slice(-historyLimit) : [],
+    });
+  },
+
+  /**
+   * FE L2 book as JSON text: {"symbol","timestamp","bids":[{price,amount,count}],"asks":[..],"checksum"}.
+   * Returns 'null' if the book does not exist. dropEmpty removes levels with non-positive price/amount.
+   */
+  snapshotL2: (market: string, depth: number, dropEmpty: boolean): string => {
+    if (typeof (nat as any).snapshotL2 === 'function') {
+      return (nat as any).snapshotL2(market, depth, dropEmpty);
+    }
+    // older addon build: parse the raw snapshot and scale it here
+    const snapObj: any = tryParse(nat.snapshot?.(market, depth));
+    const core = snapObj?.snapshot;
+    if (!core) return 'null';
+    const lv = (arr: any[]) =>
+      (arr ?? [])
+        .map((l: any) => ({ price: Number(l.price) / 100, amount: Math.abs(Number(l.visible_quantity ?? 0)) / 1e8, count: Number(l.order_count ?? 0) }))
+        .filter((x) => !dropEmpty || (x.price > 0 && x.amount > 0));
+    return JSON.stringify({ symbol: core.symbol, timestamp: core.timestamp, bids: lv(core.bids), asks: lv(core.asks), checksum: String(snapObj.checksum ?? '') });
+  },
+
   cancel_all_by_socket: (market: string, socketId: string): number => {
     const fn = (nat as any).cancelAllBySocket;   // no optional chaining
     assertFn(fn, 'cancelAllBySocket');
