@@ -3,8 +3,9 @@ import HyperExpress from 'hyper-express';
 import { EmitEvents, OnEvents, OrderEmitEvents } from './events';
 import { native, registerNativeSinks, JsOrder, Exec } from '../../native';
 import { ChannelSwap } from "../channel-swap/channel-swap.class";
-import { getSessionForToken } from '../routes/auth.route'; // adjust path to your repo layout
-
+import { getSessionForToken } from '../../routes/auth.route';
+import { canonicalAddress } from '../../crypto/bip322';
+import { createHash, timingSafeEqual } from 'crypto';
 
 import {
   ITradeInfo,
@@ -23,16 +24,12 @@ type UUID = string;
 // -----------------------------------------------------------------------------
 /**
  * ClientClass determines auth requirements:
- * - 'web': browser clients, MUST session-auth before mutations
- * - 'desktop': trusted via timed key decrypt, exempt from session auth
- * - 'bot': server-side trust via API key/allowlist, exempt from session auth
+ * - 'web': every client by default; MUST authenticate (BIP-322 session token) before mutations, and may only
+ *   trade for the addresses it has authenticated
+ * - 'bot': server-side trust via an API key whose sha256 is listed in TL_OB_BOT_KEYS; exempt from session auth
+ * The class is never taken from a client-chosen header: only a matching key makes a socket a bot.
  */
-type ClientClass = 'web' | 'desktop' | 'bot';
-
-type SessionRecord = {
-  address: string;
-  expiresAt: number;
-};
+type ClientClass = 'web' | 'bot';
 
 // Extend WS type to include auth metadata
 interface AuthenticatedWS extends HyperExpress.Websocket {
@@ -40,9 +37,37 @@ interface AuthenticatedWS extends HyperExpress.Websocket {
   _markets: Set<string>;
   clientClass: ClientClass;
   authed: boolean;
-  session: SessionRecord | null;
-  traderAddress?: string;
+  /** address -> session token that authenticated it on this socket (expiry/revocation read from the session store) */
+  authedAddresses: Map<string, string>;
+  /** owner keys ("internalKey\0uuid") of orders this socket placed and may still have resting */
+  _ownedKeys: Set<string>;
+  _reconcileAt: number;
 }
+
+// Bot API keys: TL_OB_BOT_KEYS = comma separated sha256 hex digests of the keys. Parsed once at load.
+const BOT_KEY_HASHES: Buffer[] = (process.env.TL_OB_BOT_KEYS || '')
+  .split(',')
+  .map((s) => s.trim().toLowerCase())
+  .filter(Boolean)
+  .flatMap((h) => {
+    if (/^[0-9a-f]{64}$/.test(h)) return [Buffer.from(h, 'hex')];
+    console.warn('[Auth] ignoring TL_OB_BOT_KEYS entry that is not a 64 hex char sha256');
+    return [];
+  });
+
+/** Constant time: hashes the presented key and compares against every configured digest. */
+export function isBotKey(presented: unknown): boolean {
+  if (typeof presented !== 'string' || presented.length === 0 || presented.length > 512) return false;
+  const digest = createHash('sha256').update(presented).digest();
+  let ok = 0;
+  for (const h of BOT_KEY_HASHES) ok |= timingSafeEqual(digest, h) ? 1 : 0;
+  return ok === 1;
+}
+
+// A socket's owner records are reconciled against the engine's open orders once it holds this many.
+const OWNED_RECONCILE_MIN = 512;
+// Addresses one connection may authenticate.
+const MAX_ADDRESSES_PER_SOCKET = 32;
 
 const MUTATING_EVENTS = new Set<string>([
   OnEvents.NEW_ORDER,
@@ -399,87 +424,171 @@ export class SocketManager {
   }
 
   // -----------------------------------------------------------------------------
-  // NEW: Polymorphic Auth Methods
+  // Auth: client classification, address binding, order ownership
   // -----------------------------------------------------------------------------
 
-  /**
-   * Detect client class from upgrade request headers.
-   */
-  private detectClientClass(req?: any): { clientClass: ClientClass; authed: boolean; apiKey?: string } {
-    let clientClass: ClientClass = 'web';
-    let authed = false;
-    let apiKey: string | undefined;
+  /** Orders placed through this server: "internalKey\0uuid" -> owner. Entries die with the order's socket or its close. */
+  private _orderOwners = new Map<string, { address: string; sid: string }>();
 
-    if (!req?.headers) {
-      return { clientClass, authed };
-    }
-
-    // Desktop detection
-    const desktopHeader = req.headers['x-tradelayer-client'];
-    if (desktopHeader === 'desktop') {
-      clientClass = 'desktop';
-      authed = true;
-      if (DEBUG_LOG) console.log('[Auth] Desktop client detected - exempt from session auth');
-      return { clientClass, authed };
-    }
-
-    // Bot/NPM detection
-    apiKey = req.headers['x-api-key'] || req.headers['x-tradelayer-api-key'];
-    if (apiKey) {
-      clientClass = 'bot';
-      authed = true;
-      if (DEBUG_LOG) console.log('[Auth] Bot client detected - exempt from session auth');
-      return { clientClass, authed, apiKey };
-    }
-
-    return { clientClass, authed };
+  private static ownerKey(internalKey: string, uuid: string): string {
+    return internalKey + '\u0000' + uuid;
   }
 
   /**
-   * Resolve trader address based on client class.
+   * Classify a new socket from its upgrade request ({ headers, query }). Only an API key whose sha256 is listed
+   * in TL_OB_BOT_KEYS makes a bot. A presented key that does not match is rejected; no key means 'web'.
    */
-  private resolveTraderAddress(ws: AuthenticatedWS, data?: any): string | undefined {
-    switch (ws.clientClass) {
-      case 'web':
-        return ws.session?.address;
-      case 'desktop':
-        return data?.address || data?.order?.address || data?.keypair?.address || ws.traderAddress;
-      case 'bot':
-        return data?.address || data?.order?.address || ws.traderAddress;
-      default:
-        return undefined;
+  private detectClientClass(req?: any): { clientClass: ClientClass; keyRejected: boolean } {
+    const raw = req?.headers?.['x-tl-api-key'] ?? req?.query?.apiKey ?? req?.query?.api_key;
+    const presented = Array.isArray(raw) ? raw[0] : raw;
+    if (presented === undefined || presented === null || presented === '') {
+      return { clientClass: 'web', keyRejected: false };
     }
+    if (isBotKey(presented)) return { clientClass: 'bot', keyRejected: false };
+    return { clientClass: 'web', keyRejected: true };
+  }
+
+  /**
+   * The address a socket may act as: `raw` is canonicalised and must have been authenticated on this socket
+   * with a session that is still valid (unexpired, not revoked). A dead session drops its address.
+   */
+  private authorizedAddress(authWs: AuthenticatedWS, raw: unknown): string | null {
+    const address = canonicalAddress(String(raw ?? ''));
+    if (!address) return null;
+    const token = authWs.authedAddresses.get(address);
+    if (!token) return null;
+    const s = getSessionForToken(token);
+    if (!s || canonicalAddress(s.address) !== address) {
+      authWs.authedAddresses.delete(address);
+      authWs.authed = authWs.authedAddresses.size > 0;
+      return null;
+    }
+    return address;
+  }
+
+  /** Drop every address whose session has expired or been revoked. */
+  private pruneAuthedAddresses(authWs: AuthenticatedWS) {
+    for (const address of Array.from(authWs.authedAddresses.keys())) this.authorizedAddress(authWs, address);
+  }
+
+  /**
+   * Address an order is placed for. Web sockets: the order's keypair.address, which must be authenticated on this
+   * socket. Bots: keypair.address when present, no session check.
+   */
+  private orderAddress(authWs: AuthenticatedWS, order: { keypair?: any }): { address?: string; error?: string } {
+    const claimed = order?.keypair?.address;
+    if (authWs.clientClass === 'bot') {
+      return { address: claimed ? canonicalAddress(String(claimed)) : '' };
+    }
+    if (!claimed) return { error: 'keypair.address is required' };
+    const address = this.authorizedAddress(authWs, claimed);
+    if (!address) {
+      return { error: `Address ${String(claimed).slice(0, 100)} is not authenticated on this connection. Send { event: "auth", token }.` };
+    }
+    return { address };
+  }
+
+  /** Error text when `uuid` is already owned by another address in this market, else null. */
+  private orderUuidConflict(internalKey: string, uuid: string, address: string): string | null {
+    const prev = this._orderOwners.get(SocketManager.ownerKey(internalKey, uuid));
+    return prev && prev.address !== address ? 'Order uuid is already in use' : null;
+  }
+
+  private claimOrder(authWs: AuthenticatedWS, internalKey: string, uuid: string, address: string) {
+    const key = SocketManager.ownerKey(internalKey, uuid);
+    this._orderOwners.set(key, { address, sid: authWs.id });
+    authWs._ownedKeys.add(key);
+  }
+
+  private releaseOrder(authWs: AuthenticatedWS, key: string) {
+    authWs._ownedKeys.delete(key);
+    if (this._orderOwners.get(key)?.sid === authWs.id) this._orderOwners.delete(key);
+  }
+
+  /** The order is gone (cancelled): drop its owner record wherever it is held. */
+  private forgetOrder(key: string) {
+    const own = this._orderOwners.get(key);
+    if (!own) return;
+    this._orderOwners.delete(key);
+    (this._liveSessions.get(own.sid) as AuthenticatedWS | undefined)?._ownedKeys.delete(key);
+  }
+
+  /** Close/amend: the stored order's owner must be an address authenticated on this socket (bots are exempt). */
+  private orderOwnerError(authWs: AuthenticatedWS, internalKey: string, uuid: string): string | null {
+    if (authWs.clientClass === 'bot') return null;
+    const own = this._orderOwners.get(SocketManager.ownerKey(internalKey, uuid));
+    if (!own) return 'Unknown order';
+    if (!this.authorizedAddress(authWs, own.address)) {
+      return 'Order belongs to an address that is not authenticated on this connection';
+    }
+    return null;
+  }
+
+  /**
+   * Bound the owner records: once a socket holds many, drop those whose order no longer rests in the engine
+   * (filled or cancelled). The engine's per-socket open list is the source of truth.
+   */
+  private reconcileOwned(authWs: AuthenticatedWS) {
+    if (authWs._ownedKeys.size < authWs._reconcileAt) return;
+    const byMarket = new Map<string, string[]>();
+    for (const key of authWs._ownedKeys) {
+      const i = key.indexOf('\u0000');
+      const m = key.slice(0, i);
+      let l = byMarket.get(m);
+      if (!l) byMarket.set(m, (l = []));
+      l.push(key.slice(i + 1));
+    }
+    for (const [market, uuids] of byMarket) {
+      let open: Set<string>;
+      try {
+        const rows = JSON.parse(native.get_open_orders_by_socket(authWs.id, market));
+        open = new Set<string>(Array.isArray(rows) ? rows.map((r: any) => String(r.uuid)) : []);
+      } catch {
+        continue;
+      }
+      for (const u of uuids) {
+        if (!open.has(u)) this.releaseOrder(authWs, SocketManager.ownerKey(market, u));
+      }
+    }
+    authWs._reconcileAt = Math.max(OWNED_RECONCILE_MIN, authWs._ownedKeys.size * 2);
   }
 
   // === Public API expected by index.ts ===
-  handleOpen = (ws: WS, req?: any) => {  // MODIFIED: added req parameter
-    const id = this.generateUniqueId();
+  /** `req` is the upgrade context from index.ts: { headers, query }. */
+  handleOpen = (ws: WS, req?: any) => {
     const authWs = ws as AuthenticatedWS;
-    
+
+    const { clientClass, keyRejected } = this.detectClientClass(req);
+    if (keyRejected) {
+      ws.send(JSON.stringify({ event: OrderEmitEvents.ERROR, message: 'Invalid API key' }));
+      ws.close(4401, 'invalid api key');
+      return;
+    }
+
+    const id = this.generateUniqueId();
     authWs.id = id;
     authWs._markets = new Set<string>();
-    
-    // NEW: Polymorphic auth detection
-    const { clientClass, authed, apiKey } = this.detectClientClass(req);
     authWs.clientClass = clientClass;
-    authWs.authed = authed;
-    authWs.session = null;
-    
+    authWs.authed = clientClass === 'bot';
+    authWs.authedAddresses = new Map();
+    authWs._ownedKeys = new Set();
+    authWs._reconcileAt = OWNED_RECONCILE_MIN;
+
     this._liveSessions.set(id, ws);
 
-    ws.on('message', (m) => this.handleMessage(ws, m));
+    ws.on('message', (m) => {
+      this.handleMessage(ws, m).catch((e) => console.error('[SM] message handler failed', e));
+    });
     ws.on('close', () => this.handleClose(ws));
 
-    // MODIFIED: Include auth info in hello
-    const authRequired = clientClass === 'web' && !authed;
-    ws.send(JSON.stringify({ 
-      event: 'connected', 
+    ws.send(JSON.stringify({
+      event: 'connected',
       id,
       clientClass,
-      authRequired,
+      authRequired: clientClass === 'web',
     }));
 
-    if (DEBUG_LOG) console.log(`[SM] OPEN ${id}, clientClass=${clientClass}, authed=${authed}, live=${this._liveSessions.size}`);
+    if (DEBUG_LOG) console.log(`[SM] OPEN ${id}, clientClass=${clientClass}, live=${this._liveSessions.size}`);
   };
 
   // === Event handlers ===
@@ -496,10 +605,12 @@ export class SocketManager {
       console.error('[SM] Failed to parse WS message', e, message);
       return;
     }
+    if (data === null || typeof data !== 'object' || Array.isArray(data)) return;
     if (DEBUG_LOG) console.log('incoming message '+JSON.stringify(data))
 
     // -------------------------------------------------------------------------
-    // NEW: AUTH HANDSHAKE
+    // AUTH HANDSHAKE: { event: 'auth', token }. Each valid token adds its session's address to the
+    // addresses this socket may trade for; a fresh token for a known address extends it.
     // -------------------------------------------------------------------------
     if (data.event === 'auth') {
       if (authWs.clientClass !== 'web') {
@@ -510,7 +621,7 @@ export class SocketManager {
         return;
       }
 
-      const token = String(data.token || '');
+      const token = typeof data.token === 'string' ? data.token : '';
       if (!token) {
         ws.send(JSON.stringify({ event: OrderEmitEvents.ERROR, message: 'Missing token' }));
         return;
@@ -522,29 +633,41 @@ export class SocketManager {
         return;
       }
 
+      const address = canonicalAddress(session.address);
+      const heldToken = authWs.authedAddresses.get(address);
+      const held = heldToken ? getSessionForToken(heldToken) : null;
+      if (!held && authWs.authedAddresses.size >= MAX_ADDRESSES_PER_SOCKET) {
+        ws.send(JSON.stringify({ event: OrderEmitEvents.ERROR, message: 'Too many addresses on one connection' }));
+        return;
+      }
+      // keep whichever session for this address lasts longer
+      let expiresAt = session.expiresAt;
+      if (held && held.expiresAt > session.expiresAt) {
+        expiresAt = held.expiresAt;
+      } else {
+        authWs.authedAddresses.set(address, token);
+      }
       authWs.authed = true;
-      authWs.session = session;
-      authWs.traderAddress = session.address;
 
-      ws.send(JSON.stringify({ 
-        event: 'auth_ok', 
-        address: session.address, 
-        expiresAt: session.expiresAt 
-      }));
-      
-      if (DEBUG_LOG) console.log(`[Auth] Web client ${authWs.id} authenticated as ${session.address}`);
+      ws.send(JSON.stringify({ event: 'auth_ok', address, expiresAt }));
+
+      if (DEBUG_LOG) console.log(`[Auth] Web client ${authWs.id} authenticated as ${address}`);
       return;
     }
 
     // -------------------------------------------------------------------------
-    // NEW: GATE MUTATIONS (web clients only)
+    // GATE MUTATIONS (web clients): at least one live authenticated address. Per-order address binding
+    // and ownership are enforced in the handlers.
     // -------------------------------------------------------------------------
-    if (MUTATING_EVENTS.has(data.event) && authWs.clientClass === 'web' && !authWs.authed) {
-      ws.send(JSON.stringify({ 
-        event: OrderEmitEvents.ERROR, 
-        message: 'Authentication required (web client). Send { event: "auth", token } first.' 
-      }));
-      return;
+    if (MUTATING_EVENTS.has(data.event) && authWs.clientClass === 'web') {
+      this.pruneAuthedAddresses(authWs);
+      if (!authWs.authed) {
+        ws.send(JSON.stringify({ 
+          event: OrderEmitEvents.ERROR, 
+          message: 'Authentication required (web client). Send { event: "auth", token } first.' 
+        }));
+        return;
+      }
     }
 
     // -------------------------------------------------------------------------
@@ -583,6 +706,12 @@ export class SocketManager {
           event: OrderEmitEvents.ERROR,
           message: !uuid ? 'Missing orderUUID' : 'Missing marketKey'
         }));
+        break;
+      }
+
+      const denied = this.orderOwnerError(authWs, internalKey, uuid);
+      if (denied) {
+        ws.send(JSON.stringify({ event: OrderEmitEvents.ERROR, message: denied }));
         break;
       }
 
@@ -707,16 +836,22 @@ export class SocketManager {
     }
 
     // -------------------------------------------------------------------------
-    // NEW: Bind trader address based on client class
+    // Address binding: the order's keypair.address must be authenticated on this socket (bots exempt),
+    // and the order uuid must not belong to another address.
     // -------------------------------------------------------------------------
-    order.traderAddress = this.resolveTraderAddress(authWs, data);
-    if (authWs.clientClass === 'web' && authWs.session?.address) {
-      // Override any client-supplied address for web clients
-      if (order.props) {
-        order.props.trader = authWs.session.address;
-        order.props.address = authWs.session.address;
-      }
+    const who = this.orderAddress(authWs, order);
+    const denied = who.error ?? this.orderUuidConflict(internalKey, order.uuid, who.address ?? '');
+    if (denied) {
+      ws.send(JSON.stringify({ event: OrderEmitEvents.ERROR, message: denied }));
+      return;
     }
+    order.traderAddress = who.address || undefined;
+    if (authWs.clientClass === 'web' && order.props) {
+      // Override any client-supplied address for web clients
+      order.props.trader = who.address;
+      order.props.address = who.address;
+    }
+    this.claimOrder(authWs, internalKey, order.uuid, who.address ?? '');
 
     try {
       ws.send(JSON.stringify({
@@ -726,6 +861,7 @@ export class SocketManager {
 
       // 4. Submit to native engine with internal key
       native.submit(internalKey, this.toJsOrder(order));
+      this.reconcileOwned(authWs);
 
       // 5. Immediate placed-orders tray: built by the addon as the final wire message
       //    (open orders + the most recent PLACED_ORDERS_HISTORY_LIMIT history events).
@@ -740,6 +876,7 @@ export class SocketManager {
       //    every subscriber, the submitter included.
       this._dirty.add(internalKey);
     } catch (e: any) {
+      this.releaseOrder(authWs, SocketManager.ownerKey(internalKey, order.uuid));
       ws.send(JSON.stringify({
         event: OrderEmitEvents.ERROR,
         message: e?.message || 'submit failed'
@@ -766,23 +903,26 @@ export class SocketManager {
     }
 
     const rawOrders: any[] = Array.isArray(data.orders) ? data.orders : [];
-    const normalized = rawOrders.map((o) => {
+    // Validate the whole batch before anything is acknowledged, claimed or submitted.
+    const normalized: NormalizedOrder[] = [];
+    const addresses: string[] = [];
+    for (const o of rawOrders) {
       const norm = this.normalizeOrder(o, sid) as NormalizedOrder;
-      
-      // -------------------------------------------------------------------------
-      // NEW: Bind trader address for each order
-      // -------------------------------------------------------------------------
-      norm.traderAddress = this.resolveTraderAddress(authWs, o);
-      if (authWs.clientClass === 'web' && authWs.session?.address) {
-        if (norm.props) {
-          norm.props.trader = authWs.session.address;
-          norm.props.address = authWs.session.address;
-        }
+      const who = this.orderAddress(authWs, norm);
+      const denied = norm.error ?? who.error ?? this.orderUuidConflict(internalKey, norm.uuid, who.address ?? '');
+      if (denied) {
+        ws.send(JSON.stringify({ event: OrderEmitEvents.ERROR, message: denied }));
+        return;
       }
-      
-      return norm;
-    });
-
+      norm.traderAddress = who.address || undefined;
+      if (authWs.clientClass === 'web' && norm.props) {
+        norm.props.trader = who.address;
+        norm.props.address = who.address;
+      }
+      normalized.push(norm);
+      addresses.push(who.address ?? '');
+    }
+    normalized.forEach((norm, i) => this.claimOrder(authWs, internalKey, norm.uuid, addresses[i]));
 
     try {
       // give per-order ACKs (client expects this)
@@ -795,6 +935,7 @@ export class SocketManager {
       const jsOrders = normalized.map((o) => this.toJsOrder(o));
       // If you have native.submit_batch you can use it; otherwise loop:
       for (const o of jsOrders) native.submit(internalKey, o);
+      this.reconcileOwned(authWs);
 
       this.broadcastToMarket(internalKey, {
         event: EmitEvents.UPDATE_ORDERS_REQUEST,
@@ -819,16 +960,26 @@ export class SocketManager {
     const market = this.resolveMarket(data);
     const internalKey = this.makeInternalKey(market, network);
     if (DEBUG_LOG) console.log('uuid', uuid, internalKey);
-    this.ensureSocketMarketIndex(sid, internalKey, market || undefined);
 
     if (!market) {
       console.warn('[close-order] missing marketKey for uuid', uuid);
       return;
     }
 
+    // only the owner (an address authenticated on this socket) may cancel; bots are exempt
+    const authWs = ws as AuthenticatedWS;
+    const denied = this.orderOwnerError(authWs, internalKey, uuid);
+    if (denied) {
+      ws.send(JSON.stringify({ event: OrderEmitEvents.ERROR, message: denied }));
+      return;
+    }
+    this.ensureSocketMarketIndex(sid, internalKey, market || undefined);
+
     try {
       // cancel on the engine
-      (native as any).cancel?.(internalKey, uuid);
+      if ((native as any).cancel?.(internalKey, uuid)) {
+        this.forgetOrder(SocketManager.ownerKey(internalKey, uuid));
+      }
     } catch (e) {
       console.warn('[close-order] cancel error', e);
     }
@@ -1289,6 +1440,10 @@ private sendOrderbookSnapshot(ws: WS, marketKey: string, depth = 50, network?: s
 
     // fresh book for every affected market, delivered by the per-market coalescer
     for (const internalKey of list) this._dirty.add(internalKey);
+
+    // the socket's orders are cancelled above: drop their owner records
+    const closing = this._liveSessions.get(id) as AuthenticatedWS | undefined;
+    if (closing?._ownedKeys) for (const key of Array.from(closing._ownedKeys)) this.releaseOrder(closing, key);
 
     this._liveSessions.delete(id);
     if (DEBUG_LOG) console.log(`${id} disconnected (${reason})`);

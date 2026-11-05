@@ -116,6 +116,13 @@ export const native = {
   setOrderEventSink: (cb: (eventJson: string) => void) =>
     (nat as any).setOrderEventSink?.(cb) ?? (nat as any).set_order_event_sink?.(cb),
 
+  /** BIP-322 / BIP-137 signed-message verification (Bitcoin and Litecoin single-key addresses). */
+  verifyBip322: (address: string, message: string, signature: string, network: string): boolean => {
+    const fn = (nat as any).verifyBip322;
+    assertFn(fn, 'verifyBip322');
+    return fn(address, message, signature, network);
+  },
+
   nativeBuildId: () =>
     (nat as any).nativeBuildId?.(),
 
