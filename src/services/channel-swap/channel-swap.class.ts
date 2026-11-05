@@ -1,6 +1,6 @@
 // channel-swap.class.ts
 import { Websocket } from 'hyper-express';
-import { SocketEventManager, EventHandler } from './socket-event-manager';
+import { SocketEventManager } from './socket-event-manager';
 import { IResultChannelSwap } from '../../utils/types/mix.types';
 import { ITradeInfo, TOrder } from '../../utils/types/orderbook.types';
 
@@ -113,8 +113,7 @@ export class ChannelSwap {
   /* ------------------------------------------------------------------ */
 
   private openChannel() {
-    this.pipeSwapEvents();   // bidirectional relay
-    this.monitorTerminalEvents();
+    this.pipeSwapEvents();   // bidirectional relay; resolves on the terminal steps
 
     const trade = { tradeInfo: this.tradeInfo, unfilled: this.unfilled };
     if (DEBUG_LOG) console.log('channel config '+this.buyerId)
@@ -146,6 +145,7 @@ export class ChannelSwap {
     const payload = new SwapEvent(eventName, socketId, withTradeUUID(raw.data, this.tradeUUID));
     if (DEBUG_LOG) console.log('[Relay] client → dealer', clientSwapEvt, JSON.stringify(payload));
     this.dealerMgr.emit(clientSwapEvt, payload);
+    this.checkTerminal(payload);
   });
 
   this.dealerMgr.on(dealerSwapEvt, (raw: any) => {
@@ -158,35 +158,26 @@ export class ChannelSwap {
     const payload = new SwapEvent(eventName, (this.dealer as any).id, raw.data ?? raw);
     if (DEBUG_LOG) console.log('[Relay] dealer → client', dealerSwapEvt, JSON.stringify(payload));
     this.clientMgr.emit(dealerSwapEvt, payload);
+    this.checkTerminal(payload);
   });
 }
 
 
-  /** Watch for BUYER:STEP6 or TERMINATE_TRADE and resolve/close */
-  private monitorTerminalEvents() {
-    const handler: EventHandler = (swap: SwapEvent) => {
-      const { eventName, socketId, data } = swap;
-      if (DEBUG_LOG) console.log('[Monitor] swap event:', JSON.stringify(swap));
-
-       // Use step guard even here for full deduplication
-      if (!shouldProcessStep(this.tradeUUID, socketId, eventName)) {
-        if (DEBUG_LOG) console.log(`[SwapGuard] terminal step ${eventName} already handled for ${this.tradeUUID}`);
-        return;
-      }
-
-      if (eventName === 'BUYER:STEP6') {
-        this.ready?.({ data: { txid: data } });
-        this.close();
-      }
-
-      if (eventName === 'TERMINATE_TRADE') {
-        this.ready?.({ error: data, socketId });
-        this.close();
-      }
-    };
-
-    this.clientMgr.on(swapEventName, handler);
-    this.dealerMgr.on(swapEventName, handler);
+  /**
+   * Resolve and close on BUYER:STEP6 (data is the final txid) or TERMINATE_TRADE (data is the reason).
+   * Called from the relay after the step is forwarded, so the peer still receives it. The peers only ever
+   * send `<socketId>::swap`; a listener on the bare `swap` event never fired, and every swap ended by TTL.
+   */
+  private checkTerminal(swap: SwapEvent) {
+    if (this.closed) return;
+    const { eventName, socketId, data } = swap;
+    if (eventName === 'BUYER:STEP6') {
+      this.ready?.({ data: { txid: data } });
+      this.close();
+    } else if (eventName === 'TERMINATE_TRADE') {
+      this.ready?.({ error: data, socketId });
+      this.close();
+    }
   }
 
   /** Abort path (timeout / peer disconnect): resolve the pending result with an error, then clean up. */
