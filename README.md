@@ -4,7 +4,10 @@ HyperExpress (uWebSockets) server with a Rust matching engine addon (`rust/match
 
     npm run build      # tsc -> dist/
     npm start          # node dist/index.js
-    npm test           # node test/auth.test.js (Linux x86_64, node >= 22)
+    npm test           # test/channel-swap.test.js, then test/auth.test.js (Linux x86_64)
+
+Runtime: Node 22. The locked uWebSockets.js 20.49.0 ships binaries for Node 18-22 only and refuses to
+load on Node 24; CI (`.github/workflows/orderbook-auth.yml`) pins 22.23.3.
 
 Listeners (environment): `TL_OB_BIND` (default `0.0.0.0`), `TL_OB_WS_PORT` (default `3001`, plain ws/http),
 `TL_OB_WSS_PORT` (default `443`, TLS; `0` disables), `TL_OB_SSL_KEY` / `TL_OB_SSL_CERT`.
