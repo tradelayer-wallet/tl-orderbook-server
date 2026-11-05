@@ -3,7 +3,7 @@ on:
   pull_request:
     paths: ['rust/tl-orderbook/**', '.github/workflows/rust-tl-orderbook.yml']
   push:
-    branches: [master]
+    branches: [master, feat/rust-port]
     paths: ['rust/tl-orderbook/**', '.github/workflows/rust-tl-orderbook.yml']
   workflow_dispatch:
 permissions:
