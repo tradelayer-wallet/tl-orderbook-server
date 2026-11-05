@@ -14,6 +14,18 @@ export class SwapEvent {
 
 const swapEventName = 'swap';
 
+/**
+ * Tag a relayed swap payload with the trade it belongs to. Object payloads (multisig data, PSBTs, UTXOs)
+ * gain a `tradeUUID` field; an absent payload becomes `{ tradeUUID }`. Any other payload (the final txid and
+ * the TERMINATE_TRADE reason are plain strings; arrays and numbers likewise) is forwarded unchanged, because
+ * the swappers read those as `data` itself and spreading a string would turn it into `{"0":"c","1":"6",...}`.
+ */
+export function withTradeUUID(data: any, tradeUUID: string): any {
+  if (data === undefined || data === null) return { tradeUUID };
+  if (typeof data === 'object' && !Array.isArray(data)) return { ...data, tradeUUID };
+  return data;
+}
+
 // Per-message payload logging is off by default (set OB_DEBUG_LOG=1 to enable).
 const DEBUG_LOG = process.env.OB_DEBUG_LOG === '1';
 // A swap that never reaches BUYER:STEP6 / TERMINATE_TRADE is torn down after this long (default 30 min).
@@ -131,10 +143,7 @@ export class ChannelSwap {
         return;
       }
     const socketId = (this.client as any).id;
-    const payload = new SwapEvent(eventName, socketId, {
-        ...raw.data,
-        tradeUUID: this.tradeUUID
-    });
+    const payload = new SwapEvent(eventName, socketId, withTradeUUID(raw.data, this.tradeUUID));
     if (DEBUG_LOG) console.log('[Relay] client → dealer', clientSwapEvt, JSON.stringify(payload));
     this.dealerMgr.emit(clientSwapEvt, payload);
   });

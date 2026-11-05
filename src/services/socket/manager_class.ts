@@ -3,6 +3,7 @@ import HyperExpress from 'hyper-express';
 import { EmitEvents, OnEvents, OrderEmitEvents } from './events';
 import { native, registerNativeSinks, JsOrder, Exec } from '../../native';
 import { ChannelSwap } from "../channel-swap/channel-swap.class";
+import { matchedSpotProps } from '../../utils/pure/spot-trade';
 import { getSessionForToken } from '../../routes/auth.route';
 import { canonicalAddress } from '../../crypto/bip322';
 import { createHash, timingSafeEqual } from 'crypto';
@@ -112,8 +113,6 @@ type NormalizedOrder = {
   error?: string;
 };
 
-const PRICE_SCALE = 100;   // engine ticks -> UI price
-const QTY_SCALE   = 1e8;   // engine sats  -> UI amount
 
 // Number of most recent history events sent in `placed-orders.orderHistory` after a new order / cancel.
 const PLACED_ORDERS_HISTORY_LIMIT = 20;
@@ -1194,12 +1193,16 @@ export class SocketManager {
           const idDesired = props?.id_desired ?? props?.idDesired;
           const idForSale = props?.id_for_sale ?? props?.idForSale;
 
+          // `props` are the taker's order props, so the ids are read through the taker's side:
+          // the swap's buyer always offers the quote property and receives the base property.
+          if (!Number.isFinite(Number(idDesired)) || !Number.isFinite(Number(idForSale))) {
+            console.warn('[EXEC] SPOT missing/invalid id_desired/id_for_sale', { marketKey, props });
+            continue; // skip malformed
+          }
           tradeProps = {
             ...props,
-            propIdDesired: idDesired,
-            propIdForSale: idForSale,
-            amountDesired: safeNumber(quantity * price),
-            amountForSale: quantity,
+            ...matchedSpotProps(sideOfTaker, Number(idForSale), Number(idDesired), quantity, price),
+            amount: quantity,
             price,
           };
         }
@@ -1726,10 +1729,10 @@ private sendOrderbookSnapshot(ws: WS, marketKey: string, depth = 50, network?: s
               : null;
 
           tradeProps = {
-            propIdDesired: pNew.id_desired ?? pOld.id_desired,
-            propIdForSale: pNew.id_for_sale ?? pOld.id_for_sale,
-            amountDesired: amount,
-            amountForSale: safeNumber(amount * price),
+            ...matchedSpotProps(
+              new_order.action === EOrderAction.SELL ? 'SELL' : 'BUY',
+              pNew.id_for_sale, pNew.id_desired, amount, price,
+            ),
             sellerIsMaker,
           };
         }

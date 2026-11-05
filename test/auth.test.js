@@ -493,6 +493,120 @@ async function test(name, fn) {
     s.stop();
   });
 
+  // ---------------- channel-swap relay payloads (compiled module, fake sockets)
+  const EventEmitter = require('events');
+  class FakeWS extends EventEmitter {
+    constructor(id) { super(); this.id = id; this.sent = []; }
+    send(m) { this.sent.push(JSON.parse(m)); }
+    swapsTo(id) { return this.sent.filter((m) => m.event === `${id}::swap`); }
+  }
+  const relayTrade = (n) => ({ type: 'SPOT', buyer: { socketId: `rb${n}`, keypair: {}, uuid: `rbu${n}` }, seller: { socketId: `rs${n}`, keypair: {}, uuid: `rsu${n}` }, taker: `rb${n}`, maker: `rs${n}`, props: {} });
+  const swapMsg = (id, eventName, data) => JSON.stringify({ event: `${id}::swap`, eventName, data });
+  const channelSwapModule = () => require(path.join(ROOT, 'dist', 'services', 'channel-swap', 'channel-swap.class.js'));
+
+  await test('swap relay: string payloads (txid, TERMINATE reason) cross intact in both directions', async () => {
+    const { ChannelSwap } = channelSwapModule();
+    const client = new FakeWS('rb1'), dealer = new FakeWS('rs1');
+    const sw = new ChannelSwap(client, dealer, relayTrade(1), null); const done = sw.onReady();
+    const txid = 'c6'.repeat(32);
+    client.emit('message', swapMsg('rb1', 'BUYER:STEP6', txid));
+    const toDealer = dealer.swapsTo('rb1');
+    assert.strictEqual(toDealer.length, 1);
+    assert.strictEqual(toDealer[0].data.eventName, 'BUYER:STEP6');
+    assert.strictEqual(toDealer[0].data.socketId, 'rb1');
+    assert.strictEqual(toDealer[0].data.data, txid);
+
+    const c2 = new FakeWS('rb2'), d2 = new FakeWS('rs2');
+    const sw2 = new ChannelSwap(c2, d2, relayTrade(2), null); sw2.onReady();
+    d2.emit('message', swapMsg('rs2', 'TERMINATE_TRADE', 'Step 3: Build Commit TX: insufficient funds'));
+    assert.strictEqual(c2.swapsTo('rs2')[0].data.data, 'Step 3: Build Commit TX: insufficient funds');
+    const c3 = new FakeWS('rb3'), d3 = new FakeWS('rs3');
+    const sw3 = new ChannelSwap(c3, d3, relayTrade(3), null); sw3.onReady();
+    c3.emit('message', swapMsg('rb3', 'TERMINATE_TRADE', 'No info'));
+    assert.strictEqual(d3.swapsTo('rb3')[0].data.data, 'No info');
+    for (const w of [client, dealer, c2, d2, c3, d3]) w.emit('close');
+    void done;
+  });
+
+  await test('swap relay: object payloads cross with every field and gain tradeUUID client->dealer', async () => {
+    const { ChannelSwap } = channelSwapModule();
+    const client = new FakeWS('rb4'), dealer = new FakeWS('rs4');
+    const sw = new ChannelSwap(client, dealer, relayTrade(4), null); sw.onReady();
+    const ms = { address: 'tltc1qmultisig', redeemScript: '5221', scriptPubKey: '0020ab' };
+    dealer.emit('message', swapMsg('rs4', 'SELLER:STEP1', ms));
+    assert.deepStrictEqual(client.swapsTo('rs4')[0].data.data, ms);
+    const psbt = { psbtHex: '70736274ff', commitTx: 'aa' };
+    client.emit('message', swapMsg('rb4', 'BUYER:STEP4', psbt));
+    assert.deepStrictEqual(dealer.swapsTo('rb4')[0].data.data, { ...psbt, tradeUUID: 'rbu4-rsu4' });
+    client.emit('message', swapMsg('rb4', 'BUYER:STEP2', undefined));
+    assert.deepStrictEqual(dealer.swapsTo('rb4')[1].data.data, { tradeUUID: 'rbu4-rsu4' });
+    client.emit('close'); dealer.emit('close');
+  });
+
+  await test('withTradeUUID: objects tagged, strings/numbers/arrays unchanged, absent payload becomes the tag', async () => {
+    const { withTradeUUID } = channelSwapModule();
+    assert.deepStrictEqual(withTradeUUID({ a: 1 }, 'u'), { a: 1, tradeUUID: 'u' });
+    assert.strictEqual(withTradeUUID('c6c6', 'u'), 'c6c6');
+    assert.strictEqual(withTradeUUID('', 'u'), '');
+    assert.strictEqual(withTradeUUID(7, 'u'), 7);
+    assert.deepStrictEqual(withTradeUUID([1, 2], 'u'), [1, 2]);
+    assert.deepStrictEqual(withTradeUUID(undefined, 'u'), { tradeUUID: 'u' });
+    assert.deepStrictEqual(withTradeUUID(null, 'u'), { tradeUUID: 'u' });
+  });
+
+  // ---------------- matched-trade props
+  await test('matchedSpotProps: base received / quote paid for either taker side, exact amounts', async () => {
+    const { matchedSpotProps, PRICE_SCALE, QTY_SCALE } = require(path.join(ROOT, 'dist', 'utils', 'pure', 'spot-trade.js'));
+    assert.strictEqual(PRICE_SCALE, 100); assert.strictEqual(QTY_SCALE, 1e8);
+    const BASE = 5, QUOTE = 3; // ids are deliberately not ordered base < quote
+    const cases = [[1, 0.5, 0.5], [0.3, 0.07, 0.021], [3, 0.1, 0.3], [0.1, 0.2, 0.02], [1.23456789, 0.01, 0.01234568], [7, 12.34, 86.38]];
+    for (const [q, p, quote] of cases) {
+      const expect = { propIdDesired: BASE, propIdForSale: QUOTE, amountDesired: q, amountForSale: quote };
+      assert.deepStrictEqual(matchedSpotProps('BUY', QUOTE, BASE, q, p), expect, `BUY ${q}@${p}`);   // BUY: for_sale = quote, desired = base
+      assert.deepStrictEqual(matchedSpotProps('SELL', BASE, QUOTE, q, p), expect, `SELL ${q}@${p}`); // SELL: for_sale = base, desired = quote
+    }
+  });
+
+  const tradeSrv = await startServer();
+  async function matchedTrade(maker, taker, m, makerSide, qty, price) {
+    const mk = (side, address, uuid) => orderMsg(m, uuid, side, price, address, { amount: qty, props: { id_for_sale: side === 'BUY' ? 4 : m.q, id_desired: side === 'BUY' ? m.q : 4, price, amount: qty } });
+    const takerSide = makerSide === 'BUY' ? 'SELL' : 'BUY';
+    maker.c.send(mk(makerSide, maker.l.address, `mt-m-${m.q}`));
+    await maker.c.wait(is('order:saved'));
+    taker.c.send(mk(takerSide, taker.l.address, `mt-t-${m.q}`));
+    const [a, b] = await Promise.all([maker.c.wait(is('new-channel')), taker.c.wait(is('new-channel'))]);
+    return { maker: a.data, taker: b.data };
+  }
+
+  for (const [label, makerSide, qty, price, expectQuote] of [
+    ['taker BUY, 1 @ 0.5', 'SELL', 1, 0.5, 0.5],
+    ['taker SELL, 1 @ 0.5', 'BUY', 1, 0.5, 0.5],
+    ['taker BUY, 0.3 @ 0.07', 'SELL', 0.3, 0.07, 0.021],
+    ['taker SELL, 3 @ 0.1', 'BUY', 3, 0.1, 0.3],
+  ]) {
+    await test(`matched trade props (${label}): buyer pays quote, receives base; both counterparties see the same props`, async () => {
+      const m = newMarket();
+      const maker = await wsLogin(tradeSrv.port), taker = await wsLogin(tradeSrv.port);
+      const r = await matchedTrade(maker, taker, m, makerSide, qty, price);
+      for (const side of [r.maker, r.taker]) {
+        const p = side.tradeInfo.props;
+        assert.strictEqual(p.propIdDesired, m.q, 'base property is received');
+        assert.strictEqual(p.propIdForSale, 4, 'quote property is paid');
+        assert.strictEqual(p.amountDesired, qty);
+        assert.strictEqual(p.amountForSale, expectQuote);
+        assert.strictEqual(p.price, price);
+        assert.strictEqual(p.sellerIsMaker, makerSide === 'SELL');
+      }
+      assert.deepStrictEqual(r.maker.tradeInfo.props, r.taker.tradeInfo.props);
+      const buyerSide = makerSide === 'SELL' ? r.taker : r.maker;
+      const sellerSide = makerSide === 'SELL' ? r.maker : r.taker;
+      assert.strictEqual(buyerSide.isBuyer, true);
+      assert.strictEqual(sellerSide.isBuyer, false);
+      maker.c.close(); taker.c.close();
+    });
+  }
+  tradeSrv.stop();
+
   // ---------------- done
   srv.stop();
   const failed = results.filter(([, ok]) => !ok);
