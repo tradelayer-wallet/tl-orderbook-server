@@ -1407,3 +1407,32 @@ pub fn debug_socket(symbol: String, socket_id: String) -> String {
         "int2ext_hits": mapped
     })).unwrap_or("{}".into())
 }
+
+// ---------- BIP-322 / BIP-137 login verification ----------
+
+/// Verifies a signed message for a single-key Bitcoin or Litecoin address.
+/// `network`: btc, tbtc, rbtc, ltc, tltc, rltc (and common aliases), or "auto" to infer from
+/// the address. Returns false for any malformed or unsupported input; never throws.
+#[napi(js_name = "verifyBip322")]
+pub fn verify_bip322(address: String, message: String, signature_base64: String, network: String) -> bool {
+    bip322_core::verify(&address, &message, &signature_base64, &network)
+}
+
+/// Test helper: signs `message` with the given 32-byte hex secret and returns
+/// {"address","signature"} as JSON. addr_type: p2pkh, p2sh-p2wpkh, p2wpkh, p2tr.
+/// The server never calls this.
+#[napi(js_name = "testSignBip322")]
+pub fn test_sign_bip322(secret_hex: String, addr_type: String, network: String, message: String) -> napi::Result<String> {
+    let bad = |e: String| napi::Error::from_reason(format!("testSignBip322: {e}"));
+    if secret_hex.len() != 64 || !secret_hex.is_ascii() {
+        return Err(bad("secret must be 64 hex chars".into()));
+    }
+    let mut secret = [0u8; 32];
+    for i in 0..32 {
+        secret[i] = u8::from_str_radix(&secret_hex[2 * i..2 * i + 2], 16).map_err(|e| bad(e.to_string()))?;
+    }
+    let net = bip322_core::Network::parse(&network).map_err(bad)?.ok_or_else(|| bad("network required".into()))?;
+    let ty = bip322_core::signer::AddrType::parse(&addr_type).map_err(bad)?;
+    let s = bip322_core::signer::sign(secret, ty, net, &message).map_err(bad)?;
+    Ok(serde_json::json!({ "address": s.address, "signature": s.signature }).to_string())
+}

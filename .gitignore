@@ -4,3 +4,4 @@ dist
 *.hist
 *.log
 /rust/matcher-core/target
+/rust/bip322-core/target

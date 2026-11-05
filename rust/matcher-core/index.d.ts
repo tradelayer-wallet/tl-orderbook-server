@@ -50,3 +50,9 @@ export declare function stats(symbol: string): string
 export declare function submit(symbol: string, order: JsOrder): string
 
 export declare function submitBatch(req: BatchReq): string
+
+/** Verifies a BIP-322 (simple/full) or BIP-137 (P2PKH) signed message for a Bitcoin or Litecoin address. network: btc|tbtc|rbtc|ltc|tltc|rltc|auto. */
+export declare function verifyBip322(address: string, message: string, signatureBase64: string, network: string): boolean
+
+/** Test helper: returns JSON {"address","signature"}. */
+export declare function testSignBip322(secretHex: string, addrType: string, network: string, message: string): string

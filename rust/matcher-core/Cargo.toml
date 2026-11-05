@@ -17,6 +17,7 @@ chrono = { version = "0.4", features = ["clock"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 ulid = { version = "1", features = ["serde"] }
 sha2 = "0.10"
+bip322-core = { path = "../bip322-core" }
 
 # ✅ single-line, unambiguous dependency
 orderbook-rs = { path = "../OrderBook-rs" }

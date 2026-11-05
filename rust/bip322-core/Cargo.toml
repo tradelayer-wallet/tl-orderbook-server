@@ -1,0 +1,12 @@
+[package]
+name = "bip322-core"
+version = "0.1.0"
+edition = "2021"
+description = "BIP-322 / BIP-137 signed-message verification for Bitcoin and Litecoin single-key addresses"
+
+[dependencies]
+bitcoin = { version = "0.32", default-features = false, features = ["std", "secp-recovery"] }
+base64 = "0.22"
+
+[dev-dependencies]
+serde_json = "1"
